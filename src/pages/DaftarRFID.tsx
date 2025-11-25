@@ -1,0 +1,326 @@
+import { useState, useRef, useEffect } from 'react';
+import Sidebar from '../components/Sidebar';
+import Header from '../components/Header';
+import { useSidebar } from '../context/SidebarContext';
+import { QrCode } from 'lucide-react';
+import ScanningRFIDNew from '../components/ScanningRFIDNew';
+
+export default function DaftarRFID() {
+    const { isOpen } = useSidebar();
+    const [formData, setFormData] = useState({
+        workOrder: '',
+        style: '',
+        buyer: '',
+        item: '',
+        color: '',
+        size: ''
+    });
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
+    const [hoveredCard, setHoveredCard] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const modalOpenRef = useRef(false); // Ref untuk tracking modal state
+    
+    // Sync ref dengan state
+    useEffect(() => {
+        modalOpenRef.current = isModalOpen;
+        console.log('[DaftarRFID] Modal state updated:', isModalOpen);
+    }, [isModalOpen]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.nativeEvent.stopImmediatePropagation(); // Stop all event propagation
+        
+        // Validasi form
+        if (!formData.workOrder || !formData.style || !formData.buyer || !formData.item || !formData.color || !formData.size) {
+            alert('Mohon lengkapi semua field sebelum melanjutkan.');
+            return false; // Prevent default behavior
+        }
+        
+        // Buka modal scanning - langsung set tanpa setTimeout
+        console.log('[DaftarRFID] Opening modal, form data:', formData);
+        console.log('[DaftarRFID] Current isModalOpen state:', isModalOpen);
+        console.log('[DaftarRFID] Current modalOpenRef:', modalOpenRef.current);
+        
+        // Set ref terlebih dahulu
+        modalOpenRef.current = true;
+        
+        // Gunakan functional update untuk memastikan state update
+        setIsModalOpen(prev => {
+            if (prev === true) {
+                console.warn('[DaftarRFID] Modal already open, skipping');
+                return prev;
+            }
+            console.log('[DaftarRFID] Setting modal to true, previous state:', prev);
+            return true;
+        });
+        
+        // Return false untuk mencegah form submission
+        return false;
+    };
+
+    return (
+        <div className="flex min-h-screen bg-gray-50"
+
+        >
+            {/* Sidebar */}
+            <Sidebar />
+
+            {/* Main Content Area */}
+            <div
+                className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out"
+                style={{ marginLeft: isOpen ? '15%' : '5rem', width: isOpen ? 'calc(100% - 15%)' : 'calc(100% - 5rem)' }}
+            >
+                {/* Header */}
+                <Header />
+
+                {/* Content */}
+                <main
+                    className="flex-1 w-full overflow-hidden bg-gray-50 flex items-center justify-center bg-black"
+                    style={{
+                        marginTop: '4rem',
+                        padding: '0.5rem',
+                        height: 'calc(100vh - 4rem)',
+                        maxHeight: 'calc(100vh - 4rem)'
+                    }}
+                >
+                    {/* Register RFID Card */}
+                    <div className="w-full max-w-4xl h-full flex items-center justify-center py-2 sm:py-3 md:py-4"
+                    >
+                        <div
+                            className="rounded-xl sm:rounded-2xl shadow-[0_4px_20px_rgba(59,130,246,0.15)] p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8 relative overflow-hidden transition-all duration-500 w-full h-full flex flex-col"
+                            onMouseEnter={() => setHoveredCard(true)}
+                            onMouseLeave={() => setHoveredCard(false)}
+                            style={{
+                                boxShadow: hoveredCard
+                                    ? '0_8px_30px_rgba(59,130,246,0.25)'
+                                    : '0_4px_20px_rgba(59,130,246,0.15)',
+                                transform: hoveredCard ? 'translateY(-4px)' : 'translateY(0)',
+                                padding: '0.75rem'
+                            }}
+                        >
+                            {/* Blue glow effect dengan animasi */}
+                            <div className={`absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none transition-opacity duration-500 ${hoveredCard ? 'opacity-100' : 'opacity-50'}`}></div>
+
+                            {/* Header Section dengan height tetap */}
+                            <div className="flex-shrink-0 h-auto mb-2 sm:mb-3 md:mb-4 px-2 sm:px-3 md:px-4">
+                                {/* Icon RFID di atas dengan animasi */}
+                                <div className="flex justify-center items-center mb-2 sm:mb-3 md:mb-4 h-12 sm:h-14 md:h-16 lg:h-20">
+                                    <div
+                                        className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 lg:w-20 lg:h-20 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
+                                    >
+                                        <QrCode
+                                            className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-white transition-all duration-500 ${hoveredCard ? 'scale-110' : 'scale-100'}`}
+                                            strokeWidth={2.5}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Title */}
+                                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-gray-800 text-center mb-2 sm:mb-3 md:mb-4 transition-colors duration-300 flex items-center justify-center px-2">
+                                    REGISTER RFID
+                                </h1>
+
+                                {/* Instruction */}
+                                <p className="text-gray-600 text-center mb-3 sm:mb-4 md:mb-5 text-xs sm:text-sm md:text-base h-auto flex items-center justify-center px-2 sm:px-3 md:px-4">
+                                    Input informasi Work Order, Style, Buyer, Item, Color, dan Size untuk scanning RFID
+                                </p>
+                            </div>
+
+                            {/* Form - Flex grow untuk mengisi sisa ruang */}
+                            <form 
+                                onSubmit={handleSubmit} 
+                                className="flex-1 flex flex-col space-y-2 sm:space-y-2.5 md:space-y-3 lg:space-y-4 justify-between px-2 sm:px-3 md:px-4 overflow-y-auto"
+                                noValidate
+                            >
+                                {/* Form Fields Container */}
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
+                                    {/* Work Order */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="workOrder"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'workOrder' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Work Order
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="workOrder"
+                                            name="workOrder"
+                                            value={formData.workOrder}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('workOrder')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Work Order"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Style */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="style"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'style' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Style
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="style"
+                                            name="style"
+                                            value={formData.style}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('style')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Style"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Buyer */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="buyer"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'buyer' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Buyer
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="buyer"
+                                            name="buyer"
+                                            value={formData.buyer}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('buyer')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Buyer"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Item */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="item"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'item' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Item
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="item"
+                                            name="item"
+                                            value={formData.item}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('item')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Item"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Color */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="color"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'color' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Color
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="color"
+                                            name="color"
+                                            value={formData.color}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('color')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Color"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Size */}
+                                    <div className="transition-all duration-300 flex flex-col justify-center">
+                                        <label
+                                            htmlFor="size"
+                                            className={`block text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-gray-700 mb-1 sm:mb-1.5 md:mb-2 transition-colors duration-300 flex items-center ${focusedInput === 'size' ? 'text-blue-600' : ''}`}
+                                        >
+                                            Size
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="size"
+                                            name="size"
+                                            value={formData.size}
+                                            onChange={handleInputChange}
+                                            onFocus={() => setFocusedInput('size')}
+                                            onBlur={() => setFocusedInput(null)}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
+                                            placeholder="Masukkan Size"
+                                            style={{
+                                                textAlign: 'center',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Submit Button - Fixed di bawah */}
+                                <div className="flex-shrink-0 mt-2 sm:mt-3 md:mt-4">
+                                    <button
+                                        type="submit"
+                                        className="w-full h-10 sm:h-11 md:h-12 lg:h-14 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-bold text-sm sm:text-base md:text-lg lg:text-xl px-4 sm:px-6 md:px-8 rounded-lg sm:rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-blue-500/50 transform hover:-translate-y-1 active:translate-y-0 focus:outline-none focus:ring-4 focus:ring-blue-300 flex items-center justify-center"
+                                    >
+                                        REGISTER
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </main>
+            </div>
+
+            {/* Scanning RFID Modal - Design Baru */}
+            <ScanningRFIDNew
+                isOpen={isModalOpen}
+                onClose={() => {
+                    setIsModalOpen(false);
+                    // Reset form setelah modal ditutup
+                    setFormData({
+                        workOrder: '',
+                        style: '',
+                        buyer: '',
+                        item: '',
+                        color: '',
+                        size: ''
+                    });
+                }}
+                workOrderData={formData}
+            />
+        </div>
+    );
+}
+

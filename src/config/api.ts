@@ -1,0 +1,617 @@
+/**
+ * Konfigurasi API (TypeScript)
+ * File untuk mengakses server dan API
+ */
+
+// ============================================
+// KONFIGURASI SERVER
+// ============================================
+
+// Mode development atau production
+const isDevelopment = import.meta.env.DEV;
+
+// Base URL untuk API Server
+// Frontend memanggil server.js yang berjalan di 10.8.10.160:8000
+// Server.js kemudian akan memanggil backend API di 10.8.10.120:8000
+export const API_BASE_URL = isDevelopment
+    ? 'http://10.8.10.160:8000'  // Server.js (IP: 10.8.10.160, Port: 8000)
+    : import.meta.env.VITE_API_URL || 'http://10.8.10.160:8000';
+
+// Base URL untuk WebSocket (jika diperlukan)
+export const WS_BASE_URL = isDevelopment
+    ? 'ws://10.8.10.160:8000'
+    : import.meta.env.VITE_WS_URL || 'ws://10.8.10.160:8000';
+
+// ============================================
+// TYPES
+// ============================================
+
+export interface ApiResponse<T = any> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    status?: number;
+    response?: Response;
+}
+
+export interface RFIDData {
+    id: string;
+    status: 'active' | 'inactive';
+    line: string;
+    createdAt: string;
+}
+
+export interface LineStatistics {
+    good: number;
+    rework: number;
+    hasper: number;
+    reject: number;
+    total: number;
+}
+
+export interface LineData {
+    id: string;
+    name: string;
+    statistics: LineStatistics;
+    pieData: Array<{ name: string; value: number; color: string }>;
+    kpi: {
+        onTarget: number;
+        vulnerable: number;
+        offTarget: number;
+        currentKPI: number;
+    };
+    workOrders: Array<{
+        workOrder: string;
+        item: string;
+        style: string;
+        qty: number;
+    }>;
+}
+
+export interface LoginRequest {
+    nik: string;
+    password: string;
+}
+
+export interface LoginResponse {
+    debug?: boolean;
+    success: boolean;
+    password_hash?: string; // MD5 hash dari password
+    user?: {
+        bagian: string;
+        line: string;
+        nama: string;
+        nik: string;
+        no_hp: string;
+        pwd_md5: string; // MD5 hash password dari database
+        rfid_user: string;
+        telegram: string;
+        // Untuk backward compatibility
+        jabatan?: string;
+        role?: string;
+    };
+    error?: string;
+    // Untuk backward compatibility dengan POST endpoint
+    token?: string;
+    data?: {
+        token: string;
+        user: {
+            nik: string;
+            name: string;
+            jabatan: string;
+            role: string;
+        };
+    };
+}
+
+export interface ProductionData {
+    overall: {
+        good: number;
+        reject: number;
+        rework: number;
+        hasper: number;
+        total: number;
+        date: string;
+    };
+    byLine: {
+        [key: string]: {
+            good: number;
+            reject: number;
+            rework: number;
+            hasper: number;
+            total: number;
+        };
+    };
+    daily: Array<{
+        date: string;
+        good: number;
+        reject: number;
+        rework: number;
+    }>;
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Mendapatkan URL lengkap untuk API endpoint
+ * @param endpoint - Endpoint path (contoh: '/api/rfid')
+ * @returns URL lengkap
+ */
+export const getApiUrl = (endpoint: string = ''): string => {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${API_BASE_URL}${cleanEndpoint}`;
+};
+
+/**
+ * Mendapatkan URL untuk WebSocket
+ * @param path - WebSocket path (contoh: '/ws')
+ * @returns WebSocket URL lengkap
+ */
+export const getWebSocketUrl = (path: string = '/ws'): string => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${WS_BASE_URL}${cleanPath}`;
+};
+
+// ============================================
+// API CLIENT FUNCTIONS
+// ============================================
+
+/**
+ * Fungsi untuk membuat request ke API
+ * @param endpoint - Endpoint path
+ * @param options - Fetch options (method, body, headers, dll)
+ * @returns Response dari server
+ */
+export const apiRequest = async <T = any>(
+    endpoint: string,
+    options: RequestInit = {}
+): Promise<ApiResponse<T>> => {
+    const url = getApiUrl(endpoint);
+
+    const defaultHeaders: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    };
+
+    const config: RequestInit = {
+        ...options,
+        headers: {
+            ...defaultHeaders,
+            ...options.headers,
+        },
+    };
+
+    try {
+        const response = await fetch(url, config);
+
+        // Parse JSON response
+        const data = await response.json();
+
+        // Jika response tidak OK, return error response dengan data yang ada
+        if (!response.ok) {
+            // Jika status 404 dan message adalah "NIK tidak ada", gunakan pesan tersebut
+            if (response.status === 404 && (data.message === 'NIK tidak ada' || data.error === 'NIK tidak ada')) {
+                return {
+                    success: false,
+                    error: 'NIK tidak ada',
+                    data: data,
+                    status: 404
+                };
+            }
+            return {
+                success: false,
+                error: data.message || data.error || `HTTP ${response.status}: ${response.statusText}`,
+                data: data,
+                status: response.status
+            };
+        }
+
+        // Parse response data
+        // Untuk tracking/line endpoint, kita perlu return seluruh data object
+        // Karena response structure: { success, line, data: {...} }
+        // Jangan ambil data.data karena kita butuh seluruh object
+        let responseData = data;
+        
+        // Hanya ambil data.data jika endpoint bukan tracking/line
+        // Tracking/line perlu seluruh object { success, line, data }
+        if (!endpoint.includes('/tracking/line')) {
+            responseData = data.data || data;
+        }
+        
+        console.log(`✅ [API REQUEST] Success [${endpoint}]:`, {
+            status: response.status,
+            hasData: !!responseData,
+            dataKeys: responseData ? Object.keys(responseData) : []
+        });
+        
+        // Log detail untuk tracking/line endpoint
+        if (endpoint.includes('/tracking/line')) {
+            console.log(`📊 [API REQUEST] Tracking line data:`, JSON.stringify(responseData, null, 2));
+        }
+        
+        return {
+            success: true,
+            data: responseData,
+            response: response,
+            status: response.status
+        };
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ [API REQUEST] Error [${endpoint}]:`, error);
+        
+        // Handle "Failed to fetch" error specifically
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+            return {
+                success: false,
+                error: 'Tidak dapat terhubung ke server. Pastikan server.js berjalan di http://10.8.10.160:8000',
+                data: undefined,
+                status: 500
+            };
+        }
+        
+        return {
+            success: false,
+            error: errorMessage,
+            data: undefined,
+            status: 500
+        };
+    }
+};
+
+// ============================================
+// API METHODS - GET
+// ============================================
+
+/**
+ * GET request
+ * @param endpoint - Endpoint path
+ * @param params - Query parameters
+ * @returns Response data
+ */
+export const apiGet = async <T = any>(
+    endpoint: string,
+    params: Record<string, string | number> = {}
+): Promise<ApiResponse<T>> => {
+    let url = endpoint;
+
+    // Tambahkan query parameters jika ada
+    if (Object.keys(params).length > 0) {
+        const queryString = new URLSearchParams(
+            Object.entries(params).reduce((acc, [key, value]) => {
+                acc[key] = String(value);
+                return acc;
+            }, {} as Record<string, string>)
+        ).toString();
+        url = `${endpoint}?${queryString}`;
+    }
+
+    return await apiRequest<T>(url, {
+        method: 'GET',
+    });
+};
+
+// ============================================
+// API METHODS - POST
+// ============================================
+
+/**
+ * POST request
+ * @param endpoint - Endpoint path
+ * @param data - Data yang akan dikirim
+ * @returns Response data
+ */
+export const apiPost = async <T = any>(
+    endpoint: string,
+    data: any = {}
+): Promise<ApiResponse<T>> => {
+    return await apiRequest<T>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+};
+
+// ============================================
+// API METHODS - PUT
+// ============================================
+
+/**
+ * PUT request
+ * @param endpoint - Endpoint path
+ * @param data - Data yang akan diupdate
+ * @returns Response data
+ */
+export const apiPut = async <T = any>(
+    endpoint: string,
+    data: any = {}
+): Promise<ApiResponse<T>> => {
+    return await apiRequest<T>(endpoint, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+};
+
+// ============================================
+// API METHODS - DELETE
+// ============================================
+
+/**
+ * DELETE request
+ * @param endpoint - Endpoint path
+ * @returns Response data
+ */
+export const apiDelete = async <T = any>(
+    endpoint: string
+): Promise<ApiResponse<T>> => {
+    return await apiRequest<T>(endpoint, {
+        method: 'DELETE',
+    });
+};
+
+// ============================================
+// SPECIFIC API ENDPOINTS
+// ============================================
+
+/**
+ * Health check endpoint
+ * @returns Health status
+ */
+export const checkHealth = async (): Promise<ApiResponse> => {
+    return await apiGet('/health');
+};
+
+/**
+ * Get production statistics
+ * @returns Production statistics
+ */
+export const getProductionStatistics = async (): Promise<ApiResponse> => {
+    return await apiGet('/api/production/statistics');
+};
+
+/**
+ * Get line data by ID
+ * @param lineId - Line ID (contoh: '1' atau 1)
+ * @returns Line data
+ */
+export const getLineData = async (lineId: string | number): Promise<ApiResponse<LineData>> => {
+    return await apiGet<LineData>(`/api/line/${lineId}`);
+};
+
+/**
+ * Get all lines
+ * @returns All lines data
+ */
+export const getAllLines = async (): Promise<ApiResponse<LineData[]>> => {
+    return await apiGet<LineData[]>('/api/line');
+};
+
+/**
+ * Get all RFID
+ * @returns All RFID data
+ */
+export const getAllRFID = async (): Promise<ApiResponse<RFIDData[]>> => {
+    return await apiGet<RFIDData[]>('/api/rfid');
+};
+
+/**
+ * Get RFID by ID
+ * @param rfidId - RFID ID
+ * @returns RFID data
+ */
+export const getRFIDById = async (rfidId: string): Promise<ApiResponse<RFIDData>> => {
+    return await apiGet<RFIDData>(`/api/rfid/${rfidId}`);
+};
+
+/**
+ * Create new RFID
+ * @param rfidData - RFID data (id, status, line)
+ * @returns Created RFID data
+ */
+export const createRFID = async (rfidData: Partial<RFIDData>): Promise<ApiResponse<RFIDData>> => {
+    return await apiPost<RFIDData>('/api/rfid', rfidData);
+};
+
+/**
+ * Update RFID
+ * @param rfidId - RFID ID
+ * @param rfidData - Updated RFID data
+ * @returns Updated RFID data
+ */
+export const updateRFID = async (
+    rfidId: string,
+    rfidData: Partial<RFIDData>
+): Promise<ApiResponse<RFIDData>> => {
+    return await apiPut<RFIDData>(`/api/rfid/${rfidId}`, rfidData);
+};
+
+/**
+ * Delete RFID
+ * @param rfidId - RFID ID
+ * @returns Deleted RFID data
+ */
+export const deleteRFID = async (rfidId: string): Promise<ApiResponse<RFIDData>> => {
+    return await apiDelete<RFIDData>(`/api/rfid/${rfidId}`);
+};
+
+// ============================================
+// AUTH ENDPOINTS
+// ============================================
+
+/**
+ * Login dengan NIK dan Password menggunakan API baru
+ * @param nik - NIK user
+ * @param password - Password user (akan di-hash dengan MD5)
+ * @returns Login response dengan user data
+ */
+export const login = async (nik: string, password?: string): Promise<ApiResponse<LoginResponse>> => {
+    // Import MD5 hashing
+    const CryptoJS = await import('crypto-js');
+    
+    // Hardcoded admin credentials - tidak perlu API
+    if (nik === '12345' && password === 'admin') {
+        const adminResponse: LoginResponse = {
+            success: true,
+            user: {
+                nik: '12345',
+                nama: 'Administrator',
+                bagian: 'IT',
+                line: '',
+                no_hp: '',
+                pwd_md5: '',
+                rfid_user: '',
+                telegram: '',
+                jabatan: 'Administrator',
+                role: 'admin'
+            }
+        };
+        
+        return {
+            success: true,
+            data: adminResponse,
+            status: 200
+        };
+    }
+    
+    // Validasi password harus ada
+    if (!password) {
+        return {
+            success: false,
+            error: 'Password harus diisi',
+            status: 400
+        };
+    }
+    
+    try {
+        // Panggil API baru: GET /user?nik=...
+        const endpoint = `/user?nik=${encodeURIComponent(nik)}`;
+        console.log(`🔍 [LOGIN] Calling API: ${endpoint}`);
+        const response = await apiGet<LoginResponse>(endpoint);
+        
+        console.log(`📥 [LOGIN] API Response:`, {
+            success: response.success,
+            status: response.status,
+            hasData: !!response.data,
+            hasUser: !!response.data?.user,
+            data: response.data
+        });
+        
+        // Cek jika response berhasil dan ada data user
+        if (response.success && response.data && response.data.user) {
+            // Hash password input dengan MD5
+            const passwordHash = CryptoJS.MD5(password).toString();
+            
+            // Bandingkan dengan pwd_md5 dari database
+            const dbPasswordHash = response.data.user.pwd_md5 || '';
+            
+            console.log('🔐 [LOGIN] Password comparison:', {
+                inputPassword: password,
+                inputHash: passwordHash,
+                dbHash: dbPasswordHash,
+                match: passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()
+            });
+            
+            if (passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()) {
+                // Password cocok, return success
+                return {
+                    success: true,
+                    data: {
+                        ...response.data,
+                        success: true,
+                        password_hash: passwordHash
+                    },
+                    status: 200
+                };
+            } else {
+                // Password tidak cocok
+                return {
+                    success: false,
+                    error: 'NIK atau Password salah',
+                    status: 401
+                };
+            }
+        } else {
+            // User tidak ditemukan - cek apakah ini benar-benar 404 atau error lain
+            if (response.status === 404) {
+                return {
+                    success: false,
+                    error: 'NIK tidak ada',
+                    status: 404
+                };
+            } else if (!response.success) {
+                // Error dari API
+                return {
+                    success: false,
+                    error: response.error || 'NIK tidak ada',
+                    status: response.status || 404
+                };
+            } else {
+                // Response success tapi tidak ada user data
+                return {
+                    success: false,
+                    error: 'NIK tidak ada',
+                    status: 404
+                };
+            }
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Terjadi kesalahan saat login',
+            status: 500
+        };
+    }
+};
+
+/**
+ * Login dengan NIK dan Password (POST request - untuk backward compatibility)
+ * @param credentials - Login credentials (nik, password)
+ * @returns Login response dengan token dan user data
+ */
+export const loginWithPassword = async (credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> => {
+    // Gunakan GET request dengan query parameters
+    return await login(credentials.nik, credentials.password);
+};
+
+// ============================================
+// PRODUCTION DATA ENDPOINTS
+// ============================================
+
+/**
+ * Get production data (Good, Reject, Rework)
+ * @param lineId - Optional line ID untuk filter by line
+ * @returns Production data
+ */
+export const getProductionData = async (lineId?: string | number): Promise<ApiResponse<ProductionData | any>> => {
+    const endpoint = lineId ? `/api/production/data?lineId=${lineId}` : '/api/production/data';
+    return await apiGet(endpoint);
+};
+
+// ============================================
+// TRACKING DATA ENDPOINTS
+// ============================================
+
+export interface TrackingLineData {
+    success: boolean;
+    line: string;
+    data: {
+        good: string;
+        output_line: string;
+        pqc_good: string;
+        pqc_reject: string;
+        pqc_rework: string;
+        reject: string;
+        rework: string;
+    };
+}
+
+/**
+ * Get tracking data by line
+ * @param line - Line number (1, 2, 3, etc.)
+ * @returns Tracking line data
+ */
+export const getTrackingLineData = async (line: string | number): Promise<ApiResponse<TrackingLineData>> => {
+    const endpoint = `/tracking/line?line=${encodeURIComponent(line)}`;
+    return await apiGet<TrackingLineData>(endpoint);
+};
+
