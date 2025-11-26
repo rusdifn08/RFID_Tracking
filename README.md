@@ -4,9 +4,11 @@ RFID Tracking For Gistex Garment Indonesia
 ## Tech Stack
 
 - React + TypeScript + Vite
-- Laravel 11
-- Laravel Filament 4
+- Python Flask
+- Material UI
+- TanStack Query
 - Tailwind CSS 4
+- MQTT
 
 ## Getting Started
 
