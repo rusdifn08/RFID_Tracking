@@ -39,7 +39,7 @@ export default function ProductionLine() {
         {
             id: 1,
             title: 'SEWING LINE 1',
-            supervisor: 'Dadang Konelo',
+            supervisor: 'Risman',
             brand: 'mont-bell',
             logoColor: getBrandLogoColor('mont-bell'),
             borderColor: 'border-purple-500',

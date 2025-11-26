@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Radio, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, Loader2 } from 'lucide-react';
 
 interface ScanningRFIDNewProps {
     isOpen: boolean;
@@ -25,7 +25,6 @@ interface ScannedItem {
 export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: ScanningRFIDNewProps) {
     const [rfidInput, setRfidInput] = useState('');
     const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
-    const [isScanning, setIsScanning] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +49,6 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             // Reset semua state
             setRfidInput('');
             setScannedItems([]);
-            setIsScanning(false);
             setIsProcessing(false);
             
             // Clear input field secara eksplisit

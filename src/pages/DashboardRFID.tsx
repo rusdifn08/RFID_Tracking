@@ -45,7 +45,7 @@ const CustomPieLegend = (props: any) => {
     );
 };
 
-const StatusCard = ({ type, count }: { type: 'GOOD' | 'REWORK' | 'HASPER' | 'REJECT', count: number }) => {
+const StatusCard = ({ type, count, label }: { type: 'GOOD' | 'REWORK' | 'HASPER' | 'REJECT', count: number, label?: string }) => {
     const config = {
         GOOD: { color: COLORS.green, label: 'GOOD', Icon: CheckCircle, gradient: 'from-green-50 via-green-50/30 to-white', shadow: 'hover:shadow-[0_20px_50px_-12px_rgba(0,230,118,0.5)] hover:border-green-400' },
         REWORK: { color: COLORS.yellow, label: 'REWORK', Icon: RefreshCcw, gradient: 'from-yellow-50 via-yellow-50/30 to-white', shadow: 'hover:shadow-[0_20px_50px_-12px_rgba(255,234,0,0.6)] hover:border-yellow-400' },
@@ -54,6 +54,7 @@ const StatusCard = ({ type, count }: { type: 'GOOD' | 'REWORK' | 'HASPER' | 'REJ
     };
     const style = config[type];
     const IconComponent = style.Icon;
+    const displayLabel = label || style.label;
 
     return (
         <div className={`relative flex flex-col items-center justify-between p-2 sm:p-3 md:p-4 lg:p-5 h-full w-full min-h-[80px] sm:min-h-[90px] md:min-h-[100px] lg:min-h-[110px] xl:min-h-[120px] bg-gradient-to-b ${style.gradient} rounded-xl sm:rounded-2xl md:rounded-[30px] transition-all duration-300 ease-out transform hover:-translate-y-1 sm:hover:-translate-y-2 shadow-sm border border-gray-100 hover:z-10 group cursor-pointer ${style.shadow}`}>
@@ -64,7 +65,7 @@ const StatusCard = ({ type, count }: { type: 'GOOD' | 'REWORK' | 'HASPER' | 'REJ
                 </div>
             </div>
             <div className="flex flex-col items-center mb-1">
-                <h3 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black tracking-widest uppercase opacity-80 group-hover:opacity-100 transition-opacity" style={{ color: style.color }}>{style.label}</h3>
+                <h3 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-black tracking-widest uppercase opacity-80 group-hover:opacity-100 transition-opacity" style={{ color: style.color }}>{displayLabel}</h3>
                 <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black text-gray-800 leading-tight mt-0.5 tracking-tighter drop-shadow-sm transition-all duration-500 ease-in-out transform scale-100 hover:scale-105">{count}</span>
             </div>
         </div>
@@ -440,7 +441,7 @@ export default function DashboardRFID() {
                                         height: '60%',
                                     }}
                                 >
-                                    <div className="grid grid-cols-7 bg-cyan-200 h-1/5 content-center font-bold text-center py-1.5 sm:py-2 md:py-2.5 lg:py-3 border-b border-blue-100 text-gray-700 text-[10px] sm:text-xs md:text-sm uppercase tracking-wide">
+                                    <div className="grid grid-cols-7 bg-blue-50 h-1/5 content-center font-bold text-center py-1.5 sm:py-2 md:py-2.5 lg:py-3 border-b border-blue-100 text-gray-700 text-[10px] sm:text-xs md:text-sm uppercase tracking-wide">
                                         <div className="border-r border-blue-100">WO</div>
                                         <div className="border-r border-blue-100">Item</div>
                                         <div className="border-r border-blue-100">Style</div>
@@ -495,23 +496,19 @@ export default function DashboardRFID() {
                         <div className="flex-1 flex flex-col gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 min-h-0"
                         
                         >
-                            {/* Row 2: Data Biasa - good, rework, reject */}
-                            <div className="bg-green-100 flex-1 grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3 lg:gap-4"
-                            style={{
-                                padding: '1%',
-                            }}>
-                                <StatusCard type="GOOD" count={good} />
-                                <StatusCard type="REWORK" count={rework} />
-                                <StatusCard type="REJECT" count={reject} />
+                            {/* Row 2: Data QC - reject, rework, good */}
+                            <div className=" flex-1 grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3 lg:gap-4"
+                           >
+                                <StatusCard type="REJECT" count={reject} label="REJECT QC" />
+                                <StatusCard type="REWORK" count={rework} label="REWORK QC" />
+                                <StatusCard type="GOOD" count={good} label="GOOD QC" />
                             </div>
-                            {/* Row 3: Data PQC - pqc_good, pqc_rework, pqc_reject */}
-                            <div className="bg-blue-100 flex-1 grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 pb-2 sm:pb-3 md:pb-4 lg:pb-6"
-                            style={{
-                                padding: '1%',
-                            }}>
-                                <StatusCard type="GOOD" count={pqcGood} />
-                                <StatusCard type="REWORK" count={pqcRework} />
-                                <StatusCard type="REJECT" count={pqcReject} />
+                            {/* Row 3: Data PQC - reject, rework, good */}
+                            <div className="flex-1 grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 pb-2 sm:pb-3 md:pb-4 lg:pb-6"
+                            >
+                                <StatusCard type="REJECT" count={pqcReject} label="REJECT PQC" />
+                                <StatusCard type="REWORK" count={pqcRework} label="REWORK PQC" />
+                                <StatusCard type="GOOD" count={pqcGood} label="GOOD PQC" />
                             </div>
                         </div>
 

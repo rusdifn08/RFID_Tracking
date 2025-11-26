@@ -27,7 +27,7 @@ export default function LineDetail() {
         {
             id: 1,
             title: 'SEWING LINE 1',
-            supervisor: 'Dadang Konelo',
+            supervisor: 'Risman ',
         },
         {
             id: 2,

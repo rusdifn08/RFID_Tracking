@@ -5,6 +5,35 @@ import { useSidebar } from '../context/SidebarContext';
 import { QrCode } from 'lucide-react';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
 
+// Data dummy untuk Work Order
+interface WorkOrderData {
+    workOrder: string;
+    styles: string[];
+    buyers: string[];
+    items: string[];
+    colors: string[];
+    sizes: string[];
+}
+
+const workOrderData: Record<string, WorkOrderData> = {
+    '186401': {
+        workOrder: '186401',
+        styles: ['1128733', '1128734'],
+        buyers: ['HEXAPOLE COMPANY LIMITED'],
+        items: ['STORM CRUISER JACKET M\'S (M-R)'],
+        colors: ['Black', 'Blue', 'Red', 'Yellow', 'Pink'],
+        sizes: ['S', 'M', 'L', 'XL', 'XXL']
+    },
+    '186402': {
+        workOrder: '186402',
+        styles: ['193385', '199987'],
+        buyers: ['Montbell'],
+        items: ['Jacket Storm '],
+        colors: ['Pink', 'Blue', 'Green'],
+        sizes: ['L', 'XL', 'XXL']
+    }
+};
+
 export default function DaftarRFID() {
     const { isOpen } = useSidebar();
     const [formData, setFormData] = useState({
@@ -20,18 +49,39 @@ export default function DaftarRFID() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const modalOpenRef = useRef(false); // Ref untuk tracking modal state
     
+    // Get available options based on selected Work Order
+    const selectedWOData = formData.workOrder ? workOrderData[formData.workOrder] : null;
+    const availableStyles = selectedWOData?.styles || [];
+    const availableBuyers = selectedWOData?.buyers || [];
+    const availableItems = selectedWOData?.items || [];
+    const availableColors = selectedWOData?.colors || [];
+    const availableSizes = selectedWOData?.sizes || [];
+    
     // Sync ref dengan state
     useEffect(() => {
         modalOpenRef.current = isModalOpen;
         console.log('[DaftarRFID] Modal state updated:', isModalOpen);
     }, [isModalOpen]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
+        
+        // Jika Work Order berubah, reset semua field lainnya
+        if (name === 'workOrder') {
+            setFormData({
+                workOrder: value,
+                style: '',
+                buyer: '',
+                item: '',
+                color: '',
+                size: ''
+            });
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                [name]: value
+            }));
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -143,7 +193,7 @@ export default function DaftarRFID() {
                             >
                                 {/* Form Fields Container */}
                                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
-                                    {/* Work Order */}
+                                    {/* Work Order - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="workOrder"
@@ -151,23 +201,23 @@ export default function DaftarRFID() {
                                         >
                                             Work Order
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="workOrder"
                                             name="workOrder"
                                             value={formData.workOrder}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('workOrder')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Work Order"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer"
+                                        >
+                                            <option value="">Pilih Work Order</option>
+                                            {Object.keys(workOrderData).map(wo => (
+                                                <option key={wo} value={wo}>{wo}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
-                                    {/* Style */}
+                                    {/* Style - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="style"
@@ -175,23 +225,24 @@ export default function DaftarRFID() {
                                         >
                                             Style
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="style"
                                             name="style"
                                             value={formData.style}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('style')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Style"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            disabled={!formData.workOrder}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                        >
+                                            <option value="">{formData.workOrder ? 'Pilih Style' : 'Pilih Work Order dulu'}</option>
+                                            {availableStyles.map(style => (
+                                                <option key={style} value={style}>{style}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
-                                    {/* Buyer */}
+                                    {/* Buyer - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="buyer"
@@ -199,23 +250,24 @@ export default function DaftarRFID() {
                                         >
                                             Buyer
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="buyer"
                                             name="buyer"
                                             value={formData.buyer}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('buyer')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Buyer"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            disabled={!formData.workOrder}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                        >
+                                            <option value="">{formData.workOrder ? 'Pilih Buyer' : 'Pilih Work Order dulu'}</option>
+                                            {availableBuyers.map(buyer => (
+                                                <option key={buyer} value={buyer}>{buyer}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
-                                    {/* Item */}
+                                    {/* Item - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="item"
@@ -223,23 +275,24 @@ export default function DaftarRFID() {
                                         >
                                             Item
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="item"
                                             name="item"
                                             value={formData.item}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('item')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Item"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            disabled={!formData.workOrder}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                        >
+                                            <option value="">{formData.workOrder ? 'Pilih Item' : 'Pilih Work Order dulu'}</option>
+                                            {availableItems.map(item => (
+                                                <option key={item} value={item}>{item}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
-                                    {/* Color */}
+                                    {/* Color - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="color"
@@ -247,23 +300,24 @@ export default function DaftarRFID() {
                                         >
                                             Color
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="color"
                                             name="color"
                                             value={formData.color}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('color')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Color"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            disabled={!formData.workOrder}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                        >
+                                            <option value="">{formData.workOrder ? 'Pilih Color' : 'Pilih Work Order dulu'}</option>
+                                            {availableColors.map(color => (
+                                                <option key={color} value={color}>{color}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
-                                    {/* Size */}
+                                    {/* Size - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col justify-center">
                                         <label
                                             htmlFor="size"
@@ -271,20 +325,21 @@ export default function DaftarRFID() {
                                         >
                                             Size
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             id="size"
                                             name="size"
                                             value={formData.size}
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('size')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg"
-                                            placeholder="Masukkan Size"
-                                            style={{
-                                                textAlign: 'center',
-                                            }}
-                                        />
+                                            disabled={!formData.workOrder}
+                                            className="w-full h-9 sm:h-10 md:h-11 lg:h-12 px-2 sm:px-3 md:px-4 text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                        >
+                                            <option value="">{formData.workOrder ? 'Pilih Size' : 'Pilih Work Order dulu'}</option>
+                                            {availableSizes.map(size => (
+                                                <option key={size} value={size}>{size}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 

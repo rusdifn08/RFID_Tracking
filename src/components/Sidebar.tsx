@@ -76,7 +76,7 @@ export default function Sidebar() {
 
             {/* Sidebar Container */}
             <aside
-                className={`bg-gradient-to-b from-[#2979FF] to-[#1E5FD9] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${isOpen ? 'w-[15%] px-6' : 'w-20 px-2'
+                className={`bg-gradient-to-b from-[#0073EE] to-[#0073EE] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${isOpen ? 'w-[15%] px-6' : 'w-20 px-2'
                     }`}
             >
                 {/* --- LOGO AREA --- */}

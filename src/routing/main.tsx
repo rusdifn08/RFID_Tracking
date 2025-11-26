@@ -7,6 +7,7 @@ import MonitoringRFID from '../pages/MonitoringRFID.tsx';
 import DataRFID from '../pages/DataRFID.tsx';
 import LineDetail from '../pages/LineDetail.tsx';
 import DashboardRFID from '../pages/DashboardRFID.tsx';
+import CheckingRFID from '../pages/CheckingRFID.tsx';
 import ProtectedRoute from '../components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -71,6 +72,14 @@ const router = createBrowserRouter([
         element: (
             <ProtectedRoute>
                 <DashboardRFID />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/checking-rfid',
+        element: (
+            <ProtectedRoute>
+                <CheckingRFID />
             </ProtectedRoute>
         ),
     },
