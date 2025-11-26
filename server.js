@@ -11,8 +11,8 @@ const app = express();
 const PORT = process.env.PORT || 8000; // Port untuk API server
 const HOST = '0.0.0.0'; // Listen di semua network interface (bisa diakses dari 10.5.0.7)
 const SERVER_IP = '10.8.10.104'; // IP yang digunakan untuk akses dari frontend (untuk akses dari komputer lain)
-// Backend API URL - jika backend API ada di server yang sama, gunakan localhost untuk menghindari loop
-const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://localhost:${PORT}`;
+// Backend API URL - Backend API yang sebenarnya (Python Flask)
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://10.8.10.120:8000';
 
 // Middleware
 app.use(cors());
@@ -152,7 +152,7 @@ app.get('/health', (req, res) => {
 
 // Database Configuration
 const DATABASE_URL = 'http://10.5.0.99/db/garment';
-const BACKEND_API_URL_CHECK = process.env.BACKEND_API_URL || 'http://10.8.0.104:8000';
+const BACKEND_API_URL_CHECK = process.env.BACKEND_API_URL || 'http://10.8.10.120:8000';
 
 // MySQL Configuration
 const MYSQL_CONFIG = {
@@ -1676,15 +1676,19 @@ app.listen(PORT, HOST, () => {
         console.log(`   Error: ${err.message}`);
     });
 
-    // Test API endpoints
-    console.log('\n📡 Test Koneksi MySQL & Cek Data API:');
-    console.log(`   GET  http://10.8.10.104:${PORT}/user?nik= (Login dengan NIK)`);
-    console.log(`   GET  http://10.8.10.104:${PORT}/login?rfid_user=`);
-    console.log(`   GET  http://10.8.10.104:${PORT}/garment?rfid_garment=`);
-    console.log(`   POST http://10.8.10.104:${PORT}/garment (Insert data langsung ke MySQL)`);
-    console.log(`   GET  http://10.8.10.104:${PORT}/tracking/line?line= (Tracking data by line)`);
-    console.log(`   GET  http://10.8.10.104:${PORT}/wo/production_branch?production_branch=&line= (WO/Production data)`);
-    console.log(`   GET  http://10.8.10.104:${PORT}/tracking?rfid_garment=`);
+    // Test API endpoints - Tampilkan Backend API URL (bukan server.js URL)
+    console.log('\n📡 Test Koneksi MySQL & Cek Data API (Backend API):');
+    console.log(`   Backend API URL: ${BACKEND_API_URL}`);
+    console.log(`   GET  ${BACKEND_API_URL}/user?nik= (Login dengan NIK)`);
+    console.log(`   GET  ${BACKEND_API_URL}/login?rfid_user=`);
+    console.log(`   GET  ${BACKEND_API_URL}/tracking/line?line= (Tracking data by line)`);
+    console.log(`   GET  ${BACKEND_API_URL}/wo/production_branch?production_branch=&line= (WO/Production data)`);
+    console.log(`\n📡 Server.js Endpoints (Proxy Server):`);
+    console.log(`   Server.js URL: http://${SERVER_IP}:${PORT}`);
+    console.log(`   GET  http://${SERVER_IP}:${PORT}/user?nik= (Proxy ke Backend API)`);
+    console.log(`   GET  http://${SERVER_IP}:${PORT}/garment?rfid_garment= (Query MySQL)`);
+    console.log(`   POST http://${SERVER_IP}:${PORT}/garment (Insert data langsung ke MySQL)`);
+    console.log(`   GET  http://${SERVER_IP}:${PORT}/tracking?rfid_garment= (Query MySQL)`);
     console.log(`\n🚀 Server running on:`);
     console.log(`   - http://localhost:${PORT} (Local access)`);
     console.log(`   - http://10.8.10.104:${PORT} (Network access - gunakan IP ini untuk akses dari komputer lain)`);
