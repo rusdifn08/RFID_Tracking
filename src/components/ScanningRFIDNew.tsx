@@ -26,8 +26,51 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
     const [rfidInput, setRfidInput] = useState('');
     const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isOfflineMode, setIsOfflineMode] = useState(false);
+    const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Check server status saat modal dibuka
+    useEffect(() => {
+        if (isOpen) {
+            checkServerStatus();
+        }
+    }, [isOpen]);
+
+    // Check server status
+    const checkServerStatus = async () => {
+        setServerStatus('checking');
+        try {
+            // Create AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 detik timeout
+            
+            const response = await fetch('http://10.8.10.104:8000/health', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                setServerStatus('online');
+                setIsOfflineMode(false);
+            } else {
+                setServerStatus('offline');
+                setIsOfflineMode(true);
+            }
+        } catch (error) {
+            // Server tidak berjalan atau tidak bisa diakses
+            setServerStatus('offline');
+            setIsOfflineMode(true);
+            console.log('🔌 [OFFLINE MODE] Server tidak berjalan, menggunakan mode offline untuk uji coba');
+        }
+    };
 
     // Auto focus input saat modal terbuka dan reset input
     useEffect(() => {
@@ -60,6 +103,8 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             setRfidInput('');
             setScannedItems([]);
             setIsProcessing(false);
+            setIsOfflineMode(false);
+            setServerStatus('checking');
             
             // Clear input field secara eksplisit
             if (inputRef.current) {
@@ -68,6 +113,17 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             }
         }
     }, [isOpen]);
+
+    // Auto-scroll ke atas ketika ada data baru (karena terbaru di atas)
+    useEffect(() => {
+        if (scrollContainerRef.current && scannedItems.length > 0) {
+            // Scroll ke atas (posisi 0) karena data terbaru di atas
+            scrollContainerRef.current.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+    }, [scannedItems]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -92,13 +148,17 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
         if (isLocalDuplicate) {
             // Duplikasi di session ini - langsung tampilkan error tanpa kirim ke server
             const timestamp = new Date();
-            setScannedItems(prev => [...prev, {
-                rfid: trimmedRfid,
-                timestamp,
-                status: 'error',
-                message: 'RFID sudah di-scan dalam session ini (Duplikasi)',
-                isDuplicate: true
-            }]);
+            setScannedItems(prev => {
+                const newItems: ScannedItem[] = [...prev, {
+                    rfid: trimmedRfid,
+                    timestamp,
+                    status: 'error' as const,
+                    message: 'RFID sudah di-scan dalam session ini (Duplikasi)',
+                    isDuplicate: true
+                }];
+                // Sort berdasarkan timestamp (terbaru di atas)
+                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            });
             setRfidInput('');
             setTimeout(() => {
                 inputRef.current?.focus();
@@ -106,6 +166,27 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             return;
         }
 
+        // OFFLINE MODE - Simpan di local state saja untuk uji coba
+        if (isOfflineMode) {
+            const timestamp = new Date();
+            setScannedItems(prev => {
+                const newItems: ScannedItem[] = [...prev, {
+                    rfid: trimmedRfid,
+                    timestamp,
+                    status: 'success' as const,
+                    message: 'Mode Offline - Data hanya untuk uji coba (tidak tersimpan ke database)'
+                }];
+                // Sort berdasarkan timestamp (terbaru di atas)
+                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            });
+            setRfidInput('');
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 100);
+            return;
+        }
+
+        // ONLINE MODE - Kirim ke database
         setIsProcessing(true);
         const timestamp = new Date();
 
@@ -139,33 +220,43 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                 
                 if (isDuplicateInList) {
                     // Jika ternyata ada duplikasi di list, tampilkan sebagai error
-                    setScannedItems(prev => [...prev, {
-                        rfid: trimmedRfid,
-                        timestamp,
-                        status: 'error',
-                        message: 'RFID sudah di-scan sebelumnya (Duplikasi)',
-                        isDuplicate: true
-                    }]);
+                    setScannedItems(prev => {
+                        const newItems: ScannedItem[] = [...prev, {
+                            rfid: trimmedRfid,
+                            timestamp,
+                            status: 'error' as const,
+                            message: 'RFID sudah di-scan sebelumnya (Duplikasi)',
+                            isDuplicate: true
+                        }];
+                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    });
                 } else {
                     // Success
-                    setScannedItems(prev => [...prev, {
-                        rfid: trimmedRfid,
-                        timestamp,
-                        status: 'success',
-                        message: responseData.message || 'Berhasil disimpan'
-                    }]);
+                    setScannedItems(prev => {
+                        const newItems: ScannedItem[] = [...prev, {
+                            rfid: trimmedRfid,
+                            timestamp,
+                            status: 'success' as const,
+                            message: responseData.message || 'Berhasil disimpan'
+                        }];
+                        // Sort berdasarkan timestamp (terlama di atas, terbaru di bawah)
+                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    });
                 }
             } else {
                 // Check if it's a duplicate (409 status)
                 if (response.status === 409 || responseData.isDuplicate) {
                     // Duplicate - tampilkan dengan status error (akan ditampilkan merah)
-                    setScannedItems(prev => [...prev, {
-                        rfid: rfid.trim(),
-                        timestamp,
-                        status: 'error',
-                        message: responseData.message || 'RFID sudah ada di database (Duplikasi)',
-                        isDuplicate: true
-                    }]);
+                    setScannedItems(prev => {
+                        const newItems: ScannedItem[] = [...prev, {
+                            rfid: rfid.trim(),
+                            timestamp,
+                            status: 'error' as const,
+                            message: responseData.message || 'RFID sudah ada di database (Duplikasi)',
+                            isDuplicate: true
+                        }];
+                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    });
                 } else {
                     // Other errors
                     throw new Error(responseData.message || responseData.error || 'Failed to save');
@@ -182,12 +273,15 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                 }
             }
             
-            setScannedItems(prev => [...prev, {
-                rfid: rfid.trim(),
-                timestamp,
-                status: 'error',
-                message: errorMessage
-            }]);
+            setScannedItems(prev => {
+                const newItems: ScannedItem[] = [...prev, {
+                    rfid: rfid.trim(),
+                    timestamp,
+                    status: 'error' as const,
+                    message: errorMessage
+                }];
+                return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            });
         } finally {
             setIsProcessing(false);
             setRfidInput('');
@@ -238,13 +332,16 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             >
                 <div 
                     ref={containerRef}
-                    className="bg-white rounded-3xl shadow-2xl w-[95%] max-w-[900px] max-h-[95vh] flex flex-col overflow-hidden"
+                    className="bg-white rounded-3xl shadow-2xl w-[95%] max-w-[900px] max-h-[95vh] flex flex-col"
                     style={{
                         background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(148, 163, 184, 0.1), 0 8px 16px -8px rgba(59, 130, 246, 0.1)',
                         animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
                         border: '1px solid rgba(226, 232, 240, 0.8)',
-                        padding: '1.5rem'
+                        padding: '1.5rem',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column'
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -274,6 +371,34 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                         <p className="text-sm font-medium" style={{ color: '#475569' }}>
                             Scan beberapa RFID sekaligus
                         </p>
+                        {/* Offline Mode Indicator */}
+                        {isOfflineMode && (
+                            <div 
+                                className="mt-2 px-3 py-1.5 rounded-md inline-block"
+                                style={{
+                                    background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
+                                    border: '2px solid #F59E0B',
+                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.2)'
+                                }}
+                            >
+                                <p className="text-xs font-bold" style={{ color: '#92400E' }}>
+                                    🔌 Mode Offline - Data hanya untuk uji coba (tidak tersimpan ke database)
+                                </p>
+                            </div>
+                        )}
+                        {serverStatus === 'checking' && (
+                            <div 
+                                className="mt-2 px-3 py-1.5 rounded-md inline-block"
+                                style={{
+                                    background: 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)',
+                                    border: '2px solid #3B82F6'
+                                }}
+                            >
+                                <p className="text-xs font-bold" style={{ color: '#1E40AF' }}>
+                                    ⏳ Memeriksa koneksi server...
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Work Order Info */}
@@ -484,7 +609,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
 
                     {/* Scanned List */}
                     <div 
-                        className="mb-2 flex flex-col flex-1 min-h-0"
+                        className="mb-2 flex flex-col flex-shrink-0"
                         style={{
                             border: '2px solid #E2E8F0',
                             borderRadius: '6px',
@@ -492,7 +617,8 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             background: 'white',
                             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
                             display: 'flex',
-                            flexDirection: 'column'
+                            flexDirection: 'column',
+                            height: '280px'
                         }}
                     >
                         <div 
@@ -521,13 +647,16 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             </div>
                         ) : (
                             <div 
-                                className="overflow-y-auto p-1.5 flex-1"
+                                ref={scrollContainerRef}
+                                className="overflow-y-auto p-1.5"
                                 style={{
-                                    maxHeight: '280px',
-                                    minHeight: '200px',
                                     background: '#FAFBFC',
                                     scrollbarWidth: 'thin',
-                                    scrollbarColor: '#93C5FD #F1F5F9'
+                                    scrollbarColor: '#93C5FD #F1F5F9',
+                                    overflowY: 'auto',
+                                    overflowX: 'hidden',
+                                    height: '230px',
+                                    maxHeight: '230px'
                                 }}
                             >
                                 {scannedItems.map((item, index) => {
@@ -586,7 +715,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                                                             : '0 2px 4px rgba(245, 158, 11, 0.1)'
                                                 }}
                                             >
-                                                {index + 1}
+                                                {scannedItems.length - index}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div 
@@ -624,9 +753,12 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-3 mt-auto">
+                    <div className="flex gap-3 mt-2 flex-shrink-0">
                         <button
-                            onClick={onClose}
+                            onClick={() => {
+                                // Batal - tidak eksekusi query, langsung tutup
+                                onClose();
+                            }}
                             disabled={isProcessing}
                             className="flex-1 py-3 px-5 rounded-lg font-bold text-sm transition-all"
                             style={{
@@ -659,7 +791,32 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             ❌ Batal
                         </button>
                         <button
-                            onClick={onClose}
+                            onClick={async () => {
+                                // Selesai - eksekusi query untuk semua scanned items yang berhasil
+                                if (isProcessing || scannedItems.length === 0) return;
+                                
+                                // Filter hanya item yang berhasil (status: 'success')
+                                const successfulItems = scannedItems.filter(item => item.status === 'success');
+                                
+                                if (successfulItems.length === 0) {
+                                    // Tidak ada item yang berhasil, tutup saja
+                                    onClose();
+                                    return;
+                                }
+                                
+                                if (isOfflineMode) {
+                                    // Mode offline - hanya log untuk uji coba
+                                    console.log(`🔌 [OFFLINE MODE] Selesai. Total ${successfulItems.length} RFID untuk uji coba (tidak tersimpan ke database).`);
+                                } else {
+                                    // Semua item sudah di-insert ke database saat scanning
+                                    // Jadi tidak perlu insert lagi, hanya tutup modal
+                                    // (Data sudah tersimpan di database saat handleRfidSubmit)
+                                    console.log(`✅ [BATCH SCAN] Selesai. Total ${successfulItems.length} RFID berhasil disimpan.`);
+                                }
+                                
+                                // Tutup modal
+                                onClose();
+                            }}
                             disabled={isProcessing || scannedItems.length === 0}
                             className="flex-1 py-3 px-5 rounded-lg font-bold text-sm text-white transition-all relative overflow-hidden"
                             style={{

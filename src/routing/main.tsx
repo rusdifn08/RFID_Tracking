@@ -8,6 +8,7 @@ import DataRFID from '../pages/DataRFID.tsx';
 import LineDetail from '../pages/LineDetail.tsx';
 import DashboardRFID from '../pages/DashboardRFID.tsx';
 import CheckingRFID from '../pages/CheckingRFID.tsx';
+import ListRFID from '../pages/ListRFID.tsx';
 import ProtectedRoute from '../components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -80,6 +81,14 @@ const router = createBrowserRouter([
         element: (
             <ProtectedRoute>
                 <CheckingRFID />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/list-rfid',
+        element: (
+            <ProtectedRoute>
+                <ListRFID />
             </ProtectedRoute>
         ),
     },

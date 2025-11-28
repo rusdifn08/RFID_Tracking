@@ -15,7 +15,8 @@ export default function Sidebar() {
         location.pathname.startsWith('/line/') ||
         location.pathname.startsWith('/dashboard-rfid/') ||
         location.pathname.startsWith('/daftar-rfid') ||
-        location.pathname.startsWith('/data-rfid');
+        location.pathname.startsWith('/data-rfid') ||
+        location.pathname.startsWith('/list-rfid');
 
     // Data production lines (sama dengan RFIDLineContent.tsx dan LineDetail.tsx)
     const productionLines = [
@@ -38,8 +39,8 @@ export default function Sidebar() {
         const dashboardMatch = location.pathname.match(/\/dashboard-rfid\/(\d+)/);
         if (dashboardMatch) return dashboardMatch[1];
 
-        // Default ke line 1 untuk daftar-rfid dan data-rfid
-        if (location.pathname.startsWith('/daftar-rfid') || location.pathname.startsWith('/data-rfid')) {
+        // Default ke line 1 untuk daftar-rfid, data-rfid, dan list-rfid
+        if (location.pathname.startsWith('/daftar-rfid') || location.pathname.startsWith('/data-rfid') || location.pathname.startsWith('/list-rfid')) {
             return '1';
         }
 
@@ -263,7 +264,8 @@ export default function Sidebar() {
                                         {(location.pathname === `/line/${currentLineId}` ||
                                             location.pathname === `/dashboard-rfid/${currentLineId}` ||
                                             (location.pathname === '/daftar-rfid' && currentLineId === '1') ||
-                                            (location.pathname === '/data-rfid' && currentLineId === '1')) && (
+                                            (location.pathname === '/data-rfid' && currentLineId === '1') ||
+                                            (location.pathname === '/list-rfid' && currentLineId === '1')) && (
                                                 <div className="ml-4 space-y-1">
                                                     {/* DAFTAR RFID - hanya untuk line 1 */}
                                                     {currentLineId === '1' && (
@@ -292,8 +294,8 @@ export default function Sidebar() {
                                                     {/* LIST RFID - hanya untuk line 1 */}
                                                     {currentLineId === '1' && (
                                                         <Link
-                                                            to="/data-rfid"
-                                                            className={`group relative flex items-center justify-start gap-3 px-4 py-2.5 rounded-md transition-all duration-300 font-medium text-xs overflow-hidden min-h-[40px] w-full ${location.pathname === '/data-rfid'
+                                                            to="/list-rfid"
+                                                            className={`group relative flex items-center justify-start gap-3 px-4 py-2.5 rounded-md transition-all duration-300 font-medium text-xs overflow-hidden min-h-[40px] w-full ${location.pathname === '/list-rfid'
                                                                 ? 'text-white bg-white/15 shadow-md border-l-2 border-orange-400'
                                                                 : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-orange-400/40'
                                                                 }`}

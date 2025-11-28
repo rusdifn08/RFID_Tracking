@@ -1,4 +1,3 @@
-
 import { useParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
@@ -80,11 +79,15 @@ const ChartCard = ({ children, title, icon: Icon, headerAction, className }: any
                 paddingLeft: '3%',
             }}
         >
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1">
                 <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg sm:rounded-xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <Icon size={16} className="sm:w-[18px] sm:h-[18px] md:w-[20px] md:h-[20px] lg:w-[22px] lg:h-[22px]" />
                 </div>
-                <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-extrabold text-gray-700 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{title}</h2>
+                {typeof title === 'string' ? (
+                    <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-extrabold text-gray-700 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{title}</h2>
+                ) : (
+                    <div className="flex items-center justify-between w-full">{title}</div>
+                )}
             </div>
             {headerAction}
         </div>
@@ -99,10 +102,10 @@ export default function DashboardRFID() {
     const { isOpen } = useSidebar();
     const lineId = id || '1';
     const lineTitle = `LINE ${lineId}`;
-    
+
     // State untuk tracking data (untuk logging/debugging jika diperlukan)
     const [, setTrackingData] = useState<any>(null);
-    
+
     // Default values
     const [good, setGood] = useState<number>(0);
     const [rework, setRework] = useState<number>(0);
@@ -111,7 +114,7 @@ export default function DashboardRFID() {
     const [pqcRework, setPqcRework] = useState<number>(0);
     const [pqcReject, setPqcReject] = useState<number>(0);
     const [outputLine, setOutputLine] = useState<number>(0);
-    
+
     // Ref untuk menyimpan data sebelumnya untuk perbandingan (tidak menyebabkan re-render)
     const previousDataRef = useRef<{
         good: number;
@@ -122,17 +125,17 @@ export default function DashboardRFID() {
         pqcReject: number;
         outputLine: number;
     } | null>(null);
-    
+
     // State untuk data WO/Production
     const [woData, setWoData] = useState<any[]>([]);
-    
+
     // Fungsi untuk membandingkan data lama dan baru
     const hasDataChanged = (
         oldData: { good: number; rework: number; reject: number; pqcGood: number; pqcRework: number; pqcReject: number; outputLine: number } | null,
         newData: { good: number; rework: number; reject: number; pqcGood: number; pqcRework: number; pqcReject: number; outputLine: number }
     ): boolean => {
         if (!oldData) return true; // Pertama kali, selalu update
-        
+
         return (
             oldData.good !== newData.good ||
             oldData.rework !== newData.rework ||
@@ -143,16 +146,16 @@ export default function DashboardRFID() {
             oldData.outputLine !== newData.outputLine
         );
     };
-    
+
     // Fetch data dari server.js menggunakan useEffect dengan polling agresif
     useEffect(() => {
         let isMounted = true;
         let intervalId: ReturnType<typeof setInterval> | null = null;
-        
+
         const fetchTrackingData = async () => {
             try {
                 const url = `${API_BASE_URL}/tracking/line?line=${encodeURIComponent(lineId)}`;
-                
+
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: {
@@ -162,20 +165,20 @@ export default function DashboardRFID() {
                     // Tambahkan cache: 'no-cache' untuk memastikan selalu fetch data terbaru
                     cache: 'no-cache',
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 if (!isMounted) return;
-                
+
                 // Parse data dari API
                 // Struktur API: { success, line, data: { good, rework, reject, ... } }
                 if (data && data.success && data.data && typeof data.data === 'object') {
                     const dataObj = data.data;
-                    
+
                     // Parse dengan Number() dan fallback ke 0
                     const newData = {
                         good: Number(dataObj.good) || 0,
@@ -186,7 +189,7 @@ export default function DashboardRFID() {
                         pqcReject: Number(dataObj.pqc_reject) || 0,
                         outputLine: Number(dataObj.output_line) || 0,
                     };
-                    
+
                     // Cek apakah ada perubahan data
                     if (hasDataChanged(previousDataRef.current, newData)) {
                         // Ada perubahan, update state
@@ -211,10 +214,10 @@ export default function DashboardRFID() {
                 console.error('❌ [DashboardRFID] Error fetching tracking data:', error);
             }
         };
-        
+
         // Fetch data pertama kali
         fetchTrackingData();
-        
+
         // Setup polling agresif: cek setiap 1 detik untuk deteksi perubahan yang cepat
         // Hanya update jika ada perubahan, jadi tidak akan ada re-render yang tidak perlu
         intervalId = setInterval(() => {
@@ -222,7 +225,7 @@ export default function DashboardRFID() {
                 fetchTrackingData();
             }
         }, 1000); // Polling setiap 1 detik untuk deteksi perubahan yang sangat cepat
-        
+
         // Cleanup function
         return () => {
             isMounted = false;
@@ -236,7 +239,7 @@ export default function DashboardRFID() {
     useEffect(() => {
         let isMounted = true;
         let intervalId: ReturnType<typeof setInterval> | null = null;
-        
+
         const fetchWoData = async () => {
             try {
                 // Convert lineId ke format L1, L2, dll
@@ -244,7 +247,7 @@ export default function DashboardRFID() {
                 // Gunakan server.js sebagai proxy untuk menghindari CORS
                 const url = `${API_BASE_URL}/wo/production_branch?production_branch=MJ1&line=${encodeURIComponent(lineFormat)}`;
                 console.log('🔍 [DashboardRFID] Fetching WO data from:', url);
-                
+
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: {
@@ -252,18 +255,18 @@ export default function DashboardRFID() {
                         'Accept': 'application/json',
                     },
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-                
+
                 const data = await response.json();
                 console.log('✅ [DashboardRFID] WO API Response:', data);
                 console.log('✅ [DashboardRFID] Response status:', response.status);
                 console.log('✅ [DashboardRFID] Response OK:', response.ok);
-                
+
                 if (!isMounted) return;
-                
+
                 // Parse data dari API
                 // Struktur API: { success, data: [...], count, line, production_branch }
                 if (data && data.success && Array.isArray(data.data)) {
@@ -287,17 +290,17 @@ export default function DashboardRFID() {
                 }
             }
         };
-        
+
         // Fetch data pertama kali
         fetchWoData();
-        
+
         // Setup interval untuk refetch setiap 30 detik (lebih lama dari tracking data)
         intervalId = setInterval(() => {
             if (isMounted) {
                 fetchWoData();
             }
         }, 30000);
-        
+
         // Cleanup function
         return () => {
             isMounted = false;
@@ -311,32 +314,32 @@ export default function DashboardRFID() {
     const totalGood = good + pqcGood;
     const totalRework = rework + pqcRework;
     const totalReject = reject + pqcReject;
-    
+
     // Buat pieData dinamis berdasarkan data API
     // Menggabungkan: good + pqc_good, rework + pqc_rework, reject + pqc_reject
     const pieDataRaw = [
-        { 
-            name: 'Good', 
-            value: totalGood, 
-            display: `Good ( ${totalGood} )`, 
-            color: COLORS.green 
+        {
+            name: 'Good',
+            value: totalGood,
+            display: `Good ( ${totalGood} )`,
+            color: COLORS.green
         },
-        { 
-            name: 'Rework', 
-            value: totalRework, 
-            display: `Rework ( ${totalRework} )`, 
-            color: COLORS.yellow 
+        {
+            name: 'Rework',
+            value: totalRework,
+            display: `Rework ( ${totalRework} )`,
+            color: COLORS.yellow
         },
-        { 
-            name: 'Reject', 
-            value: totalReject, 
-            display: `Reject ( ${totalReject} )`, 
-            color: COLORS.red 
+        {
+            name: 'Reject',
+            value: totalReject,
+            display: `Reject ( ${totalReject} )`,
+            color: COLORS.red
         },
     ];
-    
+
     // Filter hanya item yang value > 0, tapi jika semua 0, tetap tampilkan semua
-    const pieData = pieDataRaw.filter(item => item.value > 0).length > 0 
+    const pieData = pieDataRaw.filter(item => item.value > 0).length > 0
         ? pieDataRaw.filter(item => item.value > 0)
         : pieDataRaw; // Jika semua 0, tampilkan semua untuk menghindari pie chart kosong
 
@@ -346,7 +349,7 @@ export default function DashboardRFID() {
     const sidebarWidth = isOpen ? '15%' : '3%';
 
     return (
-        <div className="flex min-h-screen w-full bg-[#f4f6f8] font-sans text-gray-800 overflow-x-hidden"
+        <div className="flex h-screen w-full bg-[#f4f6f8] font-sans text-gray-800 overflow-hidden"
             style={{ paddingLeft: '-1%' }}>
 
             {/* 1. SIDEBAR (FIXED) */}
@@ -356,7 +359,7 @@ export default function DashboardRFID() {
 
             {/* 2. WRAPPER KONTEN KANAN */}
             <div
-                className="flex flex-col w-full transition-all duration-300 ease-in-out"
+                className="flex flex-col w-full h-full transition-all duration-300 ease-in-out"
                 style={{
                     // PERBAIKAN UTAMA: Menggunakan Fixed Units (rem), bukan %
                     marginLeft: sidebarWidth,
@@ -374,8 +377,6 @@ export default function DashboardRFID() {
                 flex-1 flex flex-col p-2 sm:p-3 md:p-4 lg:p-6 gap-2 sm:gap-3 md:gap-4 lg:gap-6 bg-[#f4f6f8]
                 /* Mobile: Scroll Aktif. Desktop: Locked/Fit Screen */
                 overflow-hidden
-                h-[calc(100vh-4rem)]
-                max-h-[calc(100vh-4rem)]
             `}>
                     {/* PAGE TITLE */}
                     <div className="flex-none text-center"
@@ -392,11 +393,11 @@ export default function DashboardRFID() {
                         style={{
                             paddingRight: '1%',
                             paddingLeft: '2%',
-                            
+
                         }}>
 
                         {/* ROW 1: CHARTS */}
-                        <div className="flex-none h-auto lg:h-[40%] grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
+                        <div className="flex-none h-auto lg:h-[40vh] grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
                             <ChartCard title="Overview Data RFID" icon={PieIcon} className="lg:col-span-1">
                                 <div className="flex flex-col lg:flex-row items-center h-full"
                                     style={{
@@ -421,27 +422,23 @@ export default function DashboardRFID() {
                                 </div>
                             </ChartCard>
 
-                            <ChartCard title={`Data ${lineTitle}`} icon={TableIcon} className="lg:col-span-2">
-                                <div className="flex flex-row items-center justify-end h-6 sm:h-7 md:h-8 lg:h-10 pr-2 sm:pr-4 md:pr-6 lg:pr-10"
-                                    style={{
-                                        paddingRight: '0.5%',
-                                    }}>
-                                    <span className="
-                                    bg-blue-100 w-1/4 sm:w-1/5 text-blue-700 text-[10px] sm:text-xs font-bold 
-                                    px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-blue-200
-                                    content-center items-center justify-center text-center
-                                    shadow-sm"
-                                        style={{
-                                            padding: '0.5%',
-                                        }}
-                                    >Nov 2025  </span>
-                                </div>
-                                <div className="h-[80px] sm:h-[100px] md:h-[120px] lg:h-full w-full border border-gray-200 rounded-lg sm:rounded-xl overflow-hidden flex flex-col shadow-inner"
-                                    style={{
-                                        height: '60%',
-                                    }}
-                                >
-                                    <div className="grid grid-cols-7 bg-blue-50 h-1/5 content-center font-bold text-center py-1.5 sm:py-2 md:py-2.5 lg:py-3 border-b border-blue-100 text-gray-700 text-[10px] sm:text-xs md:text-sm uppercase tracking-wide">
+                            <ChartCard
+                                title={
+                                    <>
+                                        <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-extrabold text-gray-700 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{`Data ${lineTitle}`}</h2>
+                                        <span className="
+                                            bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-bold 
+                                            px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-blue-200
+                                            flex items-center justify-center text-center
+                                            shadow-sm ml-auto"
+                                        >Nov 2025</span>
+                                    </>
+                                }
+                                icon={TableIcon}
+                                className="lg:col-span-2"
+                            >
+                                <div className="w-full border border-gray-200 rounded-lg sm:rounded-xl overflow-hidden flex flex-col shadow-inner min-h-0" style={{ maxHeight: '100%', height: '100%' }}>
+                                    <div className="grid grid-cols-7 bg-blue-50 flex-shrink-0 font-bold text-center py-2 sm:py-2.5 md:py-3 border-b border-blue-100 text-gray-700 text-[9px] sm:text-[10px] md:text-xs uppercase tracking-wide sticky top-0 z-10">
                                         <div className="border-r border-blue-100">WO</div>
                                         <div className="border-r border-blue-100">Item</div>
                                         <div className="border-r border-blue-100">Style</div>
@@ -450,13 +447,18 @@ export default function DashboardRFID() {
                                         <div className="border-r border-blue-100">Size</div>
                                         <div>Qty</div>
                                     </div>
-                                    <div className="flex-1 bg-white overflow-y-auto">
+                                    <div className="flex-1 bg-white overflow-y-auto custom-scrollbar"
+                                        style={{
+                                            scrollbarWidth: 'thin',
+                                            scrollbarColor: '#93C5FD #F1F5F9',
+                                        }}
+                                    >
                                         {woData.length > 0 ? (
                                             <div className="w-full">
                                                 {woData.map((item, index) => (
-                                                    <div 
-                                                        key={item.wo_id || index}
-                                                        className="grid grid-cols-7 border-b border-dashed border-gray-100 py-2 text-xs sm:text-sm hover:bg-gray-50 transition-colors"
+                                                    <div
+                                                        key={item.wo_id || `wo-${index}-${item.wo_no}` || index}
+                                                        className="grid grid-cols-7 border-b border-dashed border-gray-100 py-1.5 sm:py-2 text-[8px] sm:text-[9px] md:text-[10px] font-bold hover:bg-gray-50 transition-colors"
                                                     >
                                                         <div className="flex items-center justify-center text-center px-1 border-r border-dashed border-gray-100">
                                                             {item.wo_no || '-'}
@@ -494,11 +496,11 @@ export default function DashboardRFID() {
 
                         {/* ROW 2 & 3: STATUS CARDS */}
                         <div className="flex-1 flex flex-col gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 min-h-0"
-                        
+
                         >
                             {/* Row 2: Data QC - reject, rework, good */}
                             <div className=" flex-1 grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3 lg:gap-4"
-                           >
+                            >
                                 <StatusCard type="REJECT" count={reject} label="REJECT QC" />
                                 <StatusCard type="REWORK" count={rework} label="REWORK QC" />
                                 <StatusCard type="GOOD" count={good} label="GOOD QC" />
@@ -515,6 +517,25 @@ export default function DashboardRFID() {
                     </div>
                 </main>
             </div>
-        </div >
+
+            {/* Custom Scrollbar Styles */}
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: #F1F5F9;
+                    border-radius: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #93C5FD;
+                    border-radius: 4px;
+                    border: 2px solid #F1F5F9;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #60A5FA;
+                }
+            `}</style>
+        </div>
     );
 }
