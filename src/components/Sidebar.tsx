@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../hooks/useAuth';
-import { Home, Rss, Radio, Cpu, Info, LogOut } from 'lucide-react';
+import { Home, Rss, Info, LogOut } from 'lucide-react';
 import logo from '../assets/logo.svg';
 
 export default function Sidebar() {
@@ -118,9 +118,7 @@ export default function Sidebar() {
 
                 {/* --- MENU ITEMS --- */}
                 <nav className={`flex-1 py-4 space-y-3 overflow-y-auto custom-scrollbar ${isOpen ? 'px-3' : 'px-0'}`}
-                    style={{
-                        padding: '0.5rem',
-                    }}
+                    
                 >
                     {/* HOME */}
                     <Link
@@ -143,9 +141,7 @@ export default function Sidebar() {
 
                         {/* Container untuk icon dan text - icon di kiri */}
                         <div className="relative z-10 flex items-center gap-3 flex-1"
-                            style={{
-                                paddingLeft: '1rem',
-                            }}
+                            
                         >
                             {/* Icon dengan glow effect - di kiri */}
                             <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
@@ -192,9 +188,7 @@ export default function Sidebar() {
 
                             {/* Container untuk icon dan text - icon di kiri */}
                             <div className=" relative z-10 flex items-center gap-3 flex-1"
-                                style={{
-                                    paddingLeft: '1rem',
-                                }}
+                                
                             >
                                 {/* Icon dengan glow effect - di kiri */}
                                 <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
@@ -224,9 +218,7 @@ export default function Sidebar() {
                                 {/* Production Lines - Muncul jika di halaman monitoring-rfid atau lebih dalam */}
                                 {isProductionLinesPage && (
                                     <div className="px-4 py-2.5 text-white/80 font-semibold text-sm border-l-2 border-white/30"
-                                        style={{
-                                            paddingLeft: '3rem',
-                                        }}
+                                       
                                     >
                                         Production Lines
                                     </div>
@@ -235,9 +227,7 @@ export default function Sidebar() {
                                 {/* Line Detail - Muncul jika di halaman line atau lebih dalam (untuk semua line) */}
                                 {isLinePage && currentLineData && (
                                     <div className="ml-4 space-y-1"
-                                        style={{
-                                            paddingLeft: '3rem',
-                                        }}
+                                        
                                     >
                                         {/* Link ke Production Lines jika belum di halaman tersebut */}
                                         {!isProductionLinesPage && (
@@ -311,106 +301,6 @@ export default function Sidebar() {
                         )}
                     </div>
 
-                    {/* SENSOR */}
-                    <Link
-                        to="/monitoring-sensor"
-                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-3 px-4' : 'justify-center'} py-4 rounded-xl transition-all duration-300 font-semibold text-base overflow-hidden min-h-[56px] ${location.pathname === '/monitoring-sensor'
-                            ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
-                            : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
-                            }`}
-                    >
-                        {/* Active indicator dengan glow */}
-                        {location.pathname === '/monitoring-sensor' && isOpen && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-yellow-400 rounded-r-full shadow-lg shadow-yellow-400/70 animate-pulse"></div>
-                        )}
-
-                        {/* Hover effect background dengan gradient */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/15 to-white/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-
-                        {/* Shine effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-
-                        {/* Container untuk icon dan text - icon di kiri */}
-                        <div className="relative z-10 flex items-center gap-3 flex-1"
-                            style={{
-                                paddingLeft: '1rem',
-                            }}
-                        >
-                            {/* Icon dengan glow effect - di kiri */}
-                            <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
-                                ? 'scale-110'
-                                : ''
-                                } ${location.pathname === '/monitoring-sensor'
-                                    ? 'scale-125'
-                                    : 'group-hover:scale-125 group-hover:rotate-6'
-                                }`}>
-                                <Radio
-                                    size={22}
-                                    className={`transition-all duration-500 ease-in-out drop-shadow-lg ${location.pathname === '/monitoring-sensor'
-                                        ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                        : 'text-white/70 group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
-                                        }`}
-                                    strokeWidth={2.5}
-                                />
-                            </div>
-
-                            {/* Text dengan efek */}
-                            {isOpen && (
-                                <span className="transition-all duration-300 font-bold tracking-wide flex-1 text-left">{'SENSOR'}</span>
-                            )}
-                        </div>
-                    </Link>
-
-                    {/* VISUAL AI */}
-                    <Link
-                        to="/monitoring-visual-ai"
-                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-3 px-4' : 'justify-center'} py-4 rounded-xl transition-all duration-300 font-semibold text-base overflow-hidden min-h-[56px] ${location.pathname === '/monitoring-visual-ai'
-                            ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
-                            : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
-                            }`}
-                    >
-                        {/* Active indicator dengan glow */}
-                        {location.pathname === '/monitoring-visual-ai' && isOpen && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-yellow-400 rounded-r-full shadow-lg shadow-yellow-400/70 animate-pulse"></div>
-                        )}
-
-                        {/* Hover effect background dengan gradient */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/15 to-white/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-
-                        {/* Shine effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-
-                        {/* Container untuk icon dan text - icon di kiri */}
-                        <div className="relative z-10 flex items-center gap-3 flex-1"
-                            style={{
-                                paddingLeft: '1rem',
-                            }}
-                        >
-                            {/* Icon dengan glow effect - di kiri */}
-                            <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
-                                ? 'scale-110'
-                                : ''
-                                } ${location.pathname === '/monitoring-visual-ai'
-                                    ? 'scale-125'
-                                    : 'group-hover:scale-125 group-hover:rotate-6'
-                                }`}>
-                                <Cpu
-                                    size={22}
-                                    className={`transition-all duration-500 ease-in-out drop-shadow-lg ${location.pathname === '/monitoring-visual-ai'
-                                        ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                        : 'text-white/70 group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
-                                        }`}
-                                    strokeWidth={2.5}
-                                />
-                            </div>
-
-                            {/* Text dengan efek */}
-                            {isOpen && (
-                                <span className="transition-all duration-300 font-bold tracking-wide flex-1 text-left">{'VISUAL AI'}</span>
-                            )}
-                        </div>
-                    </Link>
-
                     {/* ABOUT US */}
                     <Link
                         to="/about-us"
@@ -432,9 +322,7 @@ export default function Sidebar() {
 
                         {/* Container untuk icon dan text - icon di kiri */}
                         <div className="relative z-10 flex items-center gap-3 flex-1"
-                            style={{
-                                paddingLeft: '1rem',
-                            }}
+                            
                         >
                             {/* Icon dengan glow effect - di kiri */}
                             <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen

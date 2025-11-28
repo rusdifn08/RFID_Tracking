@@ -1,12 +1,21 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../hooks/useAuth';
-import { Menu, Bell, Radio } from 'lucide-react';
+import { Menu, Bell, Radio, Download } from 'lucide-react';
 
-export default function Header() {
+interface HeaderProps {
+    onExportClick?: () => void;
+}
+
+export default function Header({ onExportClick }: HeaderProps) {
     const { isOpen, toggleSidebar } = useSidebar();
     const { user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // Tentukan apakah tombol export harus ditampilkan
+    const shouldShowExport = location.pathname.startsWith('/dashboard-rfid/') || 
+                             location.pathname.startsWith('/list-rfid');
 
     return (
         <header
@@ -30,39 +39,32 @@ export default function Header() {
                 </h1>
             </div>
 
-            {/* --- RIGHT SECTION: Checking RFID Button, MQTT, User, Notification --- */}
+            {/* --- RIGHT SECTION: Export Button, Checking RFID Button, MQTT, User, Notification --- */}
             <div className="flex items-center gap-3 md:gap-4">
 
-                {/* Checking RFID Button - Futuristic Design */}
+                {/* Export Button - Hanya muncul di halaman Monitoring RFID dan List RFID */}
+                {shouldShowExport && onExportClick && (
+                    <button
+                        onClick={onExportClick}
+                        className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 font-bold rounded-full shadow-sm hover:shadow-md transition-all duration-300 group"
+                    >
+                        <Download className="w-4 h-4 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+                        <span className="text-sm tracking-wide">EXPORT</span>
+                    </button>
+                )}
+
+                {/* Checking RFID Button - Minimalist & Professional */}
                 <button
                     onClick={() => navigate('/checking-rfid')}
-                    className="relative px-4 py-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 hover:from-cyan-400 hover:via-blue-400 hover:to-purple-400 text-white font-bold rounded-lg shadow-lg shadow-cyan-500/50 hover:shadow-cyan-400/50 transition-all duration-300 transform hover:scale-105 active:scale-95 overflow-hidden group"
+                    className="flex items-center gap-2 px-5 py-2 bg-white text-[#F9B935] hover:bg-gray-50 font-bold rounded-full shadow-sm hover:shadow-md transition-all duration-300 group"
                 >
-                    {/* Animated background glow */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"></div>
-                    
-                    {/* Grid pattern overlay */}
-                    <div className="absolute inset-0 opacity-20" style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='grid' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M 10 0 L 0 0 0 10' fill='none' stroke='%23ffffff' stroke-width='0.5' opacity='0.3'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grid)'/%3E%3C/svg%3E")`
-                    }}></div>
-                    
-                    {/* Content */}
-                    <div className="relative flex items-center gap-2">
-                        <Radio className="w-4 h-4 md:w-5 md:h-5 group-hover:rotate-180 transition-transform duration-300" />
-                        <span className="text-xs md:text-sm font-black uppercase tracking-wider">
-                            Checking RFID
-                        </span>
-                    </div>
-                    
-                    {/* Shine effect */}
-                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                    <Radio className="w-4 h-4 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+                    <span className="text-sm tracking-wide">CHECKING RFID</span>
                 </button>
 
-                {/* MQTT Badge */}
-                <div className="hidden md:flex bg-white px-3 py-1 rounded border border-gray-200 shadow-sm">
-                    <span className="font-black text-gray-800 tracking-widest text-sm font-mono">
-                        MQTT
-                    </span>
+                {/* MQTT Badge - Minimalist Outline */}
+                <div className="hidden md:flex items-center justify-center px-4 py-2 border-2 border-white/80 text-white rounded-full bg-white/5 backdrop-blur-sm">
+                    <span className="font-bold text-sm tracking-widest">MQTT</span>
                 </div>
 
                 {/* User Info */}
@@ -82,6 +84,8 @@ export default function Header() {
                     <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#FBC02D] rounded-full"></span>
                 </button>
             </div>
+
+            {/* Export Modal - Akan di-handle oleh parent component */}
         </header>
     );
 }

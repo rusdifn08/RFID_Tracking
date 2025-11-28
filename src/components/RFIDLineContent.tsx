@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, User, Activity } from 'lucide-react';
+import { ArrowRight, User } from 'lucide-react';
 import adidasLogo from '../assets/adidas.svg';
 import redWingsLogo from '../assets/red_wings.svg';
 import bergansLogo from '../assets/bergans.svg';
@@ -156,35 +156,21 @@ export default function ProductionLine() {
     };
 
     return (
-        // PERBAIKAN 1: 
-        // pt-36: Jarak atas diperbesar agar Header Page tidak tertutup Header Kuning
-        // md:pl-72: Jarak kiri agar tidak tertutup Sidebar
-        <div className="w-full -mt-10 min-h-screen  bg-[#F8F9FA] md:pl-72 font-sans"
-            style={{
-                marginTop: '-3%',
-            }}>
-
+        <div className="w-full min-h-screen bg-[#F8F9FA]  font-sans">
             {/* Header Page */}
-
-            <div className="w-full mx-auto text-center mb-16 animate-fade-in-down h-1/5 flex flex-col items-center justify-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                    <Activity className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                    <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight">Production Lines</h1>
-                    <p className="text-slate-500 text-xl mt-1">Real-time monitoring of sewing and cutting lines.</p>
-                </div>
-                {/* Decorative small line under title */}
-                <div className="w-full content-center items-center justify-center w-24 h-1.5 bg-gradient-to-r from-orange-400 to-yellow-400 rounded-full mx-auto mt-6 opacity-80"></div>
+            <div className="w-full max-w-7xl mx-auto text-center mb-10 animate-fade-in-down">
+                <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    Production Lines
+                </h1>
+                <p className="text-base md:text-lg text-slate-500 font-medium mb-4">
+                    Real-time monitoring of sewing and cutting lines.
+                </p>
+                {/* Decorative line under title */}
+                <div className="w-24 h-1.5 bg-gradient-to-r from-orange-400 to-yellow-400 rounded-full mx-auto opacity-80"></div>
             </div>
 
-            <div className="h-10">
-
-
-            </div>
             {/* Grid System */}
-            {/* PERBAIKAN 2: gap-y-20 agar jarak vertikal antar kartu SANGAT AMAN dan tidak tumpang tindih */}
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-10">
+            <div className="w-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-4">
                 {productionLines.map((line, index) => {
                     const isHovered = hoveredCard === line.id;
 
@@ -199,32 +185,26 @@ export default function ProductionLine() {
                                 group relative 
                                 bg-white 
                                 rounded-2xl 
-                                shadow-[0_4px_20px_rgba(0,0,0,0.03)] 
-                                border border-gray-100
-                                hover:shadow-[0_15px_40px_rgba(0,0,0,0.1)] 
-                                hover:-translate-y-2
+                                shadow-sm
+                                border-2
+                                hover:shadow-xl
+                                hover:-translate-y-1
                                 transition-all duration-300 ease-out
                                 cursor-pointer
-                                min-h-[220px]
+                                min-h-[200px]
                                 flex flex-col
                                 overflow-visible
                                 animate-fade-in-up
-                                border-b-[6px]
-                                text-center
-                                items-center
-                                justify-center
-                                content-center
-                                p-8 
+                                p-6
                                 ${line.borderColor}
                             `}
-                        // PERBAIKAN 3: p-8 di atas memberikan padding dalam yang lega agar teks tidak menyentuh garis
                         >
                             {/* --- FLOATING BOX (Brand Logo) --- */}
                             <div className={`
-                                absolute -top-6 left-8
-                                w-16 h-14
-                                rounded-xl
-                                shadow-lg
+                                absolute -top-4 left-6
+                                w-14 h-12
+                                rounded-lg
+                                shadow-md
                                 flex items-center justify-center
                                 z-10
                                 transition-transform duration-300 
@@ -237,44 +217,40 @@ export default function ProductionLine() {
                             </div>
 
                             {/* --- CARD CONTENT --- */}
-                            {/* PERBAIKAN 4: mt-8 PENTING! Ini memaksa konten teks turun ke bawah */}
-                            {/* agar tidak berada di belakang kotak logo */}
-                            <div className="flex flex-col justify-between h-full mt-8   justify-center items-center content-center">
+                            <div className="flex flex-col justify-between h-full pt-8 flex-1">
 
-                                {/* Title Section */}
-                                <div className="mb-6 justify-center items-center content-center">
-                                    <h3 className="text-4xl font-bold text-slate-800 tracking-tight group-hover:text-slate-900 transition-colors">
+                                {/* Title Section - Centered */}
+                                <div className="flex-1 flex items-center justify-center mb-6">
+                                    <h3 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight text-center">
                                         {line.title}
                                     </h3>
-                                    {/* Garis dekoratif */}
-                                    <div className="w-12 h-1 bg-gray-100 mt-3 rounded-full group-hover:w-full group-hover:bg-gray-50 transition-all duration-500"></div>
                                 </div>
 
                                 {/* Footer Info (Supervisor & Arrow) */}
-                                <div className="flex items-end justify-between mt-auto">
+                                <div className="flex items-center justify-between pt-4 border-t border-slate-200">
 
                                     {/* Supervisor Info */}
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">
-                                            Supervisor
-                                        </span>
-                                        <div className="flex items-center gap-2">
-                                            <div className={`p-1.5 rounded-full bg-gray-50 ${line.accentColor}`}>
-                                                <User size={14} strokeWidth={2.5} />
-                                            </div>
-                                            <span className="text-sm font-semibold text-slate-600 group-hover:text-slate-800">
-                                                {line.supervisor && line.supervisor.trim() !== '' ? line.supervisor : 'Not Assigned'}
+                                    <div className="flex items-center gap-2.5 flex-1">
+                                        <div className={`p-1.5 rounded-full bg-slate-50`}>
+                                            <User size={14} strokeWidth={2.5} className={line.accentColor} />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] uppercase text-slate-400 font-bold tracking-wider leading-tight">
+                                                Supervisor
+                                            </span>
+                                            <span className="text-sm font-semibold text-slate-800 leading-tight">
+                                                {line.supervisor && line.supervisor.trim() !== '-' && line.supervisor.trim() !== '' ? line.supervisor : 'Not Assigned'}
                                             </span>
                                         </div>
                                     </div>
 
                                     {/* Arrow Button */}
                                     <div className={`
-                                        w-10 h-10 rounded-full flex items-center justify-center
+                                        w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
                                         transition-all duration-300
-                                        ${isHovered ? 'bg-slate-800 text-white translate-x-2' : 'bg-gray-50 text-gray-300'}
+                                        ${isHovered ? 'bg-slate-800 text-white translate-x-1 shadow-md' : 'bg-slate-50 text-slate-400'}
                                     `}>
-                                        <ArrowRight size={18} strokeWidth={2.5} />
+                                        <ArrowRight size={16} strokeWidth={2.5} />
                                     </div>
                                 </div>
                             </div>

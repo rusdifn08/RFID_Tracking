@@ -1,8 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import { useState } from 'react';
+import { useSidebar } from '../context/SidebarContext';
 
 // Material-UI Imports
 import { Paper } from '@mui/material';
@@ -18,7 +18,7 @@ import {
 export default function LineDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { isOpen } = useSidebar(); // Mengambil state sidebar terbuka/tutup
+    const { isOpen } = useSidebar();
     const [hoveredCard, setHoveredCard] = useState<number | null>(null);
 
     // --- DATA & CONFIG ---
@@ -104,46 +104,37 @@ export default function LineDetail() {
         },
     ];
 
-    // --- DEFINISI UKURAN SIDEBAR (Agar Sinkron) ---
-    // Pastikan nilai ini SAMA dengan w-[...] di component Sidebar.tsx Anda
-    const sidebarWidthOpen = '19%';
-    const sidebarWidthClosed = '8%';
-
     return (
-        <div className=" flex min-h-screen bg-[#F8F9FA] font-sans text-slate-800 overflow-x-hidden p-20 m-10">
+        <div className="flex min-h-screen bg-[#F8F9FA] font-sans text-slate-800 overflow-hidden">
+            {/* Sidebar */}
+            <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
+                <Sidebar />
+            </div>
 
-            {/* 1. SIDEBAR (Fixed Position) */}
-            {/* Sidebar berdiri sendiri di layer paling atas (z-50) sebelah kiri */}
-            <Sidebar />
-
-            {/* 2. CONTENT WRAPPER (Header + Main Page) */}
-            {/* Wrapper ini yang kita dorong ke kanan menggunakan Margin Left */}
+            {/* Main Content Area */}
             <div
-                className="flex-1 flex flex-col min-h-screen transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+                className="flex flex-col w-full h-full transition-all duration-300 ease-in-out"
                 style={{
-                    // PENTING: Menggunakan inline style untuk memaksa layout bergeser
-                    marginTop: '4rem',
-                    marginLeft: isOpen ? sidebarWidthOpen : sidebarWidthClosed,
-                    width: `calc(100% - ${isOpen ? sidebarWidthOpen : sidebarWidthClosed})`
+                    marginLeft: isOpen ? '15%' : '5rem',
+                    width: isOpen ? 'calc(100% - 15%)' : 'calc(100% - 5rem)'
                 }}
             >
-                {/* 3. HEADER (Sticky) */}
-                {/* Sticky membuat header menempel di atas wrapper ini, bukan di layar viewport */}
-                <div className="bg-green-500 sticky top-0 z-40 w-full">
+                {/* Header */}
+                <div className="sticky top-0 z-40 shadow-md">
                     <Header />
                 </div>
 
-                {/* 4. MAIN CONTENT */}
-                {/* Padding top disesuaikan agar tidak terlalu mepet header */}
-                <main className="flex-1 p-6 md:p-10 pt-12 w-full max-w-[1920px] mx-auto gap-10 h-100">
+                {/* Main Content */}
+                <main
+                    className="flex-1 w-full overflow-y-auto bg-[#F8F9FA] pt-8 pb-8 px-6 md:px-8 lg:px-10"
+                    style={{
+                        marginTop: '1rem'
+                    }}
+                >
 
                     {/* --- TITLE SECTION --- */}
-                    <div className="h-50 md:h-40 mb-20 flex flex-col items-center justify-center  animate-fade-in-down text-center"
-                        style={{
-
-                        }}
-                    >
-                        <div className="w-25 h-25 md:w-25 md:h-25 bg-white rounded-[25px] shadow-sm border border-slate-100 flex items-center justify-center mb-5">
+                    <div className="flex flex-col items-center justify-center mb-12 animate-fade-in-down text-center">
+                        <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mb-6">
                             <FactoryIcon sx={{ fontSize: 42, color: '#334155' }} />
                         </div>
 
@@ -151,12 +142,12 @@ export default function LineDetail() {
                             {currentLine.title}
                         </h1>
 
-                        <div className="inline-flex h-10 items-center gap-3 px-6 py-2.5 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-slate-100">
+                        <div className="inline-flex items-center gap-3 px-6 py-2.5 bg-white rounded-full shadow-sm border border-slate-100">
                             <div className="p-1.5 bg-slate-100 rounded-full">
                                 <UserIcon sx={{ fontSize: 18, color: '#64748B' }} />
                             </div>
-                            <div className="text-left flex flex-col md:flex-row md:items-center md:gap-2 h-10 w-full content-center justify-center">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider content-left items-left text-left">Supervisor</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Supervisor</span>
                                 <span className="text-sm font-black text-slate-800 uppercase">
                                     {currentLine.supervisor && currentLine.supervisor.trim() !== '-' ? currentLine.supervisor : 'Not Assigned'}
                                 </span>
@@ -165,17 +156,7 @@ export default function LineDetail() {
                     </div>
 
                     {/* --- CARDS GRID --- */}
-                    <div className="h-10"></div>
-                    <div className="md-h-50 h-fit gap-10 item-center content-center 
-                                    justify-center grid grid-cols-1 md:grid-cols-3 
-                                    xl:grid-cols-3 2xl:grid-cols-3 gap-x10 gap-y-10
-                                    md:gap-x-20 2xl:gap-x-20 md:gap-y-30 2xl:gap-y-40 pt-20 pr-10"
-                        style={{
-
-                            paddingRight: '3%',
-
-                        }}
-                    >
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-7xl mx-auto">
                         {cards.map((card, index) => {
                             const isHovered = hoveredCard === card.id;
                             const isDimmed = hoveredCard !== null && hoveredCard !== card.id;
@@ -265,7 +246,7 @@ export default function LineDetail() {
                         })}
                     </div>
                 </main>
-            </div >
+            </div>
 
             <style>{`
                     @keyframes fadeInUp {

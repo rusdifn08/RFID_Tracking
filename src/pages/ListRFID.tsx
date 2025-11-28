@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getApiUrl } from '../config/api';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
+import ExportModal from '../components/ExportModal';
+import { exportToExcel } from '../utils/exportToExcel';
 import {
     Search,
     Filter,
@@ -15,10 +15,7 @@ import {
     MapPin,
     Box,
     FileText,
-    Activity,
-    Layers,
-    Palette,
-    Ruler
+    Activity
 } from 'lucide-react';
 
 interface RFIDItem {
@@ -37,11 +34,10 @@ interface RFIDItem {
 }
 
 const ListRFID: React.FC = () => {
-    const navigate = useNavigate();
     const { isOpen } = useSidebar();
     const [rfidData, setRfidData] = useState<RFIDItem[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
+    const [error] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>('');
 
     // Filters
@@ -55,6 +51,94 @@ const ListRFID: React.FC = () => {
     const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
     const [itemToDelete, setItemToDelete] = useState<RFIDItem | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
+    const [showExportModal, setShowExportModal] = useState<boolean>(false);
+
+    // Fungsi untuk handle export
+    const handleExport = (format: 'excel' | 'csv') => {
+        const now = new Date();
+        const tanggal = now.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        });
+
+        // Filter data berdasarkan filter yang aktif
+        const filteredData = rfidData.filter(item => {
+            const matchSearch = !searchTerm || 
+                item.rfid.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                item.style?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                item.buyer?.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchWO = !filterWO || item.nomor_wo === filterWO;
+            const matchBuyer = !filterBuyer || item.buyer === filterBuyer;
+            const matchStatus = !filterStatus || item.status === filterStatus;
+            const matchLocation = !filterLocation || item.lokasi === filterLocation;
+
+            return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation;
+        });
+
+        // Konversi data RFID ke format export
+        const exportData = filteredData.map(item => {
+            // Hitung balance (untuk sementara menggunakan nilai default)
+            const outputSewing = 0; // Tidak ada data output di ListRFID
+            const qcGood = item.status === 'Good' ? 1 : 0;
+            const qcRework = item.status === 'Rework' ? 1 : 0;
+            const qcReject = item.status === 'Reject' ? 1 : 0;
+            const qcWira = 0; // Tidak ada data WIRA di ListRFID
+            const pqcGood = 0;
+            const pqcRework = 0;
+            const pqcReject = 0;
+            const pqcWira = 0;
+            const goodSewing = 0;
+            const balance = 0;
+
+            return {
+                tanggal: tanggal,
+                line: item.line || 'LINE 1',
+                wo: item.nomor_wo || '-',
+                style: item.style || '-',
+                item: item.item || '-',
+                buyer: item.buyer || '-',
+                outputSewing: outputSewing,
+                qcRework: qcRework,
+                qcWira: qcWira,
+                qcReject: qcReject,
+                qcGood: qcGood,
+                pqcRework: pqcRework,
+                pqcWira: pqcWira,
+                pqcReject: pqcReject,
+                pqcGood: pqcGood,
+                goodSewing: goodSewing,
+                balance: balance
+            };
+        });
+
+        // Jika tidak ada data, buat satu row kosong
+        if (exportData.length === 0) {
+            exportData.push({
+                tanggal: tanggal,
+                line: 'LINE 1',
+                wo: '-',
+                style: '-',
+                item: '-',
+                buyer: '-',
+                outputSewing: 0,
+                qcRework: 0,
+                qcWira: 0,
+                qcReject: 0,
+                qcGood: 0,
+                pqcRework: 0,
+                pqcWira: 0,
+                pqcReject: 0,
+                pqcGood: 0,
+                goodSewing: 0,
+                balance: 0
+            });
+        }
+
+        const lineId = filteredData[0]?.line?.match(/\d+/)?.[0] || '1';
+        exportToExcel(exportData, lineId, format);
+    };
 
     // Generate 100 Mock Data Items
     const generateMockData = (): RFIDItem[] => {
@@ -243,7 +327,7 @@ const ListRFID: React.FC = () => {
                 }}
             >
                 {/* Header - Fixed Position handled in Header component */}
-                <Header />
+                <Header onExportClick={() => setShowExportModal(true)} />
 
                 {/* Page Content */}
                 <main
@@ -608,6 +692,14 @@ const ListRFID: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* Export Modal */}
+            <ExportModal
+                isOpen={showExportModal}
+                onClose={() => setShowExportModal(false)}
+                onExport={handleExport}
+                lineId="1"
+            />
         </div>
     );
 };

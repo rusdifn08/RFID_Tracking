@@ -134,18 +134,19 @@ export default function DaftarRFID() {
 
                 {/* Content */}
                 <main
-                    className="flex-1 w-full overflow-y-auto bg-gray-50 flex items-start justify-center"
+                    className="flex-1 w-full bg-gray-50 flex items-center justify-center"
                     style={{
                         marginTop: '4rem',
-                        padding: '1rem 0.5rem',
-                        minHeight: 'calc(100vh - 4rem)'
+                        height: 'calc(100vh - 4rem)',
+                        minHeight: 'calc(100vh - 4rem)',
+                        maxHeight: 'calc(100vh - 4rem)',
+                        overflow: 'hidden'
                     }}
                 >
                     {/* Register RFID Card */}
-                    <div className="w-full max-w-4xl flex items-start justify-center py-4 sm:py-6 md:py-8"
-                    >
+                    <div className="w-full max-w-4xl h-full flex items-center justify-center px-3 py-2 sm:px-6 sm:py-6">
                         <div
-                            className="rounded-xl sm:rounded-2xl shadow-[0_4px_20px_rgba(59,130,246,0.15)] p-4 sm:p-5 md:p-6 lg:p-7 relative overflow-hidden transition-all duration-500 w-full bg-white flex flex-col"
+                            className="rounded-xl sm:rounded-2xl shadow-[0_4px_20px_rgba(59,130,246,0.15)] p-3 sm:p-5 md:p-6 relative overflow-hidden transition-all duration-500 w-full bg-white flex flex-col max-h-full"
                             onMouseEnter={() => setHoveredCard(true)}
                             onMouseLeave={() => setHoveredCard(false)}
                             style={{
@@ -158,44 +159,44 @@ export default function DaftarRFID() {
                             {/* Blue glow effect dengan animasi */}
                             <div className={`absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none transition-opacity duration-500 ${hoveredCard ? 'opacity-100' : 'opacity-50'}`}></div>
 
-                            {/* Header Section dengan height tetap */}
-                            <div className="flex-shrink-0 h-auto mb-3 sm:mb-4 px-2 sm:px-3">
+                            {/* Header Section - Compact untuk Mobile */}
+                            <div className="flex-shrink-0 mb-2 sm:mb-4">
                                 {/* Icon RFID di atas dengan animasi */}
-                                <div className="flex justify-center items-center mb-2 sm:mb-3 h-10 sm:h-12 md:h-14">
+                                <div className="flex justify-center items-center mb-1.5 sm:mb-3">
                                     <div
-                                        className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
+                                        className={`w-10 h-10 sm:w-14 sm:h-14 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
                                     >
                                         <QrCode
-                                            className={`w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-white transition-all duration-500 ${hoveredCard ? 'scale-110' : 'scale-100'}`}
+                                            className={`w-6 h-6 sm:w-8 sm:h-8 text-white transition-all duration-500 ${hoveredCard ? 'scale-110' : 'scale-100'}`}
                                             strokeWidth={2.5}
                                         />
                                     </div>
                                 </div>
 
                                 {/* Title */}
-                                <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 text-center mb-1.5 sm:mb-2 transition-colors duration-300 flex items-center justify-center px-2">
+                                <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-800 text-center mb-1 sm:mb-2 transition-colors duration-300">
                                     REGISTER RFID
                                 </h1>
 
                                 {/* Instruction */}
-                                <p className="text-gray-600 text-center mb-3 sm:mb-4 text-xs sm:text-sm h-auto flex items-center justify-center px-2 sm:px-3">
+                                <p className="text-gray-600 text-center mb-2 sm:mb-4 text-[11px] sm:text-sm leading-tight">
                                     Input informasi Work Order, Style, Buyer, Item, Color, dan Size untuk scanning RFID
                                 </p>
                             </div>
 
-                            {/* Form - Compact layout */}
+                            {/* Form - Compact layout dengan flex untuk fit content */}
                             <form 
                                 onSubmit={handleSubmit} 
-                                className="flex flex-col space-y-3 sm:space-y-4 justify-between px-2 sm:px-3"
+                                className="flex flex-col flex-1 min-h-0 overflow-y-auto"
                                 noValidate
                             >
-                                {/* Form Fields Container */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                {/* Form Fields Container - Gap lebih kecil untuk mobile */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4">
                                     {/* Work Order - Dropdown */}
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="workOrder"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'workOrder' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'workOrder' ? 'text-blue-600' : ''}`}
                                         >
                                             Work Order
                                         </label>
@@ -206,7 +207,7 @@ export default function DaftarRFID() {
                                             onChange={handleInputChange}
                                             onFocus={() => setFocusedInput('workOrder')}
                                             onBlur={() => setFocusedInput(null)}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer"
                                         >
                                             <option value="">Pilih Work Order</option>
                                             {Object.keys(workOrderData).map(wo => (
@@ -219,7 +220,7 @@ export default function DaftarRFID() {
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="style"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'style' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'style' ? 'text-blue-600' : ''}`}
                                         >
                                             Style
                                         </label>
@@ -231,7 +232,7 @@ export default function DaftarRFID() {
                                             onFocus={() => setFocusedInput('style')}
                                             onBlur={() => setFocusedInput(null)}
                                             disabled={!formData.workOrder}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
                                         >
                                             <option value="">{formData.workOrder ? 'Pilih Style' : 'Pilih Work Order dulu'}</option>
                                             {availableStyles.map(style => (
@@ -244,7 +245,7 @@ export default function DaftarRFID() {
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="buyer"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'buyer' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'buyer' ? 'text-blue-600' : ''}`}
                                         >
                                             Buyer
                                         </label>
@@ -256,7 +257,7 @@ export default function DaftarRFID() {
                                             onFocus={() => setFocusedInput('buyer')}
                                             onBlur={() => setFocusedInput(null)}
                                             disabled={!formData.workOrder}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
                                         >
                                             <option value="">{formData.workOrder ? 'Pilih Buyer' : 'Pilih Work Order dulu'}</option>
                                             {availableBuyers.map(buyer => (
@@ -269,7 +270,7 @@ export default function DaftarRFID() {
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="item"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'item' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'item' ? 'text-blue-600' : ''}`}
                                         >
                                             Item
                                         </label>
@@ -281,7 +282,7 @@ export default function DaftarRFID() {
                                             onFocus={() => setFocusedInput('item')}
                                             onBlur={() => setFocusedInput(null)}
                                             disabled={!formData.workOrder}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
                                         >
                                             <option value="">{formData.workOrder ? 'Pilih Item' : 'Pilih Work Order dulu'}</option>
                                             {availableItems.map(item => (
@@ -294,7 +295,7 @@ export default function DaftarRFID() {
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="color"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'color' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'color' ? 'text-blue-600' : ''}`}
                                         >
                                             Color
                                         </label>
@@ -306,7 +307,7 @@ export default function DaftarRFID() {
                                             onFocus={() => setFocusedInput('color')}
                                             onBlur={() => setFocusedInput(null)}
                                             disabled={!formData.workOrder}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
                                         >
                                             <option value="">{formData.workOrder ? 'Pilih Color' : 'Pilih Work Order dulu'}</option>
                                             {availableColors.map(color => (
@@ -319,7 +320,7 @@ export default function DaftarRFID() {
                                     <div className="transition-all duration-300 flex flex-col">
                                         <label
                                             htmlFor="size"
-                                            className={`block text-sm sm:text-base font-semibold text-gray-700 mb-1.5 transition-colors duration-300 ${focusedInput === 'size' ? 'text-blue-600' : ''}`}
+                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'size' ? 'text-blue-600' : ''}`}
                                         >
                                             Size
                                         </label>
@@ -331,7 +332,7 @@ export default function DaftarRFID() {
                                             onFocus={() => setFocusedInput('size')}
                                             onBlur={() => setFocusedInput(null)}
                                             disabled={!formData.workOrder}
-                                            className="w-full h-10 sm:h-11 px-3 sm:px-4 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 hover:shadow-md focus:shadow-lg bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
                                         >
                                             <option value="">{formData.workOrder ? 'Pilih Size' : 'Pilih Work Order dulu'}</option>
                                             {availableSizes.map(size => (
@@ -341,11 +342,11 @@ export default function DaftarRFID() {
                                     </div>
                                 </div>
 
-                                {/* Submit Button - Fixed di bawah */}
-                                <div className="flex-shrink-0 mt-4 sm:mt-5">
+                                {/* Submit Button - Fixed di bawah, lebih compact untuk mobile */}
+                                <div className="flex-shrink-0 mt-2 sm:mt-4">
                                     <button
                                         type="submit"
-                                        className="w-full h-11 sm:h-12 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-bold text-base sm:text-lg px-4 sm:px-6 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-blue-500/50 transform hover:-translate-y-1 active:translate-y-0 focus:outline-none focus:ring-4 focus:ring-blue-300 flex items-center justify-center"
+                                        className="w-full h-10 sm:h-11 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-bold text-sm sm:text-base px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-blue-500/50 transform hover:-translate-y-1 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-blue-300 flex items-center justify-center"
                                     >
                                         REGISTER
                                     </button>

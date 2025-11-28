@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Cpu, Rss, ArrowRight, MapPin } from 'lucide-react';
+import { Rss, ArrowRight, MapPin } from 'lucide-react';
 
 export default function HomeContent() {
     const navigate = useNavigate();
@@ -19,36 +19,10 @@ export default function HomeContent() {
             shadow: 'shadow-emerald-200',
             lightBg: 'bg-emerald-50'
         },
-        {
-            id: 2,
-            title: 'Sensor Monitoring',
-            subtitle: 'Environmental Monitor',
-            location: '23 Locations',
-            icon: Radio,
-            color: 'text-blue-500',
-            bgStart: 'from-blue-400',
-            bgEnd: 'to-indigo-500',
-            shadow: 'shadow-blue-200',
-            lightBg: 'bg-blue-50'
-        },
-        {
-            id: 3,
-            title: 'Visual AI',
-            subtitle: 'Computer Vision Analysis',
-            location: '46 Locations',
-            icon: Cpu,
-            color: 'text-violet-500',
-            bgStart: 'from-violet-400',
-            bgEnd: 'to-fuchsia-500',
-            shadow: 'shadow-violet-200',
-            lightBg: 'bg-violet-50'
-        },
     ];
 
     const handleModuleClick = (moduleId: number) => {
         if (moduleId === 1) navigate('/monitoring-rfid');
-        else if (moduleId === 2) navigate('/monitoring-sensor');
-        else if (moduleId === 3) navigate('/monitoring-visual-ai');
     };
 
     return (
@@ -64,10 +38,8 @@ export default function HomeContent() {
         >
 
             {/* --- HEADER SECTION (CENTERED) --- */}
-            <div className=" w-full content-center items-center justify-center mx-auto text-center mb-16 animate-fade-in-down h-1/5 flex flex-col"
-                style={{
-                    height: '10%',
-                }}>
+            <div className=" w-full content-center items-center justify-center mx-auto text-center mb-4 animate-fade-in-down h-1/5 flex flex-col"
+                >
                 <h1 className="text-4xl">🛰️</h1>
                 <h1 className=" text-4xl font-extrabold font-serif text-slate-10 tracking-tight mb-3"
 
@@ -93,9 +65,7 @@ export default function HomeContent() {
 
             {/* --- GRID CONTAINER --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 w-full mx-auto"
-                style={{
-                    padding: '2rem'
-                }}>
+                >
                 {modules.map((module, index) => {
                     const IconComponent = module.icon;
                     const isHovered = hoveredCard === module.id;

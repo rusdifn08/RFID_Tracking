@@ -3,7 +3,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { getTrackingLineData, TrackingLineData } from '../config/api';
+import { getTrackingLineData, type TrackingLineData } from '../config/api';
 
 /**
  * Hook untuk mendapatkan tracking data berdasarkan line
@@ -25,14 +25,14 @@ export const useTrackingLineData = (line: string | number) => {
             rework: '0',
         }
     };
-    
+
     return useQuery<TrackingLineData>({
         queryKey: ['trackingLineData', line],
         queryFn: async () => {
             try {
                 const response = await getTrackingLineData(line);
                 console.log('🔍 [useTrackingLineData] Response:', response);
-                
+
                 // getTrackingLineData mengembalikan ApiResponse<TrackingLineData>
                 // Struktur: { success, data: TrackingLineData }
                 // TrackingLineData sendiri adalah { success, line, data: {...} }
@@ -58,14 +58,9 @@ export const useTrackingLineData = (line: string | number) => {
         retryOnMount: true, // Retry saat mount
         // Jangan throw error, return default data
         throwOnError: false,
-        // Error handler untuk logging
-        onError: (error) => {
-            console.error('Error in useTrackingLineData:', error);
-        },
         // Placeholder data untuk menghindari undefined
         placeholderData: defaultData,
         // Initial data untuk menghindari loading state yang lama
         initialData: defaultData,
     });
 };
-

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
@@ -18,7 +17,6 @@ interface RFIDCheckItem {
 }
 
 export default function CheckingRFID() {
-    const navigate = useNavigate();
     const { isOpen } = useSidebar();
     const [rfidInput, setRfidInput] = useState('');
     const [checkItems, setCheckItems] = useState<RFIDCheckItem[]>([]);
@@ -94,7 +92,7 @@ export default function CheckingRFID() {
                 setCheckItems(prev => [newItem, ...prev]);
                 setRfidInput('');
                 setIsChecking(false);
-                
+
                 setTimeout(() => {
                     inputRef.current?.focus();
                 }, 100);
@@ -110,7 +108,7 @@ export default function CheckingRFID() {
                 setCheckItems(prev => [newItem, ...prev]);
                 setRfidInput('');
                 setIsChecking(false);
-                
+
                 setTimeout(() => {
                     inputRef.current?.focus();
                 }, 100);
@@ -346,22 +344,20 @@ export default function CheckingRFID() {
                                 filteredItems.map((item, index) => (
                                     <div
                                         key={`${item.rfid}-${index}`}
-                                        className={`relative p-5 rounded-xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] ${
-                                            item.status === 'found'
+                                        className={`relative p-5 rounded-xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] ${item.status === 'found'
                                                 ? 'bg-green-500/10 border-green-500/30 shadow-lg shadow-green-500/20'
                                                 : item.status === 'not_found'
-                                                ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/20'
-                                                : 'bg-yellow-500/10 border-yellow-500/30 shadow-lg shadow-yellow-500/20'
-                                        }`}
+                                                    ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/20'
+                                                    : 'bg-yellow-500/10 border-yellow-500/30 shadow-lg shadow-yellow-500/20'
+                                            }`}
                                     >
                                         <div className="flex items-start gap-4">
-                                            <div className={`p-3 rounded-xl ${
-                                                item.status === 'found'
+                                            <div className={`p-3 rounded-xl ${item.status === 'found'
                                                     ? 'bg-green-500/20'
                                                     : item.status === 'not_found'
-                                                    ? 'bg-red-500/20'
-                                                    : 'bg-yellow-500/20'
-                                            }`}>
+                                                        ? 'bg-red-500/20'
+                                                        : 'bg-yellow-500/20'
+                                                }`}>
                                                 {item.status === 'found' ? (
                                                     <CheckCircle2 className="w-7 h-7 text-green-400" />
                                                 ) : item.status === 'not_found' ? (
@@ -380,13 +376,12 @@ export default function CheckingRFID() {
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-4 mb-2">
-                                                    <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
-                                                        item.status === 'found'
+                                                    <span className={`text-sm font-bold px-3 py-1 rounded-lg ${item.status === 'found'
                                                             ? 'bg-green-500/20 text-green-300'
                                                             : item.status === 'not_found'
-                                                            ? 'bg-red-500/20 text-red-300'
-                                                            : 'bg-yellow-500/20 text-yellow-300'
-                                                    }`}>
+                                                                ? 'bg-red-500/20 text-red-300'
+                                                                : 'bg-yellow-500/20 text-yellow-300'
+                                                        }`}>
                                                         {item.status === 'found' ? '✓ Found' : item.status === 'not_found' ? '✗ Not Found' : '⏳ Checking...'}
                                                     </span>
                                                     {item.location && (
@@ -434,4 +429,3 @@ export default function CheckingRFID() {
         </div>
     );
 }
-

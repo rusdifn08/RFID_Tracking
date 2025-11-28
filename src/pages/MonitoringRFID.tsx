@@ -19,9 +19,9 @@ export default function MonitoringRFID() {
                 {/* Header */}
                 <Header />
 
-                {/* Content - Full page tanpa scrolling */}
+                {/* Content - Full page dengan scrolling */}
                 <main
-                    className="flex-1 w-full overflow-hidden bg-gray-50"
+                    className="flex-1 w-full overflow-y-auto bg-gray-50"
                     style={{
                         marginTop: '4rem', // 64px untuk header (h-16 = 4rem)
                         padding: '0.5rem',
