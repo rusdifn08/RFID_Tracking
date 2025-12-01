@@ -140,78 +140,24 @@ const ListRFID: React.FC = () => {
         exportToExcel(exportData, lineId, format);
     };
 
-    // Generate 100 Mock Data Items
-    const generateMockData = (): RFIDItem[] => {
-        const buyers = ['Montbell', 'Redwings', 'HEXAPOLE COMPANY LIMITED', 'Bergans'];
-        const styles = ['ST-001', 'ST-002', 'ST-003', 'ST-004', 'ST-005', 'JKT-001', 'PNT-002', 'SRT-003'];
-        const items = ['SHIRT', 'PANTS', 'JACKET', 'SHORTS', 'SKIRT', 'DRESS', 'HOODIE', 'SWEATER'];
-        const colors = ['RED', 'BLUE', 'GREEN', 'BLACK', 'WHITE', 'NAVY', 'GREY', 'YELLOW'];
-        const sizes = ['S', 'M', 'L', 'XL', 'XXL', '3XL'];
-        const statuses = ['Reject', 'Rework', 'Good'];
-        const lines = Array.from({ length: 9 }, (_, i) => `Line ${i + 1}`);
-
-        return Array.from({ length: 100 }, (_, index) => {
-            const id = index + 1;
-            const randomBuyer = buyers[Math.floor(Math.random() * buyers.length)];
-            const randomStyle = styles[Math.floor(Math.random() * styles.length)];
-            const randomItem = items[Math.floor(Math.random() * items.length)];
-            const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            const randomSize = sizes[Math.floor(Math.random() * sizes.length)];
-            const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-            const randomLine = lines[Math.floor(Math.random() * lines.length)];
-
-            // Location logic based on status
-            let possibleLocations = ['QC', 'PQC'];
-            if (randomStatus === 'Good') {
-                possibleLocations.push('Dryroom');
-            }
-            const randomLocation = possibleLocations[Math.floor(Math.random() * possibleLocations.length)];
-
-            return {
-                id: `MOCK-${id}`,
-                rfid: `E200${Math.floor(Math.random() * 1000000000).toString().padStart(9, '0')}`,
-                style: randomStyle,
-                buyer: randomBuyer,
-                nomor_wo: `WO-${2024000 + id}`,
-                item: randomItem,
-                color: randomColor,
-                size: randomSize,
-                status: randomStatus,
-                lokasi: randomLocation,
-                line: randomLine
-            };
-        });
-    };
-
-    // Fetch data dari database
+    // Fetch data dari database - Mockdata dihapus
     const fetchRFIDData = async () => {
         try {
             setLoading(true);
-            // Simulasi API call atau gunakan mock data jika API gagal/kosong
-            // Uncomment baris di bawah ini jika ingin mencoba fetch API asli dulu
-            /*
-            const response = await fetch(getApiUrl('/api/line1'));
-            const result = await response.json();
-
-            if (result.success && result.data.length > 0) {
-                setRfidData(result.data);
-                setError(null);
-            } else {
-                // Fallback ke mock data jika API kosong
-                setRfidData(generateMockData());
-            }
-            */
-
-            // Langsung gunakan mock data sesuai request user
-            setTimeout(() => {
-                setRfidData(generateMockData());
-                setLoading(false);
-            }, 500); // Simulasi delay loading
-
+            // TODO: Implementasi fetch dari API backend
+            // Contoh: const response = await fetch(`${API_BASE_URL}/garment?line=${lineId}`);
+            // const result = await response.json();
+            // if (result.success && result.data) {
+            //     setRfidData(result.data);
+            //     setError(null);
+            // }
+            
+            // Sementara kosongkan data sampai API siap
+            setRfidData([]);
+            setLoading(false);
         } catch (error) {
             console.error('Error fetching RFID data:', error);
-            // Fallback ke mock data saat error
-            setRfidData(generateMockData());
+            setError('Gagal memuat data RFID');
             setLoading(false);
         }
     };

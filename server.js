@@ -1,135 +1,140 @@
 /**
- * Mock Server untuk Testing API
- * Server lokal untuk development dan testing
+ * Proxy Server untuk Frontend
+ * Server proxy yang menghubungkan frontend dengan backend API
  */
 
 import express from 'express';
 import cors from 'cors';
 import mysql from 'mysql2/promise';
+import os from 'os';
 
 const app = express();
-const PORT = process.env.PORT || 8000; // Port untuk API server
-const HOST = '0.0.0.0'; // Listen di semua network interface (bisa diakses dari 10.5.0.7)
-const SERVER_IP = '10.8.10.104'; // IP yang digunakan untuk akses dari frontend (untuk akses dari komputer lain)
-// Backend API URL - Backend API yang sebenarnya (Python Flask)
-const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://10.8.10.120:8000';
+
+// ============================================
+// KONFIGURASI NETWORK
+// ============================================
+
+/**
+ * Mendapatkan Local Network IP Address
+ */
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name] || []) {
+            // Skip internal (i.e. 127.0.0.1) and non-IPv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return 'localhost';
+}
+
+const LOCAL_IP = getLocalIP();
+const PORT = process.env.PORT || 7000; // Port untuk proxy server (frontend proxy)
+const HOST = '0.0.0.0'; // Listen di semua network interface
+const BACKEND_PORT = 8000; // Port untuk backend API
+
+// Backend API URL - menggunakan local IP dengan port 8000
+const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${LOCAL_IP}:${BACKEND_PORT}`;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // ============================================
-// MOCK DATA
+// HELPER FUNCTION - PROXY REQUEST
 // ============================================
 
-// Mock data untuk RFID
-const mockRFIDData = {
-    line1: {
-        id: 'line1',
-        name: 'LINE 1',
-        statistics: {
-            good: 12,
-            rework: 2,
-            hasper: 3,
-            reject: 9,
-            total: 26
-        },
-        pieData: [
-            { name: 'Good Product', value: 12, color: '#00e676' },
-            { name: 'Rework Product', value: 2, color: '#ffea00' },
-            { name: 'Hasper Product', value: 3, color: '#ff9100' },
-            { name: 'Reject Product', value: 9, color: '#ff1744' }
-        ],
-        kpi: {
-            onTarget: 70,
-            vulnerable: 23,
-            offTarget: 7,
-            currentKPI: 24
-        },
-        workOrders: [
-            { workOrder: 'WO-001', item: 'Item A', style: 'Style 1', qty: 100 },
-            { workOrder: 'WO-002', item: 'Item B', style: 'Style 2', qty: 150 },
-            { workOrder: 'WO-003', item: 'Item C', style: 'Style 3', qty: 200 }
-        ]
-    },
-    line2: {
-        id: 'line2',
-        name: 'LINE 2',
-        statistics: {
-            good: 15,
-            rework: 1,
-            hasper: 2,
-            reject: 5,
-            total: 23
-        },
-        pieData: [
-            { name: 'Good Product', value: 15, color: '#00e676' },
-            { name: 'Rework Product', value: 1, color: '#ffea00' },
-            { name: 'Hasper Product', value: 2, color: '#ff9100' },
-            { name: 'Reject Product', value: 5, color: '#ff1744' }
-        ],
-        kpi: {
-            onTarget: 75,
-            vulnerable: 20,
-            offTarget: 5,
-            currentKPI: 28
-        },
-        workOrders: [
-            { workOrder: 'WO-004', item: 'Item D', style: 'Style 4', qty: 120 },
-            { workOrder: 'WO-005', item: 'Item E', style: 'Style 5', qty: 180 }
-        ]
-    }
-};
-
-// Mock data untuk daftar RFID
-const mockDaftarRFID = [
-    { id: 'RFID-001', status: 'active', line: 'line1', createdAt: '2024-11-01T10:00:00Z' },
-    { id: 'RFID-002', status: 'active', line: 'line1', createdAt: '2024-11-01T11:00:00Z' },
-    { id: 'RFID-003', status: 'inactive', line: 'line2', createdAt: '2024-11-01T12:00:00Z' },
-    { id: 'RFID-004', status: 'active', line: 'line2', createdAt: '2024-11-01T13:00:00Z' }
-];
-
-// Tidak menggunakan mock data lagi, langsung menggunakan API backend yang sebenarnya
-
-// Mock data untuk production statistics (Good, Reject, Rework)
-const mockProductionData = {
-    overall: {
-        good: 45,
-        reject: 18,
-        rework: 8,
-        hasper: 12,
-        total: 83,
-        date: new Date().toISOString().split('T')[0]
-    },
-    byLine: {
-        line1: {
-            good: 12,
-            reject: 9,
-            rework: 2,
-            hasper: 3,
-            total: 26
-        },
-        line2: {
-            good: 15,
-            reject: 5,
-            rework: 1,
-            hasper: 2,
-            total: 23
-        },
-        line3: {
-            good: 18,
-            reject: 4,
-            rework: 5,
-            hasper: 7,
-            total: 34
+/**
+ * Helper function untuk proxy request ke backend API
+ * @param {string} endpoint - Endpoint path (contoh: '/user')
+ * @param {Request} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {Object} options - Options untuk fetch (method, body, dll)
+ */
+async function proxyRequest(endpoint, req, res, options = {}) {
+    try {
+        // Build query string dari req.query
+        const queryParams = new URLSearchParams();
+        Object.keys(req.query).forEach(key => {
+            if (req.query[key]) {
+                queryParams.append(key, req.query[key]);
+            }
+        });
+        
+        const queryString = queryParams.toString();
+        const url = `${BACKEND_API_URL}${endpoint}${queryString ? `?${queryString}` : ''}`;
+        
+        console.log(`\n🔍 [PROXY] ${req.method} ${endpoint}`);
+        console.log(`🔍 [PROXY] URL: ${url}`);
+        
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 detik timeout
+        
+        const response = await fetch(url, {
+            method: options.method || req.method || 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                ...options.headers,
+            },
+            body: options.body || (req.body && Object.keys(req.body).length > 0 ? JSON.stringify(req.body) : undefined),
+            signal: controller.signal
+        }).catch((fetchError) => {
+            clearTimeout(timeoutId);
+            console.error(`❌ [PROXY] Fetch error:`, fetchError);
+            throw fetchError;
+        });
+        
+        clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
+        console.log(`⏱️  [PROXY] Request duration: ${duration}ms`);
+        console.log(`📥 [PROXY] Response status: ${response.status} ${response.statusText}`);
+        
+        let data;
+        try {
+            const textData = await response.text();
+            if (textData) {
+                data = JSON.parse(textData);
+            }
+        } catch (parseError) {
+            console.error(`❌ [PROXY] JSON parse error:`, parseError);
+            throw new Error('Invalid JSON response from backend API');
         }
-    },
-    daily: [
-        { date: '2024-11-01', good: 40, reject: 15, rework: 7 },
-        { date: '2024-11-02', good: 42, reject: 16, rework: 8 },
-        { date: '2024-11-03', good: 45, reject: 18, rework: 8 }
-    ]
-};
+        
+        // Forward response dengan status code yang sama
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error(`\n❌ [PROXY] Error:`, error);
+        let errorMessage = 'Error connecting to backend API';
+        let statusCode = 500;
+        
+        if (error.name === 'AbortError' || error.message.includes('timeout')) {
+            errorMessage = 'Request timeout - Backend API tidak merespon dalam 30 detik';
+            statusCode = 504;
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+            errorMessage = `Tidak dapat terhubung ke backend API. Pastikan ${BACKEND_API_URL} berjalan.`;
+            statusCode = 503;
+        } else if (error.message.includes('Invalid JSON')) {
+            errorMessage = 'Backend API mengembalikan response yang tidak valid';
+            statusCode = 502;
+        }
+        
+        return res.status(statusCode).json({
+            success: false,
+            message: errorMessage,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
+// ============================================
+// MOCK DATA - DIHAPUS
+// ============================================
+// Semua mockdata telah dihapus, menggunakan backend API langsung
 
 // ============================================
 // ROUTES
@@ -152,7 +157,7 @@ app.get('/health', (req, res) => {
 
 // Database Configuration
 const DATABASE_URL = 'http://10.5.0.99/db/garment';
-const BACKEND_API_URL_CHECK = process.env.BACKEND_API_URL || 'http://10.8.10.120:8000';
+const BACKEND_API_URL_CHECK = process.env.BACKEND_API_URL || BACKEND_API_URL;
 
 // MySQL Configuration
 const MYSQL_CONFIG = {
@@ -589,198 +594,10 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ============================================
-// PRODUCTION DATA ROUTES
+// PRODUCTION DATA ROUTES - DIHAPUS (menggunakan mockdata)
 // ============================================
-
-// Get production data (Good, Reject, Rework)
-app.get('/api/production/data', (req, res) => {
-    const { lineId } = req.query;
-
-    if (lineId) {
-        // Get data by line
-        const lineData = mockProductionData.byLine[`line${lineId}`];
-
-        if (!lineData) {
-            return res.status(404).json({
-                success: false,
-                error: 'Line tidak ditemukan'
-            });
-        }
-
-        return res.json({
-            success: true,
-            data: {
-                lineId: `line${lineId}`,
-                ...lineData
-            },
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    // Get overall data
-    res.json({
-        success: true,
-        data: mockProductionData,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Production Statistics
-app.get('/api/production/statistics', (req, res) => {
-    const allStats = Object.values(mockRFIDData).reduce((acc, line) => {
-        acc.good += line.statistics.good;
-        acc.rework += line.statistics.rework;
-        acc.hasper += line.statistics.hasper;
-        acc.reject += line.statistics.reject;
-        acc.total += line.statistics.total;
-        return acc;
-    }, { good: 0, rework: 0, hasper: 0, reject: 0, total: 0 });
-
-    res.json({
-        success: true,
-        data: {
-            overall: allStats,
-            lines: Object.values(mockRFIDData).map(line => ({
-                lineId: line.id,
-                lineName: line.name,
-                statistics: line.statistics
-            }))
-        },
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Line Data by ID
-app.get('/api/line/:id', (req, res) => {
-    const { id } = req.params;
-    const lineData = mockRFIDData[`line${id}`] || mockRFIDData.line1;
-
-    if (!lineData) {
-        return res.status(404).json({
-            success: false,
-            error: 'Line not found'
-        });
-    }
-
-    res.json({
-        success: true,
-        data: lineData,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Get All Lines
-app.get('/api/line', (req, res) => {
-    res.json({
-        success: true,
-        data: Object.values(mockRFIDData),
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Daftar RFID - Get All
-app.get('/api/rfid', (req, res) => {
-    res.json({
-        success: true,
-        data: mockDaftarRFID,
-        count: mockDaftarRFID.length,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Daftar RFID - Get By ID
-app.get('/api/rfid/:id', (req, res) => {
-    const { id } = req.params;
-    const rfid = mockDaftarRFID.find(r => r.id === id);
-
-    if (!rfid) {
-        return res.status(404).json({
-            success: false,
-            error: 'RFID not found'
-        });
-    }
-
-    res.json({
-        success: true,
-        data: rfid,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Daftar RFID - Create
-app.post('/api/rfid', (req, res) => {
-    const { id, status, line } = req.body;
-
-    if (!id) {
-        return res.status(400).json({
-            success: false,
-            error: 'RFID ID is required'
-        });
-    }
-
-    const newRFID = {
-        id,
-        status: status || 'active',
-        line: line || 'line1',
-        createdAt: new Date().toISOString()
-    };
-
-    mockDaftarRFID.push(newRFID);
-
-    res.status(201).json({
-        success: true,
-        data: newRFID,
-        message: 'RFID created successfully',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Daftar RFID - Update
-app.put('/api/rfid/:id', (req, res) => {
-    const { id } = req.params;
-    const { status, line } = req.body;
-
-    const rfidIndex = mockDaftarRFID.findIndex(r => r.id === id);
-
-    if (rfidIndex === -1) {
-        return res.status(404).json({
-            success: false,
-            error: 'RFID not found'
-        });
-    }
-
-    if (status) mockDaftarRFID[rfidIndex].status = status;
-    if (line) mockDaftarRFID[rfidIndex].line = line;
-
-    res.json({
-        success: true,
-        data: mockDaftarRFID[rfidIndex],
-        message: 'RFID updated successfully',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Daftar RFID - Delete
-app.delete('/api/rfid/:id', (req, res) => {
-    const { id } = req.params;
-    const rfidIndex = mockDaftarRFID.findIndex(r => r.id === id);
-
-    if (rfidIndex === -1) {
-        return res.status(404).json({
-            success: false,
-            error: 'RFID not found'
-        });
-    }
-
-    const deleted = mockDaftarRFID.splice(rfidIndex, 1)[0];
-
-    res.json({
-        success: true,
-        data: deleted,
-        message: 'RFID deleted successfully',
-        timestamp: new Date().toISOString()
-    });
-});
+// Semua route yang menggunakan mockdata telah dihapus
+// Gunakan endpoint backend API langsung
 
 // ============================================
 // API ENDPOINTS - MySQL Data Query
@@ -789,7 +606,7 @@ app.delete('/api/rfid/:id', (req, res) => {
 /**
  * Query data user dari API backend berdasarkan NIK
  * GET /user?nik=
- * Endpoint ini memanggil API backend di http://10.8.10.120:8000/user?nik=...
+ * Endpoint ini memanggil API backend menggunakan local IP dengan port 8000
  */
 app.get('/user', async (req, res) => {
     const { nik } = req.query;
@@ -801,18 +618,23 @@ app.get('/user', async (req, res) => {
     console.log(`📥 [SERVER] Client IP: ${req.ip || req.connection.remoteAddress}`);
     console.log(`📥 [SERVER] Timestamp: ${new Date().toISOString()}`);
 
+    // Jika ada rfid_user, proxy langsung ke backend
+    if (rfid_user) {
+        return await proxyRequest('/user', req, res);
+    }
+    
     if (!nik) {
-        console.log(`❌ [SERVER] NIK parameter is missing`);
+        console.log(`❌ [SERVER] NIK atau rfid_user parameter is required`);
         return res.status(400).json({
             success: false,
-            message: 'NIK parameter is required',
+            message: 'NIK atau rfid_user parameter is required',
             timestamp: new Date().toISOString()
         });
     }
 
     try {
-        // Panggil API backend yang sebenarnya: http://10.8.10.120:8000/user?nik=...
-        const backendUrl = `http://10.8.10.120:8000/user?nik=${encodeURIComponent(nik)}`;
+        // Panggil API backend yang sebenarnya menggunakan local IP
+        const backendUrl = `${BACKEND_API_URL}/user?nik=${encodeURIComponent(nik)}`;
         console.log(`\n🔍 [USER API] ==========================================`);
         console.log(`🔍 [USER API] Fetching user data from backend API`);
         console.log(`🔍 [USER API] URL: ${backendUrl}`);
@@ -924,7 +746,7 @@ app.get('/user', async (req, res) => {
             errorMessage = 'Request timeout - Backend API tidak merespon dalam 10 detik';
             statusCode = 504;
         } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-            errorMessage = 'Tidak dapat terhubung ke backend API. Pastikan http://10.8.10.120:8000 berjalan.';
+            errorMessage = `Tidak dapat terhubung ke backend API. Pastikan ${BACKEND_API_URL} berjalan.`;
             statusCode = 503;
         } else if (error.message.includes('Invalid JSON')) {
             errorMessage = 'Backend API mengembalikan response yang tidak valid';
@@ -1038,60 +860,14 @@ app.get('/login', async (req, res) => {
 });
 
 /**
- * Query data garment dari MySQL berdasarkan rfid_garment
- * GET /garment?rfid_garment=
+ * Query data garment - Proxy ke Backend API
+ * GET /garment - Menampilkan semua data tabel garment
+ * GET /garment?isDone= - Menampilkan semua data garment yang isDone kosong
+ * GET /garment?isDone=Done - Menampilkan semua data garment yang isDone = done
+ * GET /garment?rfid_garment= - Filter data garment by rfid_garment
  */
 app.get('/garment', async (req, res) => {
-    const { rfid_garment } = req.query;
-
-    if (!rfid_garment) {
-        return res.status(400).json({
-            success: false,
-            message: 'rfid_garment parameter is required',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    try {
-        const connection = await mysql.createConnection({
-            host: MYSQL_CONFIG.host,
-            user: MYSQL_CONFIG.user,
-            password: MYSQL_CONFIG.password,
-            database: MYSQL_CONFIG.database,
-            connectTimeout: MYSQL_CONFIG.connectTimeout
-        });
-
-        // Query untuk cek data garment berdasarkan rfid_garment
-        const [rows] = await connection.execute(
-            `SELECT * FROM ${MYSQL_CONFIG.table} WHERE rfid_garment = ? LIMIT 1`,
-            [rfid_garment]
-        );
-
-        await connection.end();
-
-        if (rows.length > 0) {
-            return res.json({
-                success: true,
-                data: rows[0],
-                message: 'Garment data found',
-                timestamp: new Date().toISOString()
-            });
-        } else {
-            return res.status(404).json({
-                success: false,
-                message: 'Garment data not found',
-                timestamp: new Date().toISOString()
-            });
-        }
-    } catch (error) {
-        console.error('MySQL Error [garment GET]:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Database error',
-            error: error.message,
-            timestamp: new Date().toISOString()
-        });
-    }
+    return await proxyRequest('/garment', req, res);
 });
 
 /**
@@ -1312,9 +1088,16 @@ app.post('/garment', async (req, res) => {
 });
 
 /**
- * Get tracking data by line (proxy ke backend API)
- * GET /tracking/line?line=1
+ * Get tracking data by line - Proxy ke Backend API
+ * GET /tracking/line - Menampilkan semua data pada tracking movement
+ * GET /tracking/line?line=1 - Menampilkan data sum pada tracking movement filter per line
  */
+app.get('/tracking/line', async (req, res) => {
+    return await proxyRequest('/tracking/line', req, res);
+});
+
+// Endpoint tracking/line yang lama dihapus karena sudah diganti dengan proxyRequest di atas
+/*
 app.get('/tracking/line', async (req, res) => {
     const { line } = req.query;
 
@@ -1327,8 +1110,8 @@ app.get('/tracking/line', async (req, res) => {
     }
 
     try {
-        // Panggil backend API: http://10.8.10.120:8000/tracking/line?line=...
-        const backendUrl = `http://10.8.10.120:8000/tracking/line?line=${encodeURIComponent(line)}`;
+        // Panggil backend API menggunakan local IP
+        const backendUrl = `${BACKEND_API_URL}/tracking/line?line=${encodeURIComponent(line)}`;
         console.log(`\n🔍 [TRACKING LINE API] Fetching tracking data from: ${backendUrl}`);
         console.log(`🔍 [TRACKING LINE API] Line: ${line}`);
         
@@ -1412,7 +1195,7 @@ app.get('/tracking/line', async (req, res) => {
             errorMessage = 'Request timeout - Backend API tidak merespon dalam 10 detik';
             statusCode = 504;
         } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-            errorMessage = 'Tidak dapat terhubung ke backend API. Pastikan http://10.8.10.120:8000 berjalan.';
+            errorMessage = `Tidak dapat terhubung ke backend API. Pastikan ${BACKEND_API_URL} berjalan.`;
             statusCode = 503;
         } else if (error.message.includes('Invalid JSON')) {
             errorMessage = 'Backend API mengembalikan response yang tidak valid';
@@ -1429,9 +1212,18 @@ app.get('/tracking/line', async (req, res) => {
 });
 
 /**
- * Proxy untuk WO/Production Branch API
- * GET /wo/production_branch?production_branch=MJ1&line=L1
+ * Proxy untuk WO/Production Branch API - Proxy ke Backend API
+ * GET /wo/production_branch - Menampilkan all data production branch
+ * GET /wo/production_branch?production_branch=CJL - Menampilkan semua data berdasarkan production branch
+ * GET /wo/production_branch?production_branch=CJL&line=L1 - Menampilkan semua data berdasarkan production branch dan line
+ * GET /wo/production_branch?production_branch=cjl&line=L1&start_date_from=2025-11-1&start_date_to=2025-11-28 - Menampilkan semua data berdasarkan production branch, line, dan rentang Waktu
  */
+app.get('/wo/production_branch', async (req, res) => {
+    return await proxyRequest('/wo/production_branch', req, res);
+});
+
+// Endpoint wo/production_branch yang lama dihapus karena sudah diganti dengan proxyRequest di atas
+/*
 app.get('/wo/production_branch', async (req, res) => {
     console.log(`\n🔍 [WO PRODUCTION BRANCH API] ==========================================`);
     console.log(`🔍 [WO PRODUCTION BRANCH API] ✅ ENDPOINT HIT! Request received`);
@@ -1451,8 +1243,8 @@ app.get('/wo/production_branch', async (req, res) => {
     }
 
     try {
-        // Panggil backend API: http://10.8.10.120:8000/wo/production_branch?production_branch=...&line=...
-        const backendUrl = `http://10.8.10.120:8000/wo/production_branch?production_branch=${encodeURIComponent(production_branch)}&line=${encodeURIComponent(line)}`;
+        // Panggil backend API menggunakan local IP
+        const backendUrl = `${BACKEND_API_URL}/wo/production_branch?production_branch=${encodeURIComponent(production_branch)}&line=${encodeURIComponent(line)}`;
         console.log(`\n🔍 [WO PRODUCTION BRANCH API] Fetching WO data from: ${backendUrl}`);
         console.log(`🔍 [WO PRODUCTION BRANCH API] Production Branch: ${production_branch}`);
         console.log(`🔍 [WO PRODUCTION BRANCH API] Line: ${line}`);
@@ -1484,7 +1276,7 @@ app.get('/wo/production_branch', async (req, res) => {
             
             // Jika timeout, berikan pesan yang lebih jelas
             if (fetchError.name === 'AbortError' || fetchError.message.includes('aborted')) {
-                throw new Error('Request timeout - Backend API tidak merespon dalam 30 detik. Pastikan http://10.8.10.120:8000 berjalan dan dapat diakses.');
+                throw new Error(`Request timeout - Backend API tidak merespon dalam 30 detik. Pastikan ${BACKEND_API_URL} berjalan dan dapat diakses.`);
             }
             throw fetchError;
         }
@@ -1563,7 +1355,7 @@ app.get('/wo/production_branch', async (req, res) => {
             errorMessage = 'Request timeout - Backend API tidak merespon dalam 10 detik';
             statusCode = 504;
         } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-            errorMessage = 'Tidak dapat terhubung ke backend API. Pastikan http://10.8.10.120:8000 berjalan.';
+            errorMessage = `Tidak dapat terhubung ke backend API. Pastikan ${BACKEND_API_URL} berjalan.`;
             statusCode = 503;
         } else if (error.message.includes('Invalid JSON')) {
             errorMessage = 'Backend API mengembalikan response yang tidak valid';
@@ -1631,6 +1423,48 @@ app.get('/tracking', async (req, res) => {
 });
 
 // ============================================
+// API ENDPOINTS BARU - PROXY KE BACKEND API
+// ============================================
+
+// Endpoint /user sudah ada di atas, tidak perlu duplikasi
+// Endpoint /user mendukung:
+// - GET /user?nik= - Get data user by nik (sudah ada)
+// - GET /user?rfid_user= - Get data user by rfid_user (akan di-handle oleh endpoint yang sudah ada dengan modifikasi)
+
+// Endpoint /garment, /wo/production_branch, dan /tracking/line sudah didefinisikan di atas
+// Tidak perlu duplikasi
+
+/**
+ * GET /tracking/join - Menampilkan semua data inner join table tracking_movement dan tracking_movement_end
+ * GET /tracking/join?line=1 - Menampilkan data sum inner join berdasarkan line
+ */
+app.get('/tracking/join', async (req, res) => {
+    return await proxyRequest('/tracking/join', req, res);
+});
+
+/**
+ * GET /tracking/rfid_garment - Menampilkan all data pada tracking berdasarkan rfid_garment
+ * GET /tracking/rfid_garment?rfid_garment=0003841573 - Menampilkan filter data tracking by rfid_garment
+ */
+app.get('/tracking/rfid_garment', async (req, res) => {
+    return await proxyRequest('/tracking/rfid_garment', req, res);
+});
+
+/**
+ * GET /monitoring/line?line=1 - Dashboard
+ */
+app.get('/monitoring/line', async (req, res) => {
+    return await proxyRequest('/monitoring/line', req, res);
+});
+
+/**
+ * GET /report/wira?line=1&wo=185759&tanggalfrom=2025-11-27&tanggalto=2025-11-28 - Report wira
+ */
+app.get('/report/wira', async (req, res) => {
+    return await proxyRequest('/report/wira', req, res);
+});
+
+// ============================================
 // ERROR HANDLING
 // ============================================
 
@@ -1684,15 +1518,18 @@ app.listen(PORT, HOST, () => {
     console.log(`   GET  ${BACKEND_API_URL}/tracking/line?line= (Tracking data by line)`);
     console.log(`   GET  ${BACKEND_API_URL}/wo/production_branch?production_branch=&line= (WO/Production data)`);
     console.log(`\n📡 Server.js Endpoints (Proxy Server):`);
-    console.log(`   Server.js URL: http://${SERVER_IP}:${PORT}`);
-    console.log(`   GET  http://${SERVER_IP}:${PORT}/user?nik= (Proxy ke Backend API)`);
-    console.log(`   GET  http://${SERVER_IP}:${PORT}/garment?rfid_garment= (Query MySQL)`);
-    console.log(`   POST http://${SERVER_IP}:${PORT}/garment (Insert data langsung ke MySQL)`);
-    console.log(`   GET  http://${SERVER_IP}:${PORT}/tracking?rfid_garment= (Query MySQL)`);
+    console.log(`   Server.js URL: http://${LOCAL_IP}:${PORT}`);
+    console.log(`   Backend API URL: ${BACKEND_API_URL}`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/user?nik= (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/user?rfid_user= (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/garment (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/tracking/line (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/wo/production_branch (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/monitoring/line (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/report/wira (Proxy ke Backend API)`);
     console.log(`\n🚀 Server running on:`);
     console.log(`   - http://localhost:${PORT} (Local access)`);
-    console.log(`   - http://10.8.10.104:${PORT} (Network access - gunakan IP ini untuk akses dari komputer lain)`);
-    console.log(`   - http://${SERVER_IP}:${PORT} (Alternative network access)`);
+    console.log(`   - http://${LOCAL_IP}:${PORT} (Network access - gunakan IP ini untuk akses dari komputer lain)`);
     console.log(`\n💾 MySQL Database: ${MYSQL_CONFIG.host}/${MYSQL_CONFIG.database}/${MYSQL_CONFIG.table}\n`);
 });
 

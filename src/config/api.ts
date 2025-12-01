@@ -10,17 +10,23 @@
 // Mode development atau production
 const isDevelopment = import.meta.env.DEV;
 
-// Base URL untuk API Server
-// Frontend memanggil server.js yang berjalan di 10.8.10.104:8000
-// Server.js kemudian akan memanggil backend API di 10.8.10.120:8000
+// Import utility untuk mendapatkan local IP
+import { getApiBaseUrl, getLocalIP } from '../utils/network';
+
+// Base URL untuk API Server (Proxy Server)
+// Frontend memanggil server.js (proxy) yang berjalan di local IP:7000
+// Server.js kemudian akan memanggil backend API di local IP:8000
+const PROXY_PORT = 7000; // Port untuk proxy server (server.js)
+const BACKEND_PORT = 8000; // Port untuk backend API
+
 export const API_BASE_URL = isDevelopment
-    ? 'http://10.8.10.104:8000'  // Server.js (IP: 10.8.10.104, Port: 8000)
-    : import.meta.env.VITE_API_URL || 'http://10.8.10.104:8000';
+    ? getApiBaseUrl(PROXY_PORT)  // Server.js (Proxy) - menggunakan local IP dengan port 7000
+    : import.meta.env.VITE_API_URL || getApiBaseUrl(PROXY_PORT);
 
 // Base URL untuk WebSocket (jika diperlukan)
 export const WS_BASE_URL = isDevelopment
-    ? 'ws://10.8.10.104:8000'
-    : import.meta.env.VITE_WS_URL || 'ws://10.8.10.104:8000';
+    ? `ws://${getLocalIP()}:${PROXY_PORT}`
+    : import.meta.env.VITE_WS_URL || `ws://${getLocalIP()}:${PROXY_PORT}`;
 
 // ============================================
 // TYPES
