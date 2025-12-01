@@ -52,7 +52,7 @@ export default function Login() {
                 if (err.message === 'NIK tidak ada' || err.message.includes('NIK tidak ada')) {
                     errorMessage = 'NIK tidak ada';
                 } else if (err.message.includes('Failed to fetch') || err.message.includes('Tidak dapat terhubung')) {
-                    errorMessage = 'Tidak dapat terhubung ke server. Pastikan server.js berjalan di http://10.8.10.104:8000';
+                    errorMessage = `Tidak dapat terhubung ke proxy server. Pastikan server.js berjalan di http://${window.location.hostname}:8000`;
                 } else {
                 errorMessage = err.message || errorMessage;
                 }
