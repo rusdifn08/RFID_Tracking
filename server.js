@@ -30,13 +30,15 @@ function getLocalIP() {
     return 'localhost';
 }
 
-const LOCAL_IP = getLocalIP();
-const PORT = process.env.PORT || 6000; // Port untuk proxy server (frontend proxy)
+// Konfigurasi IP dan Port
+const LOCAL_IP = getLocalIP(); // IP local untuk Proxy Server (mengikuti PC yang digunakan)
+const BACKEND_IP = '10.8.0.104'; // IP eksplisit untuk Backend API (tetap sama)
+const PORT = process.env.PORT || 8000; // Port untuk proxy server (frontend proxy)
 const HOST = '0.0.0.0'; // Listen di semua network interface
 const BACKEND_PORT = 7000; // Port untuk backend API
 
-// Backend API URL - menggunakan local IP dengan port 7000
-const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${LOCAL_IP}:${BACKEND_PORT}`;
+// Backend API URL - menggunakan IP eksplisit dengan port 7000
+const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${BACKEND_PORT}`;
 
 // Middleware
 app.use(cors());
@@ -609,12 +611,13 @@ app.post('/api/auth/login', async (req, res) => {
  * Endpoint ini memanggil API backend menggunakan local IP dengan port 7000
  */
 app.get('/user', async (req, res) => {
-    const { nik } = req.query;
+    const { nik, rfid_user } = req.query;
     
     console.log(`\n📥 [SERVER] ==========================================`);
     console.log(`📥 [SERVER] Received request: GET /user`);
     console.log(`📥 [SERVER] Query params:`, req.query);
     console.log(`📥 [SERVER] NIK: ${nik}`);
+    console.log(`📥 [SERVER] RFID User: ${rfid_user}`);
     console.log(`📥 [SERVER] Client IP: ${req.ip || req.connection.remoteAddress}`);
     console.log(`📥 [SERVER] Timestamp: ${new Date().toISOString()}`);
 
@@ -633,7 +636,7 @@ app.get('/user', async (req, res) => {
     }
 
     try {
-        // Panggil API backend yang sebenarnya menggunakan local IP
+        // Panggil API backend yang sebenarnya: http://10.8.0.104:7000/user?nik=...
         const backendUrl = `${BACKEND_API_URL}/user?nik=${encodeURIComponent(nik)}`;
         console.log(`\n🔍 [USER API] ==========================================`);
         console.log(`🔍 [USER API] Fetching user data from backend API`);
@@ -684,46 +687,24 @@ app.get('/user', async (req, res) => {
         }
         console.log(`📥 [USER API] Full response data:`, JSON.stringify(data, null, 2));
 
-        // Cek apakah user ditemukan - prioritas: cek data.user dulu
-        if (data.user && data.user.nik) {
-            // User ditemukan
-            console.log(`✅ [USER API] User found: ${data.user?.nama} (NIK: ${data.user?.nik})`);
-            console.log(`📤 [SERVER] Sending success response to client`);
+        // Forward response dari backend API langsung ke frontend
+        // Backend API mengembalikan struktur: { success, debug, password_hash, user }
+        console.log(`📥 [USER API] Response data:`, JSON.stringify(data, null, 2));
+        
+        // Jika response OK, forward langsung ke frontend
+        if (response.ok) {
+            console.log(`✅ [USER API] Forwarding response to client`);
             console.log(`📥 [SERVER] ==========================================\n`);
-            return res.json({
-                success: true,
-                debug: data.debug || false,
-                password_hash: data.password_hash || '',
-                user: data.user,
-                timestamp: new Date().toISOString()
-            });
-        } else if (response.ok && data.success && data.user) {
-            // Fallback: cek response.ok dan data.success
-            console.log(`✅ [USER API] User found (fallback): ${data.user?.nama} (NIK: ${data.user?.nik})`);
-            console.log(`📤 [SERVER] Sending success response to client`);
-            console.log(`📥 [SERVER] ==========================================\n`);
-            return res.json({
-                success: true,
-                debug: data.debug || false,
-                password_hash: data.password_hash || '',
-                user: data.user,
-                timestamp: new Date().toISOString()
-            });
+            // Forward response dari backend API langsung (termasuk debug, password_hash, user)
+            return res.json(data);
         } else {
-            // NIK tidak ditemukan
-            console.log(`❌ [USER API] User not found for NIK: ${nik}`);
-            console.log(`❌ [USER API] Response details:`, {
-                ok: response.ok,
-                status: response.status,
-                dataSuccess: data.success,
-                hasUser: !!data.user,
-                dataKeys: Object.keys(data || {})
-            });
+            // Response tidak OK
+            console.log(`❌ [USER API] Backend API returned error`);
             console.log(`📤 [SERVER] Sending error response to client`);
             console.log(`📥 [SERVER] ==========================================\n`);
             return res.status(response.status || 404).json({
                 success: false,
-                message: 'NIK tidak ada',
+                message: data.message || data.error || 'User not found',
                 error: data.message || data.error || 'User not found',
                 timestamp: new Date().toISOString()
             });

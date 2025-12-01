@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle2, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 interface ScanningRFIDNewProps {
     isOpen: boolean;
@@ -47,7 +48,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 detik timeout
             
-            const response = await fetch('http://10.8.10.104:8000/health', {
+            const response = await fetch(`${API_BASE_URL}/health`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -203,7 +204,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             };
 
             // Insert langsung ke MySQL database melalui server.js local
-            const response = await fetch('http://10.8.10.104:8000/garment', {
+            const response = await fetch(`${API_BASE_URL}/garment`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -267,7 +268,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             let errorMessage = 'Gagal menyimpan';
             if (error instanceof Error) {
                 if (error.message.includes('Failed to fetch')) {
-                    errorMessage = 'Tidak dapat terhubung ke server. Pastikan server.js berjalan di http://10.8.10.104:8000';
+                    errorMessage = `Tidak dapat terhubung ke proxy server. Pastikan server.js berjalan di http://${window.location.hostname}:8000`;
                 } else {
                     errorMessage = error.message;
                 }
