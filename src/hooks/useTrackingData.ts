@@ -31,20 +31,15 @@ export const useTrackingLineData = (line: string | number) => {
         queryFn: async () => {
             try {
                 const response = await getTrackingLineData(line);
-                console.log('🔍 [useTrackingLineData] Response:', response);
-
                 // getTrackingLineData mengembalikan ApiResponse<TrackingLineData>
                 // Struktur: { success, data: TrackingLineData }
                 // TrackingLineData sendiri adalah { success, line, data: {...} }
                 if (response && response.success && response.data) {
                     // response.data adalah TrackingLineData
                     const trackingData = response.data as TrackingLineData;
-                    console.log('✅ [useTrackingLineData] Tracking data:', trackingData);
-                    console.log('✅ [useTrackingLineData] Data object:', trackingData.data);
                     return trackingData;
                 }
                 // Jika gagal, return default data
-                console.warn('⚠️ [useTrackingLineData] Response tidak valid, menggunakan default data');
                 return defaultData;
             } catch (error) {
                 console.error('❌ [useTrackingLineData] Error fetching tracking data:', error);

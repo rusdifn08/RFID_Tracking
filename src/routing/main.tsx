@@ -97,6 +97,14 @@ const router = createBrowserRouter([
             </ProtectedRoute>
         ),
     },
+    {
+        path: '/list-rfid/:id',
+        element: (
+            <ProtectedRoute>
+                <ListRFID />
+            </ProtectedRoute>
+        ),
+    },
 ]);
 
 export default function AppRouter() {

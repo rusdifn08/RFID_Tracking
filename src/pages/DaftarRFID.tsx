@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
-import { QrCode, Calendar } from 'lucide-react';
+import { QrCode, Calendar, X, ListChecks, XCircle } from 'lucide-react';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
 import { API_BASE_URL } from '../config/api';
 
@@ -55,6 +55,16 @@ export default function DaftarRFID() {
     
     const [dateFrom, setDateFrom] = useState<string>(getTodayDate());
     const [dateTo, setDateTo] = useState<string>(getTodayDate());
+    const [showDateFilterModal, setShowDateFilterModal] = useState<boolean>(false);
+    const [showRegisteredModal, setShowRegisteredModal] = useState<boolean>(false);
+    const [showScanRejectModal, setShowScanRejectModal] = useState<boolean>(false);
+    const [rejectRfidInput, setRejectRfidInput] = useState<string>('');
+    const [rejectScannedItems, setRejectScannedItems] = useState<Array<{ rfid: string; timestamp: Date; status: 'success' | 'error'; message?: string }>>([]);
+    const [isProcessingReject, setIsProcessingReject] = useState<boolean>(false);
+    const rejectInputRef = useRef<HTMLInputElement>(null);
+    const [registeredRFIDData, setRegisteredRFIDData] = useState<any[]>([]);
+    const [loadingRegistered, setLoadingRegistered] = useState<boolean>(false);
+    const [filterStatus, setFilterStatus] = useState<string>('Semua');
     const [workOrderData, setWorkOrderData] = useState<Record<string, WorkOrderData>>({});
     const [loading, setLoading] = useState<boolean>(false);
     
@@ -90,7 +100,6 @@ export default function DaftarRFID() {
             };
             
             const apiUrl = `${API_BASE_URL}/wo/production_branch?production_branch=CJL&line=L1&start_date_from=${formatDateForAPI(dateFrom)}&start_date_to=${formatDateForAPI(dateTo)}`;
-            console.log('🔍 [DaftarRFID] Fetching data from:', apiUrl);
             
             const response = await fetch(apiUrl, {
                 method: 'GET',
@@ -105,7 +114,6 @@ export default function DaftarRFID() {
             }
 
             const result: ProductionBranchResponse = await response.json();
-            console.log('📦 [DaftarRFID] API Response:', result);
             
             // Process data dari API
             const processedData: Record<string, WorkOrderData> = {};
@@ -161,7 +169,6 @@ export default function DaftarRFID() {
                 });
             }
             
-            console.log('✅ [DaftarRFID] Processed data:', processedData);
             setWorkOrderData(processedData);
             
             // Reset form jika work order yang dipilih tidak ada lagi
@@ -178,12 +185,117 @@ export default function DaftarRFID() {
             
             setLoading(false);
         } catch (error) {
-            console.error('❌ [DaftarRFID] Error fetching data:', error);
             setWorkOrderData({});
             setLoading(false);
         }
     };
     
+    // Fetch data registered RFID
+    const fetchRegisteredRFID = async () => {
+        try {
+            setLoadingRegistered(true);
+            const response = await fetch(`${API_BASE_URL}/garment`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            // Handle berbagai format response
+            const data = result.data || result || [];
+            setRegisteredRFIDData(Array.isArray(data) ? data : []);
+        } catch (error) {
+            setRegisteredRFIDData([]);
+        } finally {
+            setLoadingRegistered(false);
+        }
+    };
+
+    // Fetch data saat modal dibuka
+    useEffect(() => {
+        if (showRegisteredModal) {
+            fetchRegisteredRFID();
+        }
+    }, [showRegisteredModal]);
+
+    // Filter data berdasarkan status
+    const filteredRegisteredData = registeredRFIDData.filter(item => {
+        if (filterStatus === 'Semua') return true;
+        const itemStatus = !item.isDone || item.isDone === '' ? 'In Progress' : 
+                          item.isDone === 'Waiting' ? 'Waiting' : 
+                          item.isDone === 'Done' ? 'isDone' : 'In Progress';
+        return itemStatus === filterStatus;
+    });
+
+    // Handle Reject RFID Submit
+    const handleRejectRfidSubmit = async (rfid: string) => {
+        if (!rfid.trim() || isProcessingReject) return;
+
+        setIsProcessingReject(true);
+        const timestamp = new Date();
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/scrap`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    rfid_garment: rfid
+                })
+            });
+
+            const responseData = await response.json();
+
+            if (response.ok && responseData.success) {
+                setRejectScannedItems(prev => [{
+                    rfid: rfid,
+                    timestamp: timestamp,
+                    status: 'success' as const,
+                    message: responseData.message || 'Berhasil diset ke SCRAP'
+                }, ...prev]);
+                setRejectRfidInput('');
+                setTimeout(() => {
+                    rejectInputRef.current?.focus();
+                }, 100);
+            } else {
+                throw new Error(responseData.message || 'Gagal menyimpan data');
+            }
+        } catch (error) {
+            setRejectScannedItems(prev => [{
+                rfid: rfid,
+                timestamp: timestamp,
+                status: 'error' as const,
+                message: error instanceof Error ? error.message : 'Gagal menyimpan data'
+            }, ...prev]);
+            setRejectRfidInput('');
+            setTimeout(() => {
+                rejectInputRef.current?.focus();
+            }, 100);
+        } finally {
+            setIsProcessingReject(false);
+        }
+    };
+
+    // Reset reject modal saat dibuka/ditutup
+    useEffect(() => {
+        if (showScanRejectModal) {
+            setRejectRfidInput('');
+            setRejectScannedItems([]);
+            setIsProcessingReject(false);
+            setTimeout(() => {
+                rejectInputRef.current?.focus();
+            }, 100);
+        }
+    }, [showScanRejectModal]);
+
     // Fetch data saat component mount dan saat date berubah
     useEffect(() => {
         fetchProductionBranchData();
@@ -192,7 +304,6 @@ export default function DaftarRFID() {
     // Sync ref dengan state
     useEffect(() => {
         modalOpenRef.current = isModalOpen;
-        console.log('[DaftarRFID] Modal state updated:', isModalOpen);
     }, [isModalOpen]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -228,9 +339,6 @@ export default function DaftarRFID() {
         }
         
         // Buka modal scanning - langsung set tanpa setTimeout
-        console.log('[DaftarRFID] Opening modal, form data:', formData);
-        console.log('[DaftarRFID] Current isModalOpen state:', isModalOpen);
-        console.log('[DaftarRFID] Current modalOpenRef:', modalOpenRef.current);
         
         // Set ref terlebih dahulu
         modalOpenRef.current = true;
@@ -238,10 +346,8 @@ export default function DaftarRFID() {
         // Gunakan functional update untuk memastikan state update
         setIsModalOpen(prev => {
             if (prev === true) {
-                console.warn('[DaftarRFID] Modal already open, skipping');
                 return prev;
             }
-            console.log('[DaftarRFID] Setting modal to true, previous state:', prev);
             return true;
         });
         
@@ -292,36 +398,28 @@ export default function DaftarRFID() {
                             <div className={`absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none transition-opacity duration-500 ${hoveredCard ? 'opacity-100' : 'opacity-50'}`}></div>
 
                             {/* Header Section - Compact untuk Mobile */}
-                            <div className="flex-shrink-0 mb-2 sm:mb-4">
+                            <div className="flex-shrink-0 mb-2 sm:mb-4 relative">
                                 {/* Date Range Picker dan Icon RFID */}
                                 <div className="flex items-center justify-between mb-1.5 sm:mb-3 gap-2">
-                                    {/* Date Range Picker */}
+                                    {/* Date Range Picker - Tombol untuk membuka modal */}
                                     <div className="flex items-center gap-2 flex-1">
-                                        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
-                                            <Calendar size={16} className="text-blue-600" />
-                                            <input
-                                                type="date"
-                                                value={dateFrom}
-                                                onChange={(e) => setDateFrom(e.target.value)}
-                                                className="text-xs sm:text-sm text-gray-700 bg-transparent border-none outline-none focus:ring-0 cursor-pointer"
-                                                title="Tanggal Dari"
-                                            />
-                                        </div>
-                                        <span className="text-gray-500 text-xs">s/d</span>
-                                        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
-                                            <Calendar size={16} className="text-blue-600" />
-                                            <input
-                                                type="date"
-                                                value={dateTo}
-                                                onChange={(e) => setDateTo(e.target.value)}
-                                                className="text-xs sm:text-sm text-gray-700 bg-transparent border-none outline-none focus:ring-0 cursor-pointer"
-                                                title="Tanggal Sampai"
-                                            />
-                                        </div>
+                                        <button
+                                            onClick={() => setShowDateFilterModal(true)}
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
+                                            title="Filter Tanggal"
+                                        >
+                                            <Calendar size={18} />
+                                            <span className="text-xs sm:text-sm font-medium">
+                                                {dateFrom === dateTo 
+                                                    ? new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                    : `${new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} - ${new Date(dateTo).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                }
+                                            </span>
+                                        </button>
                                     </div>
                                     
-                                    {/* Icon RFID di tengah */}
-                                    <div className="flex-shrink-0">
+                                    {/* Icon RFID di tengah - Absolute center */}
+                                    <div className="absolute left-1/2 transform -translate-x-1/2 flex-shrink-0 z-10">
                                         <div
                                             className={`w-10 h-10 sm:w-14 sm:h-14 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
                                         >
@@ -334,6 +432,26 @@ export default function DaftarRFID() {
                                     
                                     {/* Spacer untuk balance */}
                                     <div className="flex-1"></div>
+                                    
+                                    {/* Registered RFID Button - Paling Kanan */}
+                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                        <button
+                                            onClick={() => setShowRegisteredModal(true)}
+                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
+                                            title="Registered RFID"
+                                        >
+                                            <ListChecks size={18} />
+                                            <span className="text-xs sm:text-sm font-medium">REGISTERED RFID</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setShowScanRejectModal(true)}
+                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
+                                            title="Scan Reject"
+                                        >
+                                            <XCircle size={18} />
+                                            <span className="text-xs sm:text-sm font-medium">SCAN REJECT</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Title */}
@@ -524,6 +642,339 @@ export default function DaftarRFID() {
             </div>
 
             {/* Scanning RFID Modal - Design Baru */}
+            {/* Date Filter Modal */}
+            {showDateFilterModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDateFilterModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6">
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-xl font-bold text-slate-800">Filter Tanggal</h2>
+                                <button
+                                    onClick={() => setShowDateFilterModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-700"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Filter Form */}
+                            <div className="space-y-4">
+                                {/* Date From */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Date From</label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={dateFrom}
+                                            onChange={(e) => setDateFrom(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        />
+                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                                    </div>
+                                </div>
+
+                                {/* Date To */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Date To</label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={dateTo}
+                                            onChange={(e) => setDateTo(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        />
+                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer Buttons */}
+                            <div className="mt-6 flex gap-3">
+                                <button
+                                    onClick={() => {
+                                        const today = getTodayDate();
+                                        setDateFrom(today);
+                                        setDateTo(today);
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors"
+                                >
+                                    Reset
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowDateFilterModal(false);
+                                        // Data akan otomatis di-fetch karena useEffect yang watch dateFrom dan dateTo
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
+                                >
+                                    Terapkan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Registered RFID Modal */}
+            {showRegisteredModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowRegisteredModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 flex-shrink-0 border-b border-slate-200">
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-slate-800">Registered RFID</h2>
+                                <button
+                                    onClick={() => setShowRegisteredModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-700"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Filter Status */}
+                            <div className="flex items-center gap-3">
+                                <label className="text-sm font-medium text-slate-700">Filter Status:</label>
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => setFilterStatus(e.target.value)}
+                                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                                >
+                                    <option value="Semua">Semua</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Waiting">Waiting</option>
+                                    <option value="isDone">isDone</option>
+                                </select>
+                                <div className="ml-auto text-sm text-slate-500">
+                                    Total: <span className="font-bold text-slate-700">{filteredRegisteredData.length}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Table Content */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {loadingRegistered ? (
+                                <div className="flex items-center justify-center h-64">
+                                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : filteredRegisteredData.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                                    <ListChecks size={48} className="mb-4 opacity-50" />
+                                    <p className="text-lg font-medium">Tidak ada data</p>
+                                    <p className="text-sm">Tidak ada RFID yang terdaftar</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">RFID ID</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">WO</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Style</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Buyer</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Item</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Color</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Size</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider border-b border-slate-600">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-slate-200">
+                                            {filteredRegisteredData.map((item, index) => {
+                                                const status = !item.isDone || item.isDone === '' ? 'In Progress' : item.isDone === 'Waiting' ? 'Waiting' : 'isDone';
+                                                const statusColor = status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' : 
+                                                                   status === 'Waiting' ? 'bg-blue-100 text-blue-800' : 
+                                                                   'bg-green-100 text-green-800';
+                                                
+                                                return (
+                                                    <tr key={item.id || index} className={`hover:bg-slate-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                        <td className="px-4 py-3 text-sm font-mono font-bold text-blue-600">{item.rfid_garment || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.wo || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.style || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.buyer || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.item || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.color || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700">{item.size || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${statusColor}`}>
+                                                                {status}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Scan Reject Modal - Tema Merah */}
+            {showScanRejectModal && (
+                <div 
+                    className="fixed inset-0 z-[1000] flex items-center justify-center"
+                    style={{
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        animation: 'fadeIn 0.3s ease'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowScanRejectModal(false);
+                        }
+                    }}
+                >
+                    <div 
+                        className="bg-white rounded-3xl shadow-2xl w-[95%] max-w-[900px] max-h-[95vh] flex flex-col"
+                        style={{
+                            background: 'linear-gradient(135deg, #FFFFFF 0%, #FEF2F2 100%)',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(220, 38, 38, 0.1), 0 8px 16px -8px rgba(239, 68, 68, 0.1)',
+                            animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                            border: '1px solid rgba(254, 226, 226, 0.8)',
+                            padding: '1.5rem',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header - Tema Merah */}
+                        <div 
+                            className="text-center mb-2"
+                            style={{
+                                background: 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 50%, #FCA5A5 100%)',
+                                borderRadius: '6px',
+                                padding: '0.25rem 0.5rem',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.08)'
+                            }}
+                        >
+                            <h2 
+                                className="text-xl font-extrabold mb-1"
+                                style={{
+                                    background: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text',
+                                    letterSpacing: '-0.5px'
+                                }}
+                            >
+                                🚫 Scan Reject Mati
+                            </h2>
+                            <p className="text-sm font-medium" style={{ color: '#7F1D1D' }}>
+                                Scan RFID untuk produk garment yang dinyatakan reject mati
+                            </p>
+                        </div>
+
+                        {/* Input Section - Tema Merah */}
+                        <div className="mb-4">
+                            <div 
+                                className="relative"
+                                style={{
+                                    background: 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)',
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    border: '2px solid #FCA5A5',
+                                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
+                                }}
+                            >
+                                <label 
+                                    className="block text-sm font-bold mb-2"
+                                    style={{ color: '#991B1B' }}
+                                >
+                                    Scan RFID Reject:
+                                </label>
+                                <input
+                                    ref={rejectInputRef}
+                                    type="text"
+                                    value={rejectRfidInput}
+                                    onChange={(e) => setRejectRfidInput(e.target.value)}
+                                    onKeyDown={async (e) => {
+                                        if (e.key === 'Enter' && rejectRfidInput.trim() && !isProcessingReject) {
+                                            await handleRejectRfidSubmit(rejectRfidInput.trim());
+                                        }
+                                    }}
+                                    placeholder="Tempatkan RFID di scanner atau ketik manual..."
+                                    className="w-full px-4 py-3 rounded-lg border-2 border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none text-lg font-mono"
+                                    style={{
+                                        background: '#FFFFFF',
+                                        color: '#1F2937'
+                                    }}
+                                    autoFocus
+                                    disabled={isProcessingReject}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Scanned Items List - Tema Merah */}
+                        <div 
+                            className="flex-1 overflow-y-auto mb-4"
+                            style={{
+                                background: 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)',
+                                borderRadius: '12px',
+                                padding: '1rem',
+                                border: '1px solid #FCA5A5',
+                                minHeight: '200px',
+                                maxHeight: '300px'
+                            }}
+                        >
+                            {rejectScannedItems.length === 0 ? (
+                                <div className="text-center text-slate-500 text-sm py-8">
+                                    Belum ada RFID yang di-scan
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {rejectScannedItems.map((item, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex items-center justify-between p-3 rounded-lg"
+                                            style={{
+                                                background: item.status === 'success' ? '#FEE2E2' : '#FEF2F2',
+                                                border: `2px solid ${item.status === 'success' ? '#FCA5A5' : '#FECACA'}`
+                                            }}
+                                        >
+                                            <div className="flex-1">
+                                                <div className="font-mono font-bold text-sm" style={{ color: '#7F1D1D' }}>
+                                                    {item.rfid}
+                                                </div>
+                                                <div className="text-xs" style={{ color: item.status === 'success' ? '#059669' : '#DC2626' }}>
+                                                    {item.message || (item.status === 'success' ? 'Berhasil' : 'Gagal')}
+                                                </div>
+                                                <div className="text-xs text-slate-500">
+                                                    {item.timestamp.toLocaleTimeString('id-ID')}
+                                                </div>
+                                            </div>
+                                            {item.status === 'success' ? (
+                                                <div className="text-green-600">✓</div>
+                                            ) : (
+                                                <div className="text-red-600">✗</div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer Buttons - Tema Merah */}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowScanRejectModal(false)}
+                                className="flex-1 px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-bold text-sm transition-all"
+                            >
+                                Tutup
+                            </button>
+                            <button
+                                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm transition-all shadow-lg"
+                            >
+                                Simpan Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <ScanningRFIDNew
                 isOpen={isModalOpen}
                 onClose={() => {

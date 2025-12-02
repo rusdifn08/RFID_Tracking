@@ -227,16 +227,6 @@ export const apiRequest = async <T = any>(
             responseData = data.data || data;
         }
         
-        console.log(`✅ [API REQUEST] Success [${endpoint}]:`, {
-            status: response.status,
-            hasData: !!responseData,
-            dataKeys: responseData ? Object.keys(responseData) : []
-        });
-        
-        // Log detail untuk tracking/line endpoint
-        if (endpoint.includes('/tracking/line')) {
-            console.log(`📊 [API REQUEST] Tracking line data:`, JSON.stringify(responseData, null, 2));
-        }
         
         return {
             success: true,
@@ -492,16 +482,8 @@ export const login = async (nik: string, password?: string): Promise<ApiResponse
     try {
         // Panggil API baru: GET /user?nik=...
         const endpoint = `/user?nik=${encodeURIComponent(nik)}`;
-        console.log(`🔍 [LOGIN] Calling API: ${endpoint}`);
         const response = await apiGet<LoginResponse>(endpoint);
         
-        console.log(`📥 [LOGIN] API Response:`, {
-            success: response.success,
-            status: response.status,
-            hasData: !!response.data,
-            hasUser: !!response.data?.user,
-            data: response.data
-        });
         
         // Cek jika response berhasil dan ada data user
         if (response.success && response.data && response.data.user) {
@@ -511,12 +493,6 @@ export const login = async (nik: string, password?: string): Promise<ApiResponse
             // Bandingkan dengan pwd_md5 dari database
             const dbPasswordHash = response.data.user.pwd_md5 || '';
             
-            console.log('🔐 [LOGIN] Password comparison:', {
-                inputPassword: password,
-                inputHash: passwordHash,
-                dbHash: dbPasswordHash,
-                match: passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()
-            });
             
             if (passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()) {
                 // Password cocok, return success

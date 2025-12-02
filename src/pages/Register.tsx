@@ -65,7 +65,6 @@ export default function Register() {
             });
 
             const responseData = await response.json();
-            console.log('📥 [Register] API Response:', responseData);
 
             if (response.ok && responseData.success) {
                 setSuccess('Registrasi berhasil! Silakan login dengan NIK dan Password Anda.');

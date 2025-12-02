@@ -1465,6 +1465,16 @@ app.post('/inputUser', async (req, res) => {
     return await proxyRequest('/inputUser', req, res);
 });
 
+/**
+ * POST /scrap - Set RFID garment ke status SCRAP
+ * Body: { rfid_garment }
+ */
+app.post('/scrap', async (req, res) => {
+    console.log(`\n📥 [POST /scrap] Request received`);
+    console.log(`📥 [POST /scrap] Body:`, req.body);
+    return await proxyRequest('/scrap', req, res);
+});
+
 // ============================================
 // ERROR HANDLING
 // ============================================

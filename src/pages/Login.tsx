@@ -102,8 +102,11 @@ export default function Login() {
                     <div className="relative z-10 flex flex-col h-full w-full px-6 xl:px-12 py-8 xl:py-12 text-white">
                         {/* Title - Centered */}
                         <div className="flex-1 flex flex-col justify-center items-center text-center px-4">
-                            <h1 className="text-xl xl:text-2xl 2xl:text-3xl font-bold mb-4 xl:mb-6 leading-tight max-w-2xl">
-                                Enterprise Resource Monitoring System PT. Gistex Garment Indonesia
+                            <h1 className="text-xl xl:text-2xl 2xl:text-3xl font-bold  leading-tight max-w-2xl">
+                                Enterprise Resource Monitoring System 
+                            </h1>
+                            <h1 className="text-xl xl:text-2xl 2xl:text-3xl font-bold  leading-tight max-w-2xl">
+                                PT. Gistex Garment Indonesia
                             </h1>
 
                             {/* Illustration - Login SVG */}

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
 import ExportModal from '../components/ExportModal';
-import { exportToExcel } from '../utils/exportToExcel';
+import { exportListRFIDToExcel } from '../utils/exportToExcel';
 import { API_BASE_URL } from '../config/api';
 import {
     Search,
@@ -17,7 +17,9 @@ import {
     MapPin,
     Box,
     FileText,
-    Activity
+    Activity,
+    Calendar,
+    Download
 } from 'lucide-react';
 
 interface RFIDItem {
@@ -32,6 +34,8 @@ interface RFIDItem {
     status: string;
     lokasi?: string;
     line?: string;
+    lineNumber?: string; // Line number asli dari API (untuk filtering)
+    timestamp?: string;
 }
 
 // Interface untuk response dari API tracking/rfid_garment
@@ -61,22 +65,28 @@ interface TrackingRFIDGarmentResponse {
 const ListRFID: React.FC = () => {
     const { isOpen } = useSidebar();
     const location = useLocation();
+    const { id } = useParams<{ id: string }>();
     const [rfidData, setRfidData] = useState<RFIDItem[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>('');
     
-    // Deteksi line dari URL query parameter atau default ke line 1
+    // Deteksi line dari URL parameter atau default ke line 1
     const getLineFromUrl = (): string => {
-        // Cek query parameter ?line=1
+        // Prioritas 1: Path parameter /list-rfid/:id
+        if (id) {
+            return id;
+        }
+        
+        // Prioritas 2: Query parameter ?line=1
         const urlParams = new URLSearchParams(location.search);
         const lineParam = urlParams.get('line');
         if (lineParam) {
             return lineParam;
         }
         
-        // Cek path parameter /list-rfid/:line
-        const lineMatch = location.pathname.match(/\/list-rfid\/?(\d+)?/);
+        // Prioritas 3: Path parameter dari pathname
+        const lineMatch = location.pathname.match(/\/list-rfid\/(\d+)/);
         if (lineMatch && lineMatch[1]) {
             return lineMatch[1];
         }
@@ -92,6 +102,14 @@ const ListRFID: React.FC = () => {
     const [filterBuyer, setFilterBuyer] = useState<string>('');
     const [filterStatus, setFilterStatus] = useState<string>('');
     const [filterLocation, setFilterLocation] = useState<string>('');
+    
+    // New filters for modal
+    const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
+    const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+    const [filterDateTo, setFilterDateTo] = useState<string>('');
+    const [filterStatusModal, setFilterStatusModal] = useState<string>('Semua');
+    const [filterSize, setFilterSize] = useState<string>('Semua');
+    const [filterColor, setFilterColor] = useState<string>('Semua');
 
     const [selectedScan, setSelectedScan] = useState<RFIDItem | null>(null);
     const [showModal, setShowModal] = useState<boolean>(false);
@@ -99,93 +117,6 @@ const ListRFID: React.FC = () => {
     const [itemToDelete, setItemToDelete] = useState<RFIDItem | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
     const [showExportModal, setShowExportModal] = useState<boolean>(false);
-
-    // Fungsi untuk handle export
-    const handleExport = (format: 'excel' | 'csv') => {
-        const now = new Date();
-        const tanggal = now.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
-        });
-
-        // Filter data berdasarkan filter yang aktif
-        const filteredData = rfidData.filter(item => {
-            const matchSearch = !searchTerm || 
-                item.rfid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                item.style?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                item.buyer?.toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchWO = !filterWO || item.nomor_wo === filterWO;
-            const matchBuyer = !filterBuyer || item.buyer === filterBuyer;
-            const matchStatus = !filterStatus || item.status === filterStatus;
-            const matchLocation = !filterLocation || item.lokasi === filterLocation;
-
-            return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation;
-        });
-
-        // Konversi data RFID ke format export
-        const exportData = filteredData.map(item => {
-            // Hitung balance (untuk sementara menggunakan nilai default)
-            const outputSewing = 0; // Tidak ada data output di ListRFID
-            const qcGood = item.status === 'Good' ? 1 : 0;
-            const qcRework = item.status === 'Rework' ? 1 : 0;
-            const qcReject = item.status === 'Reject' ? 1 : 0;
-            const qcWira = 0; // Tidak ada data WIRA di ListRFID
-            const pqcGood = 0;
-            const pqcRework = 0;
-            const pqcReject = 0;
-            const pqcWira = 0;
-            const goodSewing = 0;
-            const balance = 0;
-
-            return {
-                tanggal: tanggal,
-                line: item.line || 'LINE 1',
-                wo: item.nomor_wo || '-',
-                style: item.style || '-',
-                item: item.item || '-',
-                buyer: item.buyer || '-',
-                outputSewing: outputSewing,
-                qcRework: qcRework,
-                qcWira: qcWira,
-                qcReject: qcReject,
-                qcGood: qcGood,
-                pqcRework: pqcRework,
-                pqcWira: pqcWira,
-                pqcReject: pqcReject,
-                pqcGood: pqcGood,
-                goodSewing: goodSewing,
-                balance: balance
-            };
-        });
-
-        // Jika tidak ada data, buat satu row kosong
-        if (exportData.length === 0) {
-            exportData.push({
-                tanggal: tanggal,
-                line: 'LINE 1',
-                wo: '-',
-                style: '-',
-                item: '-',
-                buyer: '-',
-                outputSewing: 0,
-                qcRework: 0,
-                qcWira: 0,
-                qcReject: 0,
-                qcGood: 0,
-                pqcRework: 0,
-                pqcWira: 0,
-                pqcReject: 0,
-                pqcGood: 0,
-                goodSewing: 0,
-                balance: 0
-            });
-        }
-
-        const lineId = filteredData[0]?.line?.match(/\d+/)?.[0] || '1';
-        exportToExcel(exportData, lineId, format);
-    };
 
     // Fetch data dari API tracking/rfid_garment
     const fetchRFIDData = async () => {
@@ -196,8 +127,6 @@ const ListRFID: React.FC = () => {
             // Panggil API: http://10.8.0.104:7000/tracking/rfid_garment
             // API ini akan dipanggil melalui proxy server (server.js)
             const apiUrl = `${API_BASE_URL}/tracking/rfid_garment`;
-            console.log('🔍 [ListRFID] Fetching data from:', apiUrl);
-            console.log('🔍 [ListRFID] Current line filter:', currentLine);
             
             const response = await fetch(apiUrl, {
                 method: 'GET',
@@ -207,16 +136,13 @@ const ListRFID: React.FC = () => {
                 },
             });
 
-            console.log('📥 [ListRFID] Response status:', response.status, response.statusText);
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('❌ [ListRFID] HTTP Error:', errorText);
                 throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
             }
 
             const rawResult = await response.json();
-            console.log('📦 [ListRFID] Raw API Response:', rawResult);
             
             // Handle berbagai format response
             let result: TrackingRFIDGarmentResponse;
@@ -237,15 +163,9 @@ const ListRFID: React.FC = () => {
                 };
             }
             
-            console.log('📦 [ListRFID] Parsed Response:', {
-                count: result.count,
-                dataLength: result.data?.length || 0,
-                firstItem: result.data?.[0]
-            });
             
             // Pastikan result.data adalah array
             if (!result.data || !Array.isArray(result.data)) {
-                console.warn('⚠️ [ListRFID] Data is not an array:', result);
                 setRfidData([]);
                 setLoading(false);
                 return;
@@ -253,16 +173,18 @@ const ListRFID: React.FC = () => {
             
             // Mapping data dari API ke format RFIDItem
             const mappedData: RFIDItem[] = result.data.map((item) => {
-                // Convert last_status ke format yang sesuai (Good, Rework, Reject)
+                // Convert last_status ke format yang sesuai (Good, Rework, Reject, OUTPUT)
                 let status = 'Unknown';
                 if (item.last_status) {
-                    const upperStatus = item.last_status.toUpperCase();
+                    const upperStatus = item.last_status.toUpperCase().trim();
                     if (upperStatus === 'GOOD') {
                         status = 'Good';
                     } else if (upperStatus === 'REWORK') {
                         status = 'Rework';
                     } else if (upperStatus === 'REJECT') {
                         status = 'Reject';
+                    } else if (upperStatus === 'OUTPUT_SEWING' || upperStatus.includes('OUTPUT_SEWING')) {
+                        status = 'OUTPUT';
                     } else {
                         status = item.last_status;
                     }
@@ -280,44 +202,37 @@ const ListRFID: React.FC = () => {
                     color: item.color,
                     size: item.size,
                     status: status,
-                    lokasi: item.bagian || '', // bagian -> lokasi
+                    lokasi: (() => {
+                        // Jika bagian adalah "IRON" atau "OPERATOR", tampilkan "SEWING"
+                        const bagian = (item.bagian || '').trim().toUpperCase();
+                        if (bagian === 'IRON' || bagian === 'OPERATOR') {
+                            return 'SEWING';
+                        }
+                        return (item.bagian || '').trim(); // bagian -> lokasi, trim untuk menghilangkan whitespace
+                    })(),
                     line: `Line ${itemLine}`,
+                    lineNumber: itemLine, // Simpan line number asli untuk filtering
+                    timestamp: item.timestamp || '',
                 };
             });
             
-            console.log('🔄 [ListRFID] Mapped data count:', mappedData.length);
             
             // Filter berdasarkan line jika currentLine ada
-            // Untuk sementara, tampilkan semua data tanpa filter line
-            // Karena semua data dari API sudah memiliki line yang sesuai
             let filteredByLine = mappedData;
             
             if (currentLine && currentLine !== 'all') {
                 filteredByLine = mappedData.filter(item => {
-                    // Extract line number dari format "Line 1" atau langsung dari item.line
-                    let itemLineNumber = '1';
-                    if (item.line) {
-                        const lineMatch = item.line.toString().match(/\d+/);
-                        if (lineMatch) {
-                            itemLineNumber = lineMatch[0];
-                        }
-                    }
-                    const matches = itemLineNumber === currentLine;
-                    if (!matches && mappedData.length < 20) {
-                        // Hanya log jika data sedikit untuk debugging
-                        console.log(`🔍 [ListRFID] Filtered out: line ${itemLineNumber} !== ${currentLine}`, item);
-                    }
+                    // Gunakan lineNumber yang sudah disimpan dari API
+                    const itemLineNumber = item.lineNumber || '1';
+                    // Normalize comparison - pastikan kedua nilai adalah string
+                    const matches = String(itemLineNumber).trim() === String(currentLine).trim();
                     return matches;
                 });
             }
             
-            console.log('✅ [ListRFID] Final filtered data count:', filteredByLine.length);
-            console.log('✅ [ListRFID] Sample data:', filteredByLine.slice(0, 3));
-            
             setRfidData(filteredByLine);
             setLoading(false);
         } catch (error) {
-            console.error('❌ [ListRFID] Error fetching RFID data:', error);
             setError(error instanceof Error ? error.message : 'Gagal memuat data RFID');
             setRfidData([]);
             setLoading(false);
@@ -327,20 +242,81 @@ const ListRFID: React.FC = () => {
     // Load data saat component mount dan saat line berubah
     useEffect(() => {
         fetchRFIDData();
-    }, [currentLine]);
+    }, [currentLine, id]);
+
+    // Helper function to parse timestamp
+    const parseTimestamp = (timestamp: string): Date | null => {
+        if (!timestamp) return null;
+        try {
+            // Format: "Mon, 01 Dec 2025 11:08:06 GMT" atau format ISO
+            const date = new Date(timestamp);
+            // Validasi apakah date valid
+            if (isNaN(date.getTime())) {
+                return null;
+            }
+            return date;
+        } catch (e) {
+            return null;
+        }
+    };
 
     // Filter data
     const filteredData = rfidData.filter(item => {
-        const matchSearch = (item.rfid?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (item.nomor_wo?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (item.style?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+        // Search di semua kolom - trim untuk menghilangkan whitespace
+        const searchTrimmed = searchTerm.trim();
+        const searchLower = searchTrimmed.toLowerCase();
+        const matchSearch = !searchTrimmed || 
+            (item.rfid?.toLowerCase() || '').includes(searchLower) ||
+            (item.nomor_wo?.toLowerCase() || '').includes(searchLower) ||
+            (item.style?.toLowerCase() || '').includes(searchLower) ||
+            (item.buyer?.toLowerCase() || '').includes(searchLower) ||
+            (item.item?.toLowerCase() || '').includes(searchLower) ||
+            (item.color?.toLowerCase() || '').includes(searchLower) ||
+            (item.size?.toLowerCase() || '').includes(searchLower) ||
+            (item.status?.toLowerCase() || '').includes(searchLower) ||
+            (item.lokasi?.toLowerCase() || '').includes(searchLower) ||
+            (item.line?.toLowerCase() || '').includes(searchLower);
 
         const matchWO = !filterWO || item.nomor_wo === filterWO;
         const matchBuyer = !filterBuyer || item.buyer === filterBuyer;
         const matchStatus = !filterStatus || item.status === filterStatus;
         const matchLocation = !filterLocation || item.lokasi === filterLocation;
 
-        return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation;
+        // Filter dari modal: Date range
+        let matchDate = true;
+        if (filterDateFrom || filterDateTo) {
+            const itemDate = parseTimestamp(item.timestamp || '');
+            if (itemDate) {
+                if (filterDateFrom) {
+                    const fromDate = new Date(filterDateFrom);
+                    fromDate.setHours(0, 0, 0, 0);
+                    if (itemDate < fromDate) {
+                        matchDate = false;
+                    }
+                }
+                if (filterDateTo) {
+                    const toDate = new Date(filterDateTo);
+                    toDate.setHours(23, 59, 59, 999);
+                    if (itemDate > toDate) {
+                        matchDate = false;
+                    }
+                }
+            } else {
+                matchDate = false; // Jika tidak ada timestamp, exclude jika filter date aktif
+            }
+        }
+
+        // Filter dari modal: Status
+        const matchStatusModal = filterStatusModal === 'Semua' || item.status === filterStatusModal;
+
+        // Filter dari modal: Size
+        const matchSize = filterSize === 'Semua' || item.size === filterSize;
+
+        // Filter dari modal: Color
+        const matchColor = filterColor === 'Semua' || item.color === filterColor;
+
+        return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation && 
+               matchDate && matchStatusModal && matchSize && matchColor;
     });
 
     // Get unique values for filters
@@ -348,6 +324,22 @@ const ListRFID: React.FC = () => {
     const uniqueBuyers = [...new Set(rfidData.map(item => item.buyer).filter(Boolean))].sort();
     const uniqueStatuses = [...new Set(rfidData.map(item => item.status).filter(Boolean))].sort();
     const uniqueLocations = [...new Set(rfidData.map(item => item.lokasi).filter(Boolean))].sort();
+    const uniqueSizes = [...new Set(rfidData.map(item => item.size).filter(Boolean))].sort();
+    const uniqueColors = [...new Set(rfidData.map(item => item.color).filter(Boolean))].sort();
+
+    // Handle filter modal
+    const handleFilterData = () => {
+        setShowFilterModal(false);
+        // Filter sudah diterapkan melalui filteredData
+    };
+
+    const handleResetFilter = () => {
+        setFilterDateFrom('');
+        setFilterDateTo('');
+        setFilterStatusModal('Semua');
+        setFilterSize('Semua');
+        setFilterColor('Semua');
+    };
 
     // Handle view details
     const handleView = (item: RFIDItem) => {
@@ -359,6 +351,38 @@ const ListRFID: React.FC = () => {
     const handleCloseModal = () => {
         setShowModal(false);
         setSelectedScan(null);
+    };
+
+    // Fungsi untuk handle export
+    const handleExport = async (format: 'excel' | 'csv') => {
+        const statusCounts = {
+            Good: filteredData.filter(item => item.status === 'Good').length,
+            Rework: filteredData.filter(item => item.status === 'Rework').length,
+            Reject: filteredData.filter(item => item.status === 'Reject').length,
+            OUTPUT: filteredData.filter(item => item.status === 'OUTPUT').length,
+            Unknown: filteredData.filter(item => !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(item.status)).length
+        };
+
+        const lokasiCounts: Record<string, number> = {};
+        filteredData.forEach(item => {
+            const lokasi = item.lokasi || 'Unknown';
+            lokasiCounts[lokasi] = (lokasiCounts[lokasi] || 0) + 1;
+        });
+
+        const lineId = currentLine || '1';
+        const summary = {
+            totalData: filteredData.length,
+            statusCounts,
+            lokasiCounts,
+            line: `Line ${lineId}`,
+            exportDate: new Date().toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            })
+        };
+
+        await exportListRFIDToExcel(filteredData, lineId, format, summary);
     };
 
     // Handle refresh data
@@ -377,7 +401,6 @@ const ListRFID: React.FC = () => {
         if (!itemToDelete) return;
 
         setIsDeleting(true);
-        // Simulasi delete untuk mock data
         setTimeout(() => {
             setRfidData(prev => prev.filter(item => item.id !== itemToDelete.id));
             showNotification(`✅ Data RFID "${itemToDelete.rfid}" berhasil dihapus!`);
@@ -435,7 +458,7 @@ const ListRFID: React.FC = () => {
                 }}
             >
                 {/* Header - Fixed Position handled in Header component */}
-                <Header onExportClick={() => setShowExportModal(true)} />
+                <Header />
 
                 {/* Page Content */}
                 <main
@@ -463,9 +486,25 @@ const ListRFID: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowFilterModal(true)}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
+                                title="Filter Data"
+                            >
+                                <Filter size={18} />
+                                <span>Filter Data</span>
+                            </button>
+                            <button
+                                onClick={() => setShowExportModal(true)}
+                                className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
+                                title="Export Excel"
+                            >
+                                <Download className="w-4 h-4" strokeWidth={2.5} />
+                                <span>Export</span>
+                            </button>
                             <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
                                 <span className="text-slate-500 text-sm font-semibold">Total ID:</span>
-                                <span className="text-blue-600 text-xl font-bold">{rfidData.length}</span>
+                                <span className="text-blue-600 text-xl font-bold">{filteredData.length}</span>
                             </div>
                             <button
                                 onClick={handleRefresh}
@@ -487,7 +526,7 @@ const ListRFID: React.FC = () => {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input
                                     type="text"
-                                    placeholder="Search by RFID ID, Work Order, or Style..."
+                                    placeholder="Search by RFID, WO, Style, Buyer, Item, Color, Size, Status, Location, Line..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
@@ -676,9 +715,11 @@ const ListRFID: React.FC = () => {
                                                         ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200' 
                                                         : item.status === 'Reject' 
                                                         ? 'bg-gradient-to-r from-red-100 to-rose-100 text-red-800 border border-red-200'
+                                                        : item.status === 'OUTPUT'
+                                                        ? 'bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200'
                                                         : 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 border border-yellow-200'
                                                 }`}>
-                                                    {item.status || 'Unknown'}
+                                                    {(item.status || 'Unknown').toUpperCase()}
                                                 </span>
                                             </div>
                                             <div className="w-[85px] shrink-0 text-center">
@@ -688,7 +729,16 @@ const ListRFID: React.FC = () => {
                                                         : 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border border-slate-200'
                                                 }`}>
                                                     <MapPin size={11} />
-                                                    <span className="truncate">{item.lokasi || '-'}</span>
+                                                    {(() => {
+                                                        const lokasiUpper = item.lokasi?.toUpperCase().trim() || '';
+                                                        const isOutputSewing = lokasiUpper === 'OUTPUT_SEWING' || lokasiUpper.includes('OUTPUT_SEWING');
+                                                        
+                                                        return isOutputSewing ? (
+                                                            <span className="truncate">OUTPUT</span>
+                                                        ) : (
+                                                            <span className="truncate">{item.lokasi || '-'}</span>
+                                                        );
+                                                    })()}
                                                 </span>
                                             </div>
                                             <div className="w-[75px] shrink-0 text-center">
@@ -724,74 +774,104 @@ const ListRFID: React.FC = () => {
 
             {/* Detail Modal */}
             {showModal && selectedScan && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={handleCloseModal}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between text-white">
-                            <h2 className="text-lg font-bold flex items-center gap-2">
-                                <FileText size={20} />
-                                Detail RFID Data
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={handleCloseModal}>
+                    <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between text-white flex-shrink-0">
+                            <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                <FileText size={18} className="sm:w-5 sm:h-5" />
+                                <span>Detail RFID Data</span>
                             </h2>
-                            <button onClick={handleCloseModal} className="text-white/80 hover:text-white transition-colors">
-                                <X size={24} />
+                            <button onClick={handleCloseModal} className="text-white/80 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg">
+                                <X size={20} className="sm:w-6 sm:h-6" />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">RFID ID</span>
-                                <span className="font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-sm">{selectedScan.rfid}</span>
+                        <div className="p-4 sm:p-6 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1">
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">RFID ID</span>
+                                <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-xs sm:text-sm ml-2 text-right break-all">{selectedScan.rfid}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Nomor WO</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.nomor_wo}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Nomor WO</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right break-all">{selectedScan.nomor_wo || '-'}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Style</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.style}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Style</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right break-all">{selectedScan.style || '-'}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Buyer</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.buyer}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Buyer</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right break-all max-w-[60%] truncate" title={selectedScan.buyer}>{selectedScan.buyer || '-'}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Item</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.item}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Item</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right break-all max-w-[60%] truncate" title={selectedScan.item}>{selectedScan.item || '-'}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Color</span>
-                                <span className="text-slate-800 font-medium text-sm flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full border border-slate-200" style={{ backgroundColor: selectedScan.color?.toLowerCase() }}></span>
-                                    {selectedScan.color}
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Color</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm flex items-center gap-1.5 ml-2">
+                                    <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border border-slate-200 flex-shrink-0" style={{ backgroundColor: selectedScan.color?.toLowerCase() }}></span>
+                                    <span className="text-right">{selectedScan.color || '-'}</span>
                                 </span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Size</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.size}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Size</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right">{selectedScan.size || '-'}</span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Status</span>
-                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${selectedScan.status === 'Good' ? 'bg-green-100 text-green-700' :
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Status</span>
+                                <span className={`px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold ml-2 flex-shrink-0 ${selectedScan.status === 'Good' ? 'bg-green-100 text-green-700' :
                                         selectedScan.status === 'Reject' ? 'bg-red-100 text-red-700' :
+                                        selectedScan.status === 'OUTPUT' ? 'bg-blue-100 text-blue-700' :
                                             'bg-yellow-100 text-yellow-700'
                                     }`}>
-                                    {selectedScan.status}
+                                    {(selectedScan.status || 'Unknown').toUpperCase()}
                                 </span>
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                                <span className="text-slate-500 font-medium text-sm">Lokasi</span>
-                                <span className="flex items-center gap-1 text-slate-800 font-medium text-sm">
-                                    <MapPin size={14} className="text-slate-400" />
-                                    {selectedScan.lokasi || '-'}
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Lokasi</span>
+                                <span className="flex items-center gap-1 text-slate-800 font-medium text-xs sm:text-sm ml-2">
+                                    <MapPin size={12} className="sm:w-3.5 sm:h-3.5 text-slate-400 flex-shrink-0" />
+                                    {(() => {
+                                        const lokasiUpper = selectedScan.lokasi?.toUpperCase().trim() || '';
+                                        const isOutputSewing = lokasiUpper === 'OUTPUT_SEWING' || lokasiUpper.includes('OUTPUT_SEWING');
+                                        
+                                        return isOutputSewing ? (
+                                            <span className="text-right">OUTPUT</span>
+                                        ) : (
+                                            <span className="text-right">{selectedScan.lokasi || '-'}</span>
+                                        );
+                                    })()}
                                 </span>
                             </div>
-                            <div className="flex items-center justify-between py-2">
-                                <span className="text-slate-500 font-medium text-sm">Line</span>
-                                <span className="text-slate-800 font-medium text-sm">{selectedScan.line}</span>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 border-b border-slate-100 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Line</span>
+                                <span className="text-slate-800 font-medium text-xs sm:text-sm ml-2 text-right">{selectedScan.line || '-'}</span>
+                            </div>
+                            <div className="flex items-center justify-between py-1.5 sm:py-2 hover:bg-slate-50/50 transition-colors rounded px-1 -mx-1">
+                                <span className="text-slate-500 font-medium text-xs sm:text-sm flex-shrink-0">Timestamp</span>
+                                <span className="text-slate-800 font-medium text-[10px] sm:text-xs font-mono ml-2 text-right break-all">
+                                    {selectedScan.timestamp ? (() => {
+                                        try {
+                                            const date = new Date(selectedScan.timestamp);
+                                            return date.toLocaleString('id-ID', {
+                                                day: '2-digit',
+                                                month: 'short',
+                                                year: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                second: '2-digit'
+                                            });
+                                        } catch (e) {
+                                            return selectedScan.timestamp;
+                                        }
+                                    })() : '-'}
+                                </span>
                             </div>
                         </div>
-                        <div className="bg-slate-50 px-6 py-4 flex justify-end">
+                        <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-4 sm:px-6 py-3 sm:py-4 flex justify-end border-t border-slate-200 flex-shrink-0">
                             <button
                                 onClick={handleCloseModal}
-                                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+                                className="px-4 sm:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md text-sm sm:text-base"
                             >
                                 Close
                             </button>
@@ -845,6 +925,139 @@ const ListRFID: React.FC = () => {
                                             Hapus
                                         </>
                                     )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Filter Modal */}
+            {showFilterModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowFilterModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6">
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-xl font-bold text-slate-800">Filter Data</h2>
+                                <button
+                                    onClick={() => setShowFilterModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-700"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Filter Form */}
+                            <div className="space-y-4">
+                                {/* Date From */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Date From</label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={filterDateFrom}
+                                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        />
+                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                                    </div>
+                                </div>
+
+                                {/* Date To */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Date To</label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={filterDateTo}
+                                            onChange={(e) => setFilterDateTo(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        />
+                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                                    </div>
+                                </div>
+
+                                {/* Status Filter */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+                                    <div className="relative">
+                                        <select
+                                            value={filterStatusModal}
+                                            onChange={(e) => setFilterStatusModal(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                                        >
+                                            <option value="Semua">Semua</option>
+                                            {uniqueStatuses.map((status) => (
+                                                <option key={status} value={status}>{status}</option>
+                                            ))}
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Size Filter */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Size</label>
+                                    <div className="relative">
+                                        <select
+                                            value={filterSize}
+                                            onChange={(e) => setFilterSize(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                                        >
+                                            <option value="Semua">Semua</option>
+                                            {uniqueSizes.map((size) => (
+                                                <option key={size} value={size}>{size}</option>
+                                            ))}
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Color Filter */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Color</label>
+                                    <div className="relative">
+                                        <select
+                                            value={filterColor}
+                                            onChange={(e) => setFilterColor(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                                        >
+                                            <option value="Semua">Semua</option>
+                                            {uniqueColors.map((color) => (
+                                                <option key={color} value={color}>{color}</option>
+                                            ))}
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer Buttons */}
+                            <div className="mt-6 flex gap-3">
+                                <button
+                                    onClick={handleResetFilter}
+                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors"
+                                >
+                                    Reset
+                                </button>
+                                <button
+                                    onClick={handleFilterData}
+                                    className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
+                                >
+                                    Filter Data
                                 </button>
                             </div>
                         </div>

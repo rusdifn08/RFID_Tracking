@@ -81,7 +81,7 @@ export default function Sidebar() {
                     }`}
             >
                 {/* --- LOGO AREA - DI PALING ATAS --- */}
-                <div className="flex flex-col items-center justify-center pt-4 pb-3 px-2 relative flex-shrink-0">
+                <div className={`flex flex-col items-center justify-center pt-4 pb-3 relative flex-shrink-0 ${isOpen ? 'px-2' : 'px-0'}`}>
                     {/* Decorative gradient overlay dengan animasi */}
                     <div className="absolute inset-0 bg-gradient-to-b from-yellow-400/10 via-yellow-400/5 to-transparent pointer-events-none animate-pulse"></div>
 
@@ -123,7 +123,7 @@ export default function Sidebar() {
                     {/* HOME */}
                     <Link
                         to="/home"
-                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/home' || location.pathname === '/'
+                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/home' || location.pathname === '/'
                             ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
                             : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                             }`}
@@ -140,9 +140,7 @@ export default function Sidebar() {
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
 
                         {/* Container untuk icon dan text - icon di kiri */}
-                        <div className="relative z-10 flex items-center gap-2 flex-1"
-                            
-                        >
+                        <div className={`relative z-10 flex items-center ${isOpen ? 'gap-2 flex-1' : 'justify-center'}`}>
                             {/* Icon dengan glow effect - di kiri */}
                             <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
                                 ? 'scale-110'
@@ -173,7 +171,7 @@ export default function Sidebar() {
                         {/* RFID Parent Menu - Link biasa */}
                         <Link
                             to="/monitoring-rfid"
-                            className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${isRFIDPage
+                            className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${isRFIDPage
                                 ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
                                 : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                                 }`}
@@ -187,9 +185,7 @@ export default function Sidebar() {
                             <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/15 to-white/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
 
                             {/* Container untuk icon dan text - icon di kiri */}
-                            <div className=" relative z-10 flex items-center gap-2 flex-1"
-                                
-                            >
+                            <div className={`relative z-10 flex items-center ${isOpen ? 'gap-2 flex-1' : 'justify-center'}`}>
                                 {/* Icon dengan glow effect - di kiri */}
                                 <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
                                     ? 'scale-110'
@@ -281,18 +277,16 @@ export default function Sidebar() {
                                                         <span className="font-medium tracking-wide text-left">DASHBOARD RFID</span>
                                                     </Link>
 
-                                                    {/* LIST RFID - hanya untuk line 1 */}
-                                                    {currentLineId === '1' && (
-                                                        <Link
-                                                            to="/list-rfid"
-                                                            className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === '/list-rfid'
-                                                                ? 'text-white bg-white/15 shadow-md border-l-2 border-orange-400'
-                                                                : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-orange-400/40'
-                                                                }`}
-                                                        >
-                                                            <span className="font-medium tracking-wide text-left">LIST RFID</span>
-                                                        </Link>
-                                                    )}
+                                                    {/* LIST RFID - untuk semua line */}
+                                                    <Link
+                                                        to={`/list-rfid/${currentLineId}`}
+                                                        className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === `/list-rfid/${currentLineId}` || location.pathname.startsWith('/list-rfid')
+                                                            ? 'text-white bg-white/15 shadow-md border-l-2 border-orange-400'
+                                                            : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-orange-400/40'
+                                                            }`}
+                                                    >
+                                                        <span className="font-medium tracking-wide text-left">LIST RFID</span>
+                                                    </Link>
                                                 </div>
                                             )}
                                     </div>
@@ -304,7 +298,7 @@ export default function Sidebar() {
                     {/* ABOUT US */}
                     <Link
                         to="/about-us"
-                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/about-us'
+                        className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/about-us'
                             ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
                             : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                             }`}
@@ -321,9 +315,7 @@ export default function Sidebar() {
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
 
                         {/* Container untuk icon dan text - icon di kiri */}
-                        <div className="relative z-10 flex items-center gap-2 flex-1"
-                            
-                        >
+                        <div className={`relative z-10 flex items-center ${isOpen ? 'gap-2 flex-1' : 'justify-center'}`}>
                             {/* Icon dengan glow effect - di kiri */}
                             <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 ${!isOpen
                                 ? 'scale-110'
@@ -386,7 +378,7 @@ export default function Sidebar() {
                 <div className={`flex-shrink-0 ${isOpen ? 'p-2 pb-3' : 'p-2'}`}>
                     <button
                         onClick={handleLogout}
-                        className={`group relative w-full flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center'} py-2.5 rounded-lg transition-all duration-300 font-semibold overflow-hidden min-h-[44px] text-white/90 hover:text-white hover:bg-red-500/25 border-2 border-red-500/40 hover:border-red-500/70 hover:shadow-xl hover:shadow-red-500/30`}
+                        className={`group relative w-full flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-semibold overflow-hidden min-h-[44px] text-white/90 hover:text-white hover:bg-red-500/25 border-2 border-red-500/40 hover:border-red-500/70 hover:shadow-xl hover:shadow-red-500/30`}
                     >
                         {/* Hover effect background dengan gradient */}
                         <div className="absolute inset-0 bg-gradient-to-r from-red-500/0 via-red-500/15 to-red-500/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>

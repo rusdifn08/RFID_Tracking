@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import {
     CheckCircle, RefreshCcw, Settings, XCircle, AlertCircle,
-    PieChart as PieIcon, Table as TableIcon, Crosshair,
+    PieChart as PieIcon, Table as TableIcon, Crosshair, Download,
 } from 'lucide-react';
 
 // --- KONFIGURASI WARNA ---
@@ -107,7 +107,6 @@ export default function DashboardRFID() {
 
     // State untuk tracking data (untuk logging/debugging jika diperlukan)
     const [, setTrackingData] = useState<any>(null);
-    const [isServerOnline, setIsServerOnline] = useState<boolean>(true);
 
     // Default values
     const [good, setGood] = useState<number>(0);
@@ -120,18 +119,6 @@ export default function DashboardRFID() {
     const [wiraPqc, setWiraPqc] = useState<number>(0);
     const [outputLine, setOutputLine] = useState<number>(0);
 
-    // Data mock static/konstan
-    const MOCK_DATA = {
-        outputLine: 75,
-        good: 40,
-        wiraQc: 25,
-        reject: 10,
-        rework: 39,
-        pqcGood: 25,
-        wiraPqc: 10,
-        pqcReject: 5,
-        pqcRework: 15,
-    };
 
     // Ref untuk menyimpan data sebelumnya untuk perbandingan (tidak menyebabkan re-render)
     const previousDataRef = useRef<{
@@ -146,15 +133,8 @@ export default function DashboardRFID() {
         outputLine: number;
     } | null>(null);
 
-    // State untuk data WO/Production
-    const [woData, setWoData] = useState<any[]>([
-        { wo_id: 1, wo_no: 'WO-24-001', product_name: 'Jacket Parka', style: 'JP-001', buyer: 'UNIQLO', colors: 'Black', breakdown_sizes: 'L', total_qty_order: 1000 },
-        { wo_id: 2, wo_no: 'WO-24-002', product_name: 'Sport Pants', style: 'SP-002', buyer: 'ADIDAS', colors: 'Navy', breakdown_sizes: 'M', total_qty_order: 500 },
-        { wo_id: 3, wo_no: 'WO-24-003', product_name: 'Hoodie Basic', style: 'HB-003', buyer: 'H&M', colors: 'Grey', breakdown_sizes: 'XL', total_qty_order: 750 },
-        { wo_id: 4, wo_no: 'WO-24-004', product_name: 'T-Shirt V-Neck', style: 'TS-004', buyer: 'ZARA', colors: 'White', breakdown_sizes: 'S', total_qty_order: 2000 },
-        { wo_id: 5, wo_no: 'WO-24-005', product_name: 'Denim Jacket', style: 'DJ-005', buyer: 'LEVIS', colors: 'Blue', breakdown_sizes: 'L', total_qty_order: 300 },
-        { wo_id: 6, wo_no: 'WO-24-006', product_name: 'Cargo Shorts', style: 'CS-006', buyer: 'NIKE', colors: 'Khaki', breakdown_sizes: '32', total_qty_order: 450 },
-    ]);
+    // State untuk data WO/Production (dari API monitoring/line)
+    const [woData, setWoData] = useState<any>(null);
 
     // State untuk export modal
     const [showExportModal, setShowExportModal] = useState(false);
@@ -216,7 +196,6 @@ export default function DashboardRFID() {
                 // Parse data dari API
                 // Struktur API: { success, line, data: { good, rework, reject, ... } }
                 if (data && data.success && data.data && typeof data.data === 'object') {
-                    setIsServerOnline(true);
                     const dataObj = data.data;
 
                     // Parse dengan Number() dan fallback ke 0
@@ -249,61 +228,17 @@ export default function DashboardRFID() {
                         previousDataRef.current = newData;
                     }
                     // Jika tidak ada perubahan, tidak perlu update state (tidak ada re-render)
-                } else {
-                    console.warn('⚠️ [DashboardRFID] Data structure tidak valid:', data);
-                    // Gunakan mock data jika struktur tidak valid
-                    if (!isServerOnline) {
-                        setGood(MOCK_DATA.good);
-                        setRework(MOCK_DATA.rework);
-                        setReject(MOCK_DATA.reject);
-                        setWiraQc(MOCK_DATA.wiraQc);
-                        setPqcGood(MOCK_DATA.pqcGood);
-                        setPqcRework(MOCK_DATA.pqcRework);
-                        setPqcReject(MOCK_DATA.pqcReject);
-                        setWiraPqc(MOCK_DATA.wiraPqc);
-                        setOutputLine(MOCK_DATA.outputLine);
-                    }
                 }
             } catch (error) {
-                // Server tidak menyala, gunakan mock data
-                console.warn('⚠️ [DashboardRFID] Server tidak menyala, menggunakan mock data:', error);
-                setIsServerOnline(false);
-
-                if (isMounted) {
-                    setGood(MOCK_DATA.good);
-                    setRework(MOCK_DATA.rework);
-                    setReject(MOCK_DATA.reject);
-                    setWiraQc(MOCK_DATA.wiraQc);
-                    setPqcGood(MOCK_DATA.pqcGood);
-                    setPqcRework(MOCK_DATA.pqcRework);
-                    setPqcReject(MOCK_DATA.pqcReject);
-                    setWiraPqc(MOCK_DATA.wiraPqc);
-                    setOutputLine(MOCK_DATA.outputLine);
-                    previousDataRef.current = MOCK_DATA;
-                }
-                // Re-throw error untuk ditangani oleh initialFetch
                 throw error;
             }
         };
 
-        // Fetch data pertama kali dengan fallback ke mock data
         const initialFetch = async () => {
             try {
                 await fetchTrackingData();
             } catch (error) {
-                // Jika fetch pertama kali gagal, gunakan mock data
-                if (isMounted && !previousDataRef.current) {
-                    setGood(MOCK_DATA.good);
-                    setRework(MOCK_DATA.rework);
-                    setReject(MOCK_DATA.reject);
-                    setWiraQc(MOCK_DATA.wiraQc);
-                    setPqcGood(MOCK_DATA.pqcGood);
-                    setPqcRework(MOCK_DATA.pqcRework);
-                    setPqcReject(MOCK_DATA.pqcReject);
-                    setWiraPqc(MOCK_DATA.wiraPqc);
-                    setOutputLine(MOCK_DATA.outputLine);
-                    previousDataRef.current = MOCK_DATA;
-                }
+                // Error handling
             }
         };
         initialFetch();
@@ -325,18 +260,15 @@ export default function DashboardRFID() {
         };
     }, [lineId]); // Re-fetch jika lineId berubah
 
-    // Fetch data WO/Production dari API
+    // Fetch data WO/Production dari API monitoring/line
     useEffect(() => {
         let isMounted = true;
         let intervalId: ReturnType<typeof setInterval> | null = null;
 
         const fetchWoData = async () => {
             try {
-                // Convert lineId ke format L1, L2, dll
-                const lineFormat = `L${lineId}`;
-                // Gunakan server.js sebagai proxy untuk menghindari CORS
-                const url = `${API_BASE_URL}/wo/production_branch?production_branch=MJ1&line=${encodeURIComponent(lineFormat)}`;
-                console.log('🔍 [DashboardRFID] Fetching WO data from:', url);
+                // Gunakan API monitoring/line dengan line parameter
+                const url = `${API_BASE_URL}/monitoring/line?line=${encodeURIComponent(lineId)}`;
 
                 const response = await fetch(url, {
                     method: 'GET',
@@ -351,32 +283,20 @@ export default function DashboardRFID() {
                 }
 
                 const data = await response.json();
-                console.log('✅ [DashboardRFID] WO API Response:', data);
-                console.log('✅ [DashboardRFID] Response status:', response.status);
-                console.log('✅ [DashboardRFID] Response OK:', response.ok);
 
                 if (!isMounted) return;
 
                 // Parse data dari API
-                // Struktur API: { success, data: [...], count, line, production_branch }
-                if (data && data.success && Array.isArray(data.data)) {
-                    console.log('📊 [DashboardRFID] WO Data array length:', data.data.length);
-                    console.log('📊 [DashboardRFID] WO Data items:', data.data);
+                // Struktur API: { success: true, line: "1", data: { buyer, color, item, line, rfid_garment, size, style, wo } }
+                if (data && data.success && data.data) {
                     setWoData(data.data);
                 } else {
-                    console.warn('⚠️ [DashboardRFID] WO Data structure tidak valid:', data);
-                    console.warn('⚠️ [DashboardRFID] Data keys:', data ? Object.keys(data) : 'null');
-                    console.warn('⚠️ [DashboardRFID] Data.success:', data?.success);
-                    console.warn('⚠️ [DashboardRFID] Data.data is array:', Array.isArray(data?.data));
-                    // setWoData([]); // Keep mock data if API fails
+                    setWoData(null);
                 }
             } catch (error) {
-                console.error('❌ [DashboardRFID] Error fetching WO data:', error);
-                console.error('❌ [DashboardRFID] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-                console.error('❌ [DashboardRFID] Error message:', error instanceof Error ? error.message : String(error));
-                // Jika error, set empty array
+                // Jika error, set null
                 if (isMounted) {
-                    // setWoData([]); // Keep mock data if API fails
+                    setWoData(null);
                 }
             }
         };
@@ -456,8 +376,8 @@ export default function DashboardRFID() {
             year: 'numeric'
         });
 
-        // Ambil data WO pertama jika ada
-        const firstWo = woData && woData.length > 0 ? woData[0] : null;
+        // Ambil data WO jika ada
+        const firstWo = woData || null;
 
         // Capture charts
         let qcChartImage = undefined;
@@ -474,18 +394,17 @@ export default function DashboardRFID() {
                 pqcChartImage = await svgToPng(pqcChartEl, 400, 300);
             }
         } catch (e) {
-            console.error('Error capturing charts:', e);
         }
 
         // Siapkan data untuk export
         const exportData = [{
             tanggal: tanggal,
             line: `LINE ${lineId}`,
-            wo: firstWo?.wo_no || '-',
+            wo: firstWo?.wo || '-',
             style: firstWo?.style || '-',
-            item: firstWo?.product_name || '-',
+            item: firstWo?.item || '-',
             buyer: firstWo?.buyer || '-',
-            color: firstWo?.colors || '-',
+            color: firstWo?.color || '-',
             size: firstWo?.breakdown_sizes || '-',
             outputSewing: outputLine,
             qcRework: rework,
@@ -530,7 +449,7 @@ export default function DashboardRFID() {
 
                 {/* 3. HEADER (STICKY) */}
                 <div className="sticky top-0 z-40 shadow-md">
-                    <Header onExportClick={() => setShowExportModal(true)} />
+                    <Header />
                 </div>
 
                 {/* 4. MAIN CONTENT */}
@@ -543,11 +462,6 @@ export default function DashboardRFID() {
                         <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-gray-700 uppercase tracking-wide drop-shadow-sm">
                             <span className="text-blue-600">Dashboard</span> Monitoring RFID {lineTitle}
                         </h1>
-                        {!isServerOnline && (
-                            <p className="text-xs sm:text-sm text-yellow-600 mt-1 font-semibold">
-                                ⚠️ Mode Offline - Menampilkan Mock Data
-                            </p>
-                        )}
                     </div>
 
                     {/* GRID CONTAINER */}
@@ -583,26 +497,35 @@ export default function DashboardRFID() {
                                 title={
                                     <>
                                         <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-extrabold text-gray-700 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{`Data ${lineTitle}`}</h2>
-                                        <span className="
-                                            bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-bold 
-                                            px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-blue-200
-                                            flex items-center justify-center text-center
-                                            shadow-sm ml-auto"
-                                        >Nov 2025</span>
+                                        <div className="flex items-center gap-2 ml-auto">
+                                            <span className="
+                                                bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-bold 
+                                                px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-blue-200
+                                                flex items-center justify-center text-center
+                                                shadow-sm"
+                                            >{new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                            <button
+                                                onClick={() => setShowExportModal(true)}
+                                                className="p-1.5 sm:p-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 group relative"
+                                                title="Export Excel"
+                                            >
+                                                <Download className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
+                                            </button>
+                                        </div>
                                     </>
                                 }
                                 icon={TableIcon}
                                 className="lg:col-span-2"
                             >
                                 <div className="w-full h-full overflow-y-auto custom-scrollbar p-2 sm:p-3 flex items-center justify-center">
-                                    {woData.length > 0 ? (
+                                    {woData ? (
                                         <div className="w-full h-full flex flex-col justify-center gap-2">
                                             {/* Row 1: WO, Style, Size */}
                                             <div className="grid grid-cols-3 gap-2">
                                                 {[
-                                                    { label: 'WO', value: woData[0].wo_no },
-                                                    { label: 'Style', value: woData[0].style },
-                                                    { label: 'Size', value: woData[0].breakdown_sizes }
+                                                    { label: 'WO', value: woData.wo },
+                                                    { label: 'Style', value: woData.style },
+                                                    { label: 'Size', value: woData.size }
                                                 ].map((item, idx) => (
                                                     <div key={idx} className="group relative overflow-hidden bg-white rounded-lg border border-slate-100 p-1.5 sm:p-2 flex flex-col items-center justify-center gap-0.5 transition-all duration-300 hover:border-blue-400 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1">
                                                         {/* Blue & Gold Accent Line */}
@@ -621,9 +544,9 @@ export default function DashboardRFID() {
                                             {/* Row 2: Buyer, Item, Color */}
                                             <div className="grid grid-cols-3 gap-2">
                                                 {[
-                                                    { label: 'Buyer', value: woData[0].buyer },
-                                                    { label: 'Item', value: woData[0].product_name },
-                                                    { label: 'Color', value: woData[0].colors }
+                                                    { label: 'Buyer', value: woData.buyer },
+                                                    { label: 'Item', value: woData.item },
+                                                    { label: 'Color', value: woData.color }
                                                 ].map((item, idx) => (
                                                     <div key={idx} className="group relative overflow-hidden bg-white rounded-lg border border-slate-100 p-1.5 sm:p-2 flex flex-col items-center justify-center gap-0.5 transition-all duration-300 hover:border-blue-400 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1">
                                                         {/* Blue & Gold Accent Line */}

@@ -27,7 +27,6 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
     const [rfidInput, setRfidInput] = useState('');
     const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isOfflineMode, setIsOfflineMode] = useState(false);
     const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -60,16 +59,11 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             
             if (response.ok) {
                 setServerStatus('online');
-                setIsOfflineMode(false);
             } else {
                 setServerStatus('offline');
-                setIsOfflineMode(true);
             }
         } catch (error) {
-            // Server tidak berjalan atau tidak bisa diakses
             setServerStatus('offline');
-            setIsOfflineMode(true);
-            console.log('🔌 [OFFLINE MODE] Server tidak berjalan, menggunakan mode offline untuk uji coba');
         }
     };
 
@@ -104,7 +98,6 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             setRfidInput('');
             setScannedItems([]);
             setIsProcessing(false);
-            setIsOfflineMode(false);
             setServerStatus('checking');
             
             // Clear input field secara eksplisit
@@ -167,27 +160,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             return;
         }
 
-        // OFFLINE MODE - Simpan di local state saja untuk uji coba
-        if (isOfflineMode) {
-            const timestamp = new Date();
-            setScannedItems(prev => {
-                const newItems: ScannedItem[] = [...prev, {
-                    rfid: trimmedRfid,
-                    timestamp,
-                    status: 'success' as const,
-                    message: 'Mode Offline - Data hanya untuk uji coba (tidak tersimpan ke database)'
-                }];
-                // Sort berdasarkan timestamp (terbaru di atas)
-                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-            });
-            setRfidInput('');
-            setTimeout(() => {
-                inputRef.current?.focus();
-            }, 100);
-            return;
-        }
-
-        // ONLINE MODE - Kirim ke database
+        // Kirim ke database
         setIsProcessing(true);
         const timestamp = new Date();
 
@@ -214,7 +187,6 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             });
 
             const responseData = await response.json();
-            console.log('📥 [ScanningRFIDNew] API Response:', responseData);
             
             // Handle response sesuai format API: { success, message, data }
             if (response.ok && responseData.success) {
@@ -375,21 +347,6 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                         <p className="text-sm font-medium" style={{ color: '#475569' }}>
                             Scan beberapa RFID sekaligus
                         </p>
-                        {/* Offline Mode Indicator */}
-                        {isOfflineMode && (
-                            <div 
-                                className="mt-2 px-3 py-1.5 rounded-md inline-block"
-                                style={{
-                                    background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
-                                    border: '2px solid #F59E0B',
-                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.2)'
-                                }}
-                            >
-                                <p className="text-xs font-bold" style={{ color: '#92400E' }}>
-                                    🔌 Mode Offline - Data hanya untuk uji coba (tidak tersimpan ke database)
-                                </p>
-                            </div>
-                        )}
                         {serverStatus === 'checking' && (
                             <div 
                                 className="mt-2 px-3 py-1.5 rounded-md inline-block"
@@ -808,15 +765,9 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                                     return;
                                 }
                                 
-                                if (isOfflineMode) {
-                                    // Mode offline - hanya log untuk uji coba
-                                    console.log(`🔌 [OFFLINE MODE] Selesai. Total ${successfulItems.length} RFID untuk uji coba (tidak tersimpan ke database).`);
-                                } else {
-                                    // Semua item sudah di-insert ke database saat scanning
-                                    // Jadi tidak perlu insert lagi, hanya tutup modal
-                                    // (Data sudah tersimpan di database saat handleRfidSubmit)
-                                    console.log(`✅ [BATCH SCAN] Selesai. Total ${successfulItems.length} RFID berhasil disimpan.`);
-                                }
+                                // Semua item sudah di-insert ke database saat scanning
+                                // Jadi tidak perlu insert lagi, hanya tutup modal
+                                // (Data sudah tersimpan di database saat handleRfidSubmit)
                                 
                                 // Tutup modal
                                 onClose();

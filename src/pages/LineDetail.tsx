@@ -99,7 +99,7 @@ export default function LineDetail() {
             title: 'LIST RFID',
             subtitle: 'Database & Log',
             icon: ListRfidIcon,
-            path: '/list-rfid',
+            path: `/list-rfid/${id}`,
             color: { main: '#F59E0B', light: '#FEF3C7', shadow: 'rgba(245, 158, 11, 0.5)' }
         },
     ];
