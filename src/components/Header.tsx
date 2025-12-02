@@ -5,6 +5,8 @@ import { Menu, Bell, Radio } from 'lucide-react';
 import ReactLogo from '../assets/react.svg';
 import TailwindLogo from '../assets/tailwind.svg';
 import MqttLogo from '../assets/mqtt.svg';
+import BunLogo from '../assets/Bun.svg';
+import FlaskLogo from '../assets/Flask.svg';
 
 export default function Header() {
     const { isOpen, toggleSidebar } = useSidebar();
@@ -41,6 +43,8 @@ export default function Header() {
                     <img src={ReactLogo} alt="React" className="h-4 w-auto md:h-5 opacity-90 hover:opacity-100 transition-opacity" />
                     <img src={TailwindLogo} alt="Tailwind" className="h-4 w-auto md:h-5 opacity-90 hover:opacity-100 transition-opacity" />
                     <img src={MqttLogo} alt="MQTT" className="h-4 w-auto md:h-5 opacity-90 hover:opacity-100 transition-opacity" />
+                    <img src={BunLogo} alt="Bun" className="h-4 w-auto md:h-5 opacity-90 hover:opacity-100 transition-opacity" />
+                    <img src={FlaskLogo} alt="Flask" className="h-4 w-auto md:h-5 opacity-90 hover:opacity-100 transition-opacity" />
                 </div>
 
                 {/* Checking RFID Button - Minimalist & Professional */}
@@ -54,11 +58,11 @@ export default function Header() {
                 </button>
 
                 {/* User Info - Hidden di mobile/portrait */}
-                <div className="hidden md:flex flex-col items-end text-white leading-tight">
+                <div className="hidden md:flex flex-col items-center text-white leading-tight">
                     <span className="font-bold text-xs md:text-sm uppercase">
                         {user ? `HI, ${(user.name || '').toUpperCase()}` : 'HI, GUEST'}
                     </span>
-                    <span className="text-[10px] md:text-xs font-light opacity-90">
+                    <span className="text-[10px] md:text-xs font-bold opacity-90 text-center">
                         {user?.bagian || user?.jabatan || 'Guest'}
                     </span>
                 </div>
