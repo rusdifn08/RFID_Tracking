@@ -1203,6 +1203,16 @@ app.get('/wo/production_branch', async (req, res) => {
     return await proxyRequest('/wo/production_branch', req, res);
 });
 
+/**
+ * Proxy untuk WO/Branch API - Proxy ke Backend API
+ * GET /wo/branch?branch=cjl&line=L1 - Menampilkan semua data berdasarkan branch dan line
+ * GET /wo/branch?branch=cjl&line=L1&start_date_from=2025-12-3 - Menampilkan semua data berdasarkan branch, line, dan tanggal mulai
+ * GET /wo/branch?branch=cjl&line=L1&start_date_from=2025-12-3&start_date_to=2025-12-10 - Menampilkan semua data berdasarkan branch, line, dan rentang tanggal
+ */
+app.get('/wo/branch', async (req, res) => {
+    return await proxyRequest('/wo/branch', req, res);
+});
+
 // Endpoint wo/production_branch yang lama dihapus karena sudah diganti dengan proxyRequest di atas
 /*
 app.get('/wo/production_branch', async (req, res) => {

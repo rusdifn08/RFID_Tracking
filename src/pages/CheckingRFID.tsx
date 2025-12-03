@@ -14,6 +14,13 @@ interface RFIDCheckItem {
     wo?: string;
     style?: string;
     buyer?: string;
+    item?: string;
+    color?: string;
+    size?: string;
+    line?: string;
+    lastScanned?: string; // Timestamp dari API
+    lokasi?: string; // Lokasi dari API (bagian)
+    statusData?: string; // Status dari API (last_status)
 }
 
 export default function CheckingRFID() {
@@ -44,8 +51,8 @@ export default function CheckingRFID() {
         // Simulasi checking dengan delay (bisa diganti dengan API call)
         setTimeout(async () => {
             try {
-                // Cek di database melalui API
-                const response = await fetch(`${API_BASE_URL}/garment?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
+                // Cek di database melalui API tracking/rfid_garment untuk data lengkap
+                const trackingResponse = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -56,22 +63,173 @@ export default function CheckingRFID() {
                 const timestamp = new Date();
                 let newItem: RFIDCheckItem;
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data) {
+                if (trackingResponse.ok) {
+                    const trackingData = await trackingResponse.json();
+                    if (trackingData.success && trackingData.data && Array.isArray(trackingData.data) && trackingData.data.length > 0) {
+                        // Ambil data terbaru (index 0 atau yang terakhir)
+                        const latestData = trackingData.data[0];
+                        
+                        // Convert last_status ke format yang sesuai
+                        let statusData = 'Unknown';
+                        if (latestData.last_status) {
+                            const upperStatus = latestData.last_status.toUpperCase().trim();
+                            if (upperStatus === 'GOOD') {
+                                statusData = 'Good';
+                            } else if (upperStatus === 'REWORK') {
+                                statusData = 'Rework';
+                            } else if (upperStatus === 'REJECT') {
+                                statusData = 'Reject';
+                            } else if (upperStatus === 'OUTPUT_SEWING' || upperStatus.includes('OUTPUT_SEWING')) {
+                                statusData = 'OUTPUT';
+                            } else {
+                                statusData = latestData.last_status;
+                            }
+                        }
+                        
+                        // Parse lokasi dari bagian
+                        let lokasi = '';
+                        if (latestData.bagian) {
+                            const bagian = latestData.bagian.trim().toUpperCase();
+                            if (bagian === 'IRON' || bagian === 'OPERATOR') {
+                                lokasi = 'SEWING';
+                            } else {
+                                lokasi = latestData.bagian.trim();
+                            }
+                        }
+                        
+                        // Parse line
+                        const itemLine = latestData.line?.toString() || '1';
+                        const lineDisplay = itemLine ? `Line ${itemLine}` : 'N/A';
+                        
+                        // Parse timestamp
+                        let lastScanned = '';
+                        if (latestData.timestamp) {
+                            try {
+                                const date = new Date(latestData.timestamp);
+                                if (!isNaN(date.getTime())) {
+                                    lastScanned = date.toLocaleString('id-ID', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        timeZone: 'UTC'
+                                    });
+                                }
+                            } catch (e) {
+                                // Ignore error parsing timestamp
+                            }
+                        }
+                        
                         // RFID ditemukan
                         newItem = {
                             rfid: trimmedRfid,
                             timestamp,
                             status: 'found',
-                            location: `Line ${data.data.line || 'N/A'}`,
+                            location: lineDisplay,
                             details: 'RFID ditemukan di database',
-                            wo: data.data.wo || 'N/A',
-                            style: data.data.style || 'N/A',
-                            buyer: data.data.buyer || 'N/A',
+                            wo: latestData.wo || '',
+                            style: latestData.style || '',
+                            buyer: latestData.buyer || '',
+                            item: latestData.item || '',
+                            color: latestData.color || '',
+                            size: latestData.size || '',
+                            line: itemLine,
+                            lastScanned: lastScanned,
+                            lokasi: lokasi,
+                            statusData: statusData,
                         };
                     } else {
-                        // RFID tidak ditemukan
+                        // Coba API garment sebagai fallback
+                        const garmentResponse = await fetch(`${API_BASE_URL}/garment?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                            },
+                        });
+                        
+                        if (garmentResponse.ok) {
+                            const garmentData = await garmentResponse.json();
+                            if (garmentData.success && garmentData.data) {
+                                const itemLine = garmentData.data.line?.toString() || '1';
+                                const lineDisplay = itemLine ? `Line ${itemLine}` : 'N/A';
+                                
+                                newItem = {
+                                    rfid: trimmedRfid,
+                                    timestamp,
+                                    status: 'found',
+                                    location: lineDisplay,
+                                    details: 'RFID ditemukan di database',
+                                    wo: garmentData.data.wo || '',
+                                    style: garmentData.data.style || '',
+                                    buyer: garmentData.data.buyer || '',
+                                    item: garmentData.data.item || '',
+                                    color: garmentData.data.color || '',
+                                    size: garmentData.data.size || '',
+                                    line: itemLine,
+                                };
+                            } else {
+                                // RFID tidak ditemukan
+                                newItem = {
+                                    rfid: trimmedRfid,
+                                    timestamp,
+                                    status: 'not_found',
+                                    details: 'RFID tidak ditemukan di database',
+                                };
+                            }
+                        } else {
+                            // RFID tidak ditemukan
+                            newItem = {
+                                rfid: trimmedRfid,
+                                timestamp,
+                                status: 'not_found',
+                                details: 'RFID tidak ditemukan di database',
+                            };
+                        }
+                    }
+                } else {
+                    // Coba API garment sebagai fallback
+                    const garmentResponse = await fetch(`${API_BASE_URL}/garment?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                    });
+                    
+                    if (garmentResponse.ok) {
+                        const garmentData = await garmentResponse.json();
+                        if (garmentData.success && garmentData.data) {
+                            const itemLine = garmentData.data.line?.toString() || '1';
+                            const lineDisplay = itemLine ? `Line ${itemLine}` : 'N/A';
+                            
+                            newItem = {
+                                rfid: trimmedRfid,
+                                timestamp,
+                                status: 'found',
+                                location: lineDisplay,
+                                details: 'RFID ditemukan di database',
+                                wo: garmentData.data.wo || '',
+                                style: garmentData.data.style || '',
+                                buyer: garmentData.data.buyer || '',
+                                item: garmentData.data.item || '',
+                                color: garmentData.data.color || '',
+                                size: garmentData.data.size || '',
+                                line: itemLine,
+                            };
+                        } else {
+                            // RFID tidak ditemukan
+                            newItem = {
+                                rfid: trimmedRfid,
+                                timestamp,
+                                status: 'not_found',
+                                details: 'RFID tidak ditemukan di database',
+                            };
+                        }
+                    } else {
+                        // Error atau tidak ditemukan
                         newItem = {
                             rfid: trimmedRfid,
                             timestamp,
@@ -79,14 +237,6 @@ export default function CheckingRFID() {
                             details: 'RFID tidak ditemukan di database',
                         };
                     }
-                } else {
-                    // Error atau tidak ditemukan
-                    newItem = {
-                        rfid: trimmedRfid,
-                        timestamp,
-                        status: 'not_found',
-                        details: 'RFID tidak ditemukan di database',
-                    };
                 }
 
                 setCheckItems(prev => [newItem, ...prev]);
@@ -97,7 +247,6 @@ export default function CheckingRFID() {
                     inputRef.current?.focus();
                 }, 100);
             } catch (error) {
-                console.error('Error checking RFID:', error);
                 const timestamp = new Date();
                 const newItem: RFIDCheckItem = {
                     rfid: trimmedRfid,
@@ -361,7 +510,7 @@ export default function CheckingRFID() {
                                                         {item.timestamp.toLocaleTimeString()}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-4 mb-2">
+                                                <div className="flex items-center gap-4 mb-2 flex-wrap">
                                                     <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
                                                         item.status === 'found'
                                                             ? 'bg-green-100 text-green-700 hover:bg-white hover:text-white'
@@ -376,30 +525,71 @@ export default function CheckingRFID() {
                                                             📍 {item.location}
                                                         </span>
                                                     )}
+                                                    {item.lastScanned && (
+                                                        <span className="text-xs text-gray-600 bg-gray-100 px-3 py-1 rounded-lg hover:bg-white hover:text-white">
+                                                            🕒 Last Scanned: {item.lastScanned}
+                                                        </span>
+                                                    )}
+                                                    {item.lokasi && (
+                                                        <span className="text-xs text-gray-600 bg-gray-100 px-3 py-1 rounded-lg hover:bg-white hover:text-white">
+                                                            📦 Lokasi: {item.lokasi}
+                                                        </span>
+                                                    )}
+                                                    {item.statusData && (
+                                                        <span className={`text-xs font-bold px-3 py-1 rounded-lg ${
+                                                            item.statusData === 'Good' || item.statusData === 'OUTPUT'
+                                                                ? 'bg-green-100 text-green-700 hover:bg-white hover:text-white'
+                                                                : item.statusData === 'Rework'
+                                                                    ? 'bg-yellow-100 text-yellow-700 hover:bg-white hover:text-white'
+                                                                    : item.statusData === 'Reject'
+                                                                        ? 'bg-red-100 text-red-700 hover:bg-white hover:text-white'
+                                                                        : 'bg-gray-100 text-gray-700 hover:bg-white hover:text-white'
+                                                        }`}>
+                                                            📊 Status: {item.statusData}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 {item.details && (
                                                     <p className="text-sm text-gray-600 mb-2 hover:text-white">
                                                         {item.details}
                                                     </p>
                                                 )}
-                                                {(item.wo || item.style || item.buyer) && (
-                                                    <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-200">
+                                                {(item.wo || item.style || item.buyer || item.item || item.color || item.size) && (
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-200">
                                                         {item.wo && (
                                                             <div>
-                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white">WO</p>
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">WO</p>
                                                                 <p className="text-sm font-bold text-gray-800 hover:text-white">{item.wo}</p>
                                                             </div>
                                                         )}
                                                         {item.style && (
                                                             <div>
-                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white">Style</p>
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">Style</p>
                                                                 <p className="text-sm font-bold text-gray-800 hover:text-white">{item.style}</p>
                                                             </div>
                                                         )}
                                                         {item.buyer && (
+                                                            <div className="sm:col-span-1 col-span-2">
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">Buyer</p>
+                                                                <p className="text-sm font-bold text-gray-800 hover:text-white truncate" title={item.buyer}>{item.buyer}</p>
+                                                            </div>
+                                                        )}
+                                                        {item.item && (
+                                                            <div className="sm:col-span-1 col-span-2">
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">Item</p>
+                                                                <p className="text-sm font-bold text-gray-800 hover:text-white truncate" title={item.item}>{item.item}</p>
+                                                            </div>
+                                                        )}
+                                                        {item.color && (
                                                             <div>
-                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white">Buyer</p>
-                                                                <p className="text-sm font-bold text-gray-800 hover:text-white">{item.buyer}</p>
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">Color</p>
+                                                                <p className="text-sm font-bold text-gray-800 hover:text-white">{item.color}</p>
+                                                            </div>
+                                                        )}
+                                                        {item.size && (
+                                                            <div>
+                                                                <p className="text-xs text-gray-500 mb-1 hover:text-white font-medium">Size</p>
+                                                                <p className="text-sm font-bold text-gray-800 hover:text-white">{item.size}</p>
                                                             </div>
                                                         )}
                                                     </div>
