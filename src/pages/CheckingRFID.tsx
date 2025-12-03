@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
-import { Radio, Search, CheckCircle2, XCircle, AlertCircle, Activity, Filter, Download, RefreshCw, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { Radio, Search, CheckCircle2, XCircle, AlertCircle, Activity, Filter, Download, RefreshCw, TrendingUp, TrendingDown, BarChart3, Clock, MapPin, User } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 
 interface RFIDCheckItem {
@@ -31,6 +31,10 @@ export default function CheckingRFID() {
     const [filterStatus, setFilterStatus] = useState<'all' | 'found' | 'not_found'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
+    const [showTrackingModal, setShowTrackingModal] = useState<boolean>(false);
+    const [trackingData, setTrackingData] = useState<any[]>([]);
+    const [loadingTracking, setLoadingTracking] = useState<boolean>(false);
+    const [selectedRfid, setSelectedRfid] = useState<string>('');
 
     // Auto focus input saat halaman dimuat
     useEffect(() => {
@@ -279,6 +283,90 @@ export default function CheckingRFID() {
         return true;
     });
 
+    // Handle click pada item untuk menampilkan tracking data
+    const handleItemClick = async (rfid: string) => {
+        if (!rfid) return;
+        
+        setSelectedRfid(rfid);
+        setShowTrackingModal(true);
+        setLoadingTracking(true);
+        setTrackingData([]);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data && Array.isArray(data.data)) {
+                    // Sort berdasarkan timestamp dari paling lama ke paling baru
+                    const sortedData = [...data.data].sort((a, b) => {
+                        const dateA = new Date(a.timestamp || 0).getTime();
+                        const dateB = new Date(b.timestamp || 0).getTime();
+                        return dateA - dateB; // Ascending (lama ke baru)
+                    });
+                    setTrackingData(sortedData);
+                } else {
+                    setTrackingData([]);
+                }
+            } else {
+                setTrackingData([]);
+            }
+        } catch (error) {
+            setTrackingData([]);
+        } finally {
+            setLoadingTracking(false);
+        }
+    };
+
+    // Helper function to parse timestamp
+    const parseTimestamp = (timestamp: string): string => {
+        if (!timestamp) return '-';
+        try {
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) return '-';
+            return date.toLocaleString('id-ID', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'UTC'
+            });
+        } catch (e) {
+            return '-';
+        }
+    };
+
+    // Helper function to get status color
+    const getStatusColor = (status: string): string => {
+        const upperStatus = (status || '').toUpperCase().trim();
+        if (upperStatus === 'GOOD' || upperStatus === 'OUTPUT' || upperStatus.includes('OUTPUT')) {
+            return 'bg-green-100 text-green-700 border-green-300';
+        } else if (upperStatus === 'REWORK') {
+            return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+        } else if (upperStatus === 'REJECT') {
+            return 'bg-red-100 text-red-700 border-red-300';
+        }
+        return 'bg-gray-100 text-gray-700 border-gray-300';
+    };
+
+    // Helper function to format lokasi
+    const formatLokasi = (bagian: string): string => {
+        if (!bagian) return '-';
+        const bagianUpper = bagian.trim().toUpperCase();
+        if (bagianUpper === 'IRON' || bagianUpper === 'OPERATOR') {
+            return 'SEWING';
+        }
+        return bagian.trim();
+    };
+
     // Statistics
     const stats = {
         total: checkItems.length,
@@ -489,7 +577,10 @@ export default function CheckingRFID() {
                                 filteredItems.map((item, index) => (
                                     <div
                                         key={`${item.rfid}-${index}`}
-                                        className="relative p-5 rounded-lg border-2 border-blue-500 bg-white hover:bg-blue-500 hover:text-white transition-all duration-300"
+                                        onClick={() => item.status === 'found' && handleItemClick(item.rfid)}
+                                        className={`relative p-5 rounded-lg border-2 border-blue-500 bg-white hover:bg-blue-500 hover:text-white transition-all duration-300 ${
+                                            item.status === 'found' ? 'cursor-pointer' : 'cursor-default'
+                                        }`}
                                     >
                                         <div className="flex items-start gap-4">
                                             <div className="p-3 rounded-lg bg-blue-50 border border-blue-500 hover:bg-white">
@@ -603,6 +694,170 @@ export default function CheckingRFID() {
                     </div>
                 </main>
             </div>
+
+            {/* Tracking Modal */}
+            {showTrackingModal && (
+                <div className="fixed inset-0 bg-transparent backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white bg-opacity-95 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-white border-opacity-20">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 rounded-lg">
+                                    <Activity className="w-5 h-5 text-blue-600" strokeWidth={2.5} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">Tracking Data RFID</h3>
+                                    <p className="text-sm text-gray-600 font-mono mt-1">{selectedRfid}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowTrackingModal(false);
+                                    setTrackingData([]);
+                                    setSelectedRfid('');
+                                }}
+                                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                            >
+                                <XCircle className="w-5 h-5 text-gray-500 hover:text-gray-700" strokeWidth={2.5} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                            {loadingTracking ? (
+                                <div className="flex items-center justify-center py-16">
+                                    <Activity className="w-8 h-8 text-blue-500 animate-spin" strokeWidth={2.5} />
+                                    <span className="ml-3 text-gray-600">Memuat data tracking...</span>
+                                </div>
+                            ) : trackingData.length === 0 ? (
+                                <div className="text-center py-16 text-gray-400">
+                                    <Activity className="w-20 h-20 mx-auto mb-4 opacity-30" />
+                                    <p className="text-xl font-medium">Tidak ada data tracking</p>
+                                    <p className="text-sm mt-2">Data tracking untuk RFID ini belum tersedia</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {trackingData.map((track, index) => (
+                                        <div
+                                            key={`${track.id || index}`}
+                                            className="relative p-4 rounded-lg border border-gray-200 bg-gradient-to-r from-white to-gray-50 hover:from-blue-50 hover:to-blue-100 transition-all duration-300"
+                                        >
+                                            <div className="flex items-start gap-4">
+                                                {/* Timeline indicator */}
+                                                <div className="flex flex-col items-center flex-shrink-0">
+                                                    <div className={`w-3 h-3 rounded-full ${
+                                                        index === 0 ? 'bg-blue-500' : 
+                                                        index === trackingData.length - 1 ? 'bg-green-500' : 
+                                                        'bg-gray-400'
+                                                    }`}></div>
+                                                    {index < trackingData.length - 1 && (
+                                                        <div className="w-0.5 h-full bg-gray-300 mt-1"></div>
+                                                    )}
+                                                </div>
+
+                                                {/* Content */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`text-xs font-bold px-2 py-1 rounded border ${getStatusColor(track.last_status)}`}>
+                                                                {track.last_status || 'Unknown'}
+                                                            </span>
+                                                            {track.bagian && (
+                                                                <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1">
+                                                                    <MapPin className="w-3 h-3" />
+                                                                    {formatLokasi(track.bagian)}
+                                                                </span>
+                                                            )}
+                                                            {track.line && (
+                                                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                                                    Line {track.line}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {track.timestamp && (
+                                                            <span className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
+                                                                <Clock className="w-3 h-3" />
+                                                                {parseTimestamp(track.timestamp)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {track.nama && (
+                                                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                                                            <User className="w-4 h-4" />
+                                                            <span className="font-medium">{track.nama}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {(track.wo || track.style || track.buyer || track.item || track.color || track.size) && (
+                                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-200 text-xs">
+                                                            {track.wo && (
+                                                                <div>
+                                                                    <span className="text-gray-500 font-medium">WO:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700">{track.wo}</span>
+                                                                </div>
+                                                            )}
+                                                            {track.style && (
+                                                                <div>
+                                                                    <span className="text-gray-500 font-medium">Style:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700">{track.style}</span>
+                                                                </div>
+                                                            )}
+                                                            {track.buyer && (
+                                                                <div className="sm:col-span-1 col-span-2">
+                                                                    <span className="text-gray-500 font-medium">Buyer:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700 truncate block" title={track.buyer}>{track.buyer}</span>
+                                                                </div>
+                                                            )}
+                                                            {track.item && (
+                                                                <div className="sm:col-span-1 col-span-2">
+                                                                    <span className="text-gray-500 font-medium">Item:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700 truncate block" title={track.item}>{track.item}</span>
+                                                                </div>
+                                                            )}
+                                                            {track.color && (
+                                                                <div>
+                                                                    <span className="text-gray-500 font-medium">Color:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700">{track.color}</span>
+                                                                </div>
+                                                            )}
+                                                            {track.size && (
+                                                                <div>
+                                                                    <span className="text-gray-500 font-medium">Size:</span>
+                                                                    <span className="ml-1 font-semibold text-gray-700">{track.size}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        {trackingData.length > 0 && (
+                            <div className="flex items-center justify-between p-4 sm:p-6 border-t border-gray-200 flex-shrink-0">
+                                <span className="text-sm text-gray-600">
+                                    Total: <span className="font-semibold">{trackingData.length}</span> tracking records
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        setShowTrackingModal(false);
+                                        setTrackingData([]);
+                                        setSelectedRfid('');
+                                    }}
+                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
+                                >
+                                    Tutup
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

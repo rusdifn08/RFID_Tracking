@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import {
     CheckCircle, RefreshCcw, Settings, XCircle, AlertCircle,
-    PieChart as PieIcon, Table as TableIcon, Crosshair, Download,
+    PieChart as PieIcon, Table as TableIcon, Crosshair, Download, Filter, Calendar,
 } from 'lucide-react';
 
 // --- KONFIGURASI WARNA ---
@@ -137,6 +137,11 @@ export default function DashboardRFID() {
 
     // State untuk export modal
     const [showExportModal, setShowExportModal] = useState(false);
+    
+    // State untuk filter tanggal modal
+    const [showDateFilterModal, setShowDateFilterModal] = useState(false);
+    const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+    const [filterDateTo, setFilterDateTo] = useState<string>('');
 
     // Fungsi untuk membandingkan data lama dan baru
     const hasDataChanged = (
@@ -561,12 +566,27 @@ export default function DashboardRFID() {
                                     <>
                                         <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-extrabold text-gray-700 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{`Data ${lineTitle}`}</h2>
                                         <div className="flex items-center gap-2 ml-auto">
-                                            <span className="
-                                                bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-bold 
-                                                px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-blue-200
-                                                flex items-center justify-center text-center
-                                                shadow-sm"
-                                            >{new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                            <button
+                                                onClick={() => setShowDateFilterModal(true)}
+                                                className="
+                                                    bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200
+                                                    text-blue-700 hover:text-blue-800
+                                                    text-[10px] sm:text-xs font-semibold 
+                                                    px-3 sm:px-4 py-1.5 sm:py-2 
+                                                    rounded-lg border border-blue-200 hover:border-blue-300
+                                                    flex items-center gap-1.5 sm:gap-2 justify-center
+                                                    shadow-sm hover:shadow-md
+                                                    transition-all duration-300 ease-in-out
+                                                    group relative overflow-hidden
+                                                "
+                                                title="Filter Tanggal"
+                                            >
+                                                <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:scale-110 transition-transform duration-300" strokeWidth={2.5} />
+                                                <span className="whitespace-nowrap">
+                                                    {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </span>
+                                                <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 opacity-60 group-hover:opacity-100 transition-opacity duration-300" strokeWidth={2} />
+                                            </button>
                                             <button
                                                 onClick={() => setShowExportModal(true)}
                                                 className="p-1.5 sm:p-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 group relative"
@@ -666,6 +686,74 @@ export default function DashboardRFID() {
                 onExport={handleExport}
                 lineId={lineId}
             />
+
+            {/* Date Filter Modal */}
+            {showDateFilterModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 rounded-lg">
+                                    <Filter className="w-5 h-5 text-blue-600" strokeWidth={2.5} />
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-800">Filter Tanggal</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowDateFilterModal(false)}
+                                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                            >
+                                <XCircle className="w-5 h-5 text-gray-500 hover:text-gray-700" strokeWidth={2.5} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 sm:p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Dari Tanggal
+                                </label>
+                                <input
+                                    type="date"
+                                    value={filterDateFrom}
+                                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Sampai Tanggal
+                                </label>
+                                <input
+                                    type="date"
+                                    value={filterDateTo}
+                                    onChange={(e) => setFilterDateTo(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex items-center justify-end gap-3 p-4 sm:p-6 border-t border-gray-200">
+                            <button
+                                onClick={() => {
+                                    setFilterDateFrom('');
+                                    setFilterDateTo('');
+                                }}
+                                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 font-medium"
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={() => setShowDateFilterModal(false)}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
+                            >
+                                Terapkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* HIDDEN CHARTS FOR EXPORT */}
             <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
