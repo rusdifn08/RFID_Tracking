@@ -6,7 +6,6 @@ import { useSidebar } from '../context/SidebarContext';
 import { API_BASE_URL } from '../config/api';
 import ExportModal from '../components/ExportModal';
 import { exportToExcel } from '../utils/exportToExcel';
-import { svgToPng } from '../utils/chartToImage';
 import {
     PieChart, Pie, Cell, ResponsiveContainer,
 } from 'recharts';
@@ -166,7 +165,7 @@ export default function DashboardRFID() {
 
         const fetchTrackingData = async () => {
             try {
-                const url = `${API_BASE_URL}/tracking/line?line=${encodeURIComponent(lineId)}`;
+                const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}`;
 
                 // Timeout controller
                 const controller = new AbortController();
@@ -194,26 +193,39 @@ export default function DashboardRFID() {
                 if (!isMounted) return;
 
                 // Parse data dari API
-                // Struktur API: { success, line, data: { good, rework, reject, ... } }
-                if (data && data.success && data.data && typeof data.data === 'object') {
-                    const dataObj = data.data;
+                // Struktur API: { success: true, data: [{ line, Good, Rework, Reject, WIRA, ... }], total }
+                if (data && data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                    // Filter data berdasarkan line yang dipilih
+                    // Coba match dengan line sebagai string atau number
+                    const lineData = data.data.find((item: any) => {
+                        const itemLine = String(item.line || '').trim();
+                        const targetLine = String(lineId || '').trim();
+                        return itemLine === targetLine;
+                    });
+                    
+                    if (lineData) {
+                        // Helper function untuk parse number dari string atau number
+                        const parseNumber = (value: any): number => {
+                            if (value === null || value === undefined || value === '') return 0;
+                            const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+                            return isNaN(num) ? 0 : num;
+                        };
 
-                    // Parse dengan Number() dan fallback ke 0
-                    const newData = {
-                        good: Number(dataObj.good) || 0,
-                        rework: Number(dataObj.rework) || 0,
-                        reject: Number(dataObj.reject) || 0,
-                        wiraQc: Number(dataObj.wira_qc) || 0,
-                        pqcGood: Number(dataObj.pqc_good) || 0,
-                        pqcRework: Number(dataObj.pqc_rework) || 0,
-                        pqcReject: Number(dataObj.pqc_reject) || 0,
-                        wiraPqc: Number(dataObj.wira_pqc) || 0,
-                        outputLine: Number(dataObj.output_line) || 0,
-                    };
+                        // Parse dengan Number() dan fallback ke 0
+                        // Field names dari API: "Good", "Rework", "Reject", "WIRA", "Output Sewing", "PQC Good", "PQC Rework", "PQC Reject", "PQC WIRA"
+                        const newData = {
+                            good: parseNumber(lineData.Good),
+                            rework: parseNumber(lineData.Rework),
+                            reject: parseNumber(lineData.Reject),
+                            wiraQc: parseNumber(lineData.WIRA),
+                            pqcGood: parseNumber(lineData['PQC Good']),
+                            pqcRework: parseNumber(lineData['PQC Rework']),
+                            pqcReject: parseNumber(lineData['PQC Reject']),
+                            wiraPqc: parseNumber(lineData['PQC WIRA']),
+                            outputLine: parseNumber(lineData['Output Sewing']),
+                        };
 
-                    // Cek apakah ada perubahan data
-                    if (hasDataChanged(previousDataRef.current, newData)) {
-                        // Ada perubahan, update state
+                        // Update state langsung tanpa cek perubahan (untuk memastikan data muncul)
                         setTrackingData(data);
                         setGood(newData.good);
                         setRework(newData.rework);
@@ -226,11 +238,79 @@ export default function DashboardRFID() {
                         setOutputLine(newData.outputLine);
                         // Update ref untuk perbandingan berikutnya
                         previousDataRef.current = newData;
+                    } else {
+                        // Jika tidak ada data untuk line ini, set semua ke 0
+                        const emptyData = {
+                            good: 0,
+                            rework: 0,
+                            reject: 0,
+                            wiraQc: 0,
+                            pqcGood: 0,
+                            pqcRework: 0,
+                            pqcReject: 0,
+                            wiraPqc: 0,
+                            outputLine: 0,
+                        };
+                        setGood(0);
+                        setRework(0);
+                        setReject(0);
+                        setWiraQc(0);
+                        setPqcGood(0);
+                        setPqcRework(0);
+                        setPqcReject(0);
+                        setWiraPqc(0);
+                        setOutputLine(0);
+                        previousDataRef.current = emptyData;
                     }
-                    // Jika tidak ada perubahan, tidak perlu update state (tidak ada re-render)
+                } else {
+                    // Jika response tidak valid atau data kosong, set semua ke 0
+                    const emptyData = {
+                        good: 0,
+                        rework: 0,
+                        reject: 0,
+                        wiraQc: 0,
+                        pqcGood: 0,
+                        pqcRework: 0,
+                        pqcReject: 0,
+                        wiraPqc: 0,
+                        outputLine: 0,
+                    };
+                    setGood(0);
+                    setRework(0);
+                    setReject(0);
+                    setWiraQc(0);
+                    setPqcGood(0);
+                    setPqcRework(0);
+                    setPqcReject(0);
+                    setWiraPqc(0);
+                    setOutputLine(0);
+                    previousDataRef.current = emptyData;
                 }
             } catch (error) {
-                throw error;
+                // Error handling - set semua ke 0 jika terjadi error
+                if (isMounted) {
+                    const emptyData = {
+                        good: 0,
+                        rework: 0,
+                        reject: 0,
+                        wiraQc: 0,
+                        pqcGood: 0,
+                        pqcRework: 0,
+                        pqcReject: 0,
+                        wiraPqc: 0,
+                        outputLine: 0,
+                    };
+                    setGood(0);
+                    setRework(0);
+                    setReject(0);
+                    setWiraQc(0);
+                    setPqcGood(0);
+                    setPqcRework(0);
+                    setPqcReject(0);
+                    setWiraPqc(0);
+                    setOutputLine(0);
+                    previousDataRef.current = emptyData;
+                }
             }
         };
 
@@ -238,7 +318,7 @@ export default function DashboardRFID() {
             try {
                 await fetchTrackingData();
             } catch (error) {
-                // Error handling
+                // Error sudah di-handle di dalam fetchTrackingData
             }
         };
         initialFetch();
@@ -260,7 +340,7 @@ export default function DashboardRFID() {
         };
     }, [lineId]); // Re-fetch jika lineId berubah
 
-    // Fetch data WO/Production dari API monitoring/line
+    // Fetch data WO/Production dari API monitoring/line untuk card "DATA LINE"
     useEffect(() => {
         let isMounted = true;
         let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -379,23 +459,6 @@ export default function DashboardRFID() {
         // Ambil data WO jika ada
         const firstWo = woData || null;
 
-        // Capture charts
-        let qcChartImage = undefined;
-        let pqcChartImage = undefined;
-
-        try {
-            const qcChartEl = document.querySelector('#qc-chart-export .recharts-surface') as SVGSVGElement;
-            const pqcChartEl = document.querySelector('#pqc-chart-export .recharts-surface') as SVGSVGElement;
-
-            if (qcChartEl) {
-                qcChartImage = await svgToPng(qcChartEl, 400, 300);
-            }
-            if (pqcChartEl) {
-                pqcChartImage = await svgToPng(pqcChartEl, 400, 300);
-            }
-        } catch (e) {
-        }
-
         // Siapkan data untuk export
         const exportData = [{
             tanggal: tanggal,
@@ -417,8 +480,8 @@ export default function DashboardRFID() {
             pqcGood: pqcGood,
             goodSewing: good, // Good sewing sama dengan good QC untuk sementara
             balance: outputLine - (good + wiraQc + reject), // Balance calculation
-            qcChartImage,
-            pqcChartImage
+            qcChartImage: undefined,
+            pqcChartImage: undefined
         }];
 
         await exportToExcel(exportData, lineId, format);

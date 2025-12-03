@@ -1439,6 +1439,13 @@ app.get('/monitoring/line', async (req, res) => {
 });
 
 /**
+ * GET /wira?line=1 - WIRA data untuk Dashboard RFID
+ */
+app.get('/wira', async (req, res) => {
+    return await proxyRequest('/wira', req, res);
+});
+
+/**
  * GET /report/wira?line=1&wo=185759&tanggalfrom=2025-11-27&tanggalto=2025-11-28 - Report wira
  */
 app.get('/report/wira', async (req, res) => {
@@ -1537,6 +1544,7 @@ app.listen(PORT, HOST, () => {
     console.log(`   GET  http://${LOCAL_IP}:${PORT}/tracking/line (Proxy ke Backend API)`);
     console.log(`   GET  http://${LOCAL_IP}:${PORT}/wo/production_branch (Proxy ke Backend API)`);
     console.log(`   GET  http://${LOCAL_IP}:${PORT}/monitoring/line (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/wira (Proxy ke Backend API)`);
     console.log(`   GET  http://${LOCAL_IP}:${PORT}/report/wira (Proxy ke Backend API)`);
     console.log(`   POST http://${LOCAL_IP}:${PORT}/inputRFID (Proxy ke Backend API)`);
     console.log(`   POST http://${LOCAL_IP}:${PORT}/inputUser (Proxy ke Backend API)`);

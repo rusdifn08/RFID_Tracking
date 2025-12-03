@@ -29,6 +29,11 @@ export async function exportToExcel(
     lineId: string,
     format: 'excel' | 'csv' = 'excel'
 ) {
+    // Validasi data
+    if (!data || data.length === 0) {
+        throw new Error('Data tidak boleh kosong');
+    }
+
     // Buat workbook baru
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('RFID Tracking', {
@@ -82,299 +87,185 @@ export async function exportToExcel(
         }
     };
 
-    const infoHeaderStyle = {
-        font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
+    const dataCellStyle = {
+        font: { size: 11, bold: true, color: { argb: 'FF000000' } },
         fill: {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FF70AD47' } // Green
+            fgColor: { argb: 'FFFFFFFF' } // White
         },
-        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        alignment: { horizontal: 'center', vertical: 'middle' },
         border: {
-            top: { style: 'medium', color: { argb: 'FF000000' } },
-            bottom: { style: 'medium', color: { argb: 'FF000000' } },
-            left: { style: 'medium', color: { argb: 'FF000000' } },
-            right: { style: 'medium', color: { argb: 'FF000000' } }
-        }
-    };
-
-    const infoLabelStyle = {
-        font: { size: 11, bold: true },
-        fill: {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFD8BFD8' } // Thistle/Light Purple (sesuai request: purple muda)
-        },
-        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
-        border: {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'thin', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FF000000' } },
-            right: { style: 'thin', color: { argb: 'FF000000' } }
-        }
-    };
-
-    const infoCellStyle = {
-        font: { size: 11 },
-        fill: {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFFFFFFF' } // White background untuk value
-        },
-        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
-        border: {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'thin', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FF000000' } },
-            right: { style: 'thin', color: { argb: 'FF000000' } }
+            top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+            bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+            left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+            right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
         }
     };
 
     let currentRow = 1;
 
-    // ===== HEADER SECTION =====
-    const firstData = data[0] || {} as ExportData;
-
-    // Title Row - sesuai gambar: C1-F1
-    worksheet.mergeCells(`C${currentRow}:F${currentRow}`);
-    const titleCell = worksheet.getCell(`C${currentRow}`);
-    titleCell.value = 'RFID TRACKING REPORT';
-    titleCell.font = { bold: true, size: 16, color: { argb: 'FF4472C4' } };
+    // ===== TITLE SECTION =====
+    // Format: "RFID TRACKING REPORT DAILY - 2 Desember 2025"
+    const now = new Date();
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const tanggalStr = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+    
+    worksheet.mergeCells(`A${currentRow}:Q${currentRow}`);
+    const titleCell = worksheet.getCell(`A${currentRow}`);
+    titleCell.value = `RFID TRACKING REPORT DAILY - ${tanggalStr}`;
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FF000000' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-
-    // Chart Titles - sesuai gambar: H1-J1 dan K1-M1
-    worksheet.mergeCells(`H${currentRow}:J${currentRow}`);
-    const qcChartTitle = worksheet.getCell(`H${currentRow}`);
-    qcChartTitle.value = 'GRAFIK DATA QC';
-    qcChartTitle.font = { bold: true, size: 12, color: { argb: 'FF000000' } };
-    qcChartTitle.alignment = { horizontal: 'center', vertical: 'middle' };
-
-    worksheet.mergeCells(`K${currentRow}:M${currentRow}`);
-    const pqcChartTitle = worksheet.getCell(`K${currentRow}`);
-    pqcChartTitle.value = 'GRAFIK DATA PQC';
-    pqcChartTitle.font = { bold: true, size: 12, color: { argb: 'FF000000' } };
-    pqcChartTitle.alignment = { horizontal: 'center', vertical: 'middle' };
-
+    worksheet.getRow(currentRow).height = 30;
     currentRow++;
 
-    // ===== BAGIAN ATAS: DATA LINE INFORMATION =====
-    // Data Line Information Section - Header (A3-F3 sesuai gambar)
-    worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
-    const infoHeader = worksheet.getCell(`A${currentRow}`);
-    infoHeader.value = 'INFORMASI PRODUCTION LINE';
-    Object.assign(infoHeader, infoHeaderStyle);
-    currentRow++;
-
-    // Info rows dalam format 2 kolom (Label | Value) dengan 3 pasang per baris
-    // Sesuai gambar: Row 4-6 dengan format 2 kolom per item
-    const infoLabels = [
-        { label: 'Tanggal', value: firstData.tanggal || '-' },
-        { label: 'LINE', value: firstData.line || '-' },
-        { label: 'WO', value: firstData.wo || '-' },
-        { label: 'Style', value: firstData.style || '-' },
-        { label: 'Item', value: firstData.item || '-' },
-        { label: 'Buyer', value: firstData.buyer || '-' },
-        { label: 'Color', value: firstData.color || '-' },
-        { label: 'Size', value: firstData.size || '-' }
-    ];
-
-    // Set column widths untuk info section
-    worksheet.getColumn(1).width = 12; // Label width
-    worksheet.getColumn(2).width = 18; // Value width
-    worksheet.getColumn(3).width = 12;
-    worksheet.getColumn(4).width = 18;
-    worksheet.getColumn(5).width = 12;
-    worksheet.getColumn(6).width = 18;
-
-    // Buat info dalam format 3 pasang kolom per baris (sesuai gambar row 4-6)
-    for (let i = 0; i < infoLabels.length; i += 3) {
-        const row = currentRow;
-        const items = infoLabels.slice(i, i + 3);
-
-        items.forEach((info, colIndex) => {
-            const labelCol = colIndex * 2 + 1; // Kolom 1, 3, 5
-            const valueCol = labelCol + 1;     // Kolom 2, 4, 6
-            const labelCell = worksheet.getCell(row, labelCol);
-            const valueCell = worksheet.getCell(row, valueCol);
-
-            labelCell.value = info.label;
-            Object.assign(labelCell, infoLabelStyle); // Purple background untuk label
-
-            valueCell.value = info.value;
-            Object.assign(valueCell, infoCellStyle); // White background untuk value
-        });
-
-        currentRow++;
-    }
-
-    // ===== CHART DATA SECTION (IMAGES) =====
-    // Set column widths untuk chart area
-    worksheet.getColumn(8).width = 10;  // H
-    worksheet.getColumn(9).width = 10;   // I
-    worksheet.getColumn(10).width = 10;  // J
-    worksheet.getColumn(11).width = 10;  // K
-    worksheet.getColumn(12).width = 10;  // L
-    worksheet.getColumn(13).width = 10;  // M
-
-    // Insert QC Chart Image
-    if (firstData.qcChartImage) {
-        const imageId = workbook.addImage({
-            base64: firstData.qcChartImage,
-            extension: 'png',
-        });
-        worksheet.addImage(imageId, 'H2:J7');
-    }
-
-    // Insert PQC Chart Image
-    if (firstData.pqcChartImage) {
-        const imageId = workbook.addImage({
-            base64: firstData.pqcChartImage,
-            extension: 'png',
-        });
-        worksheet.addImage(imageId, 'K2:M7');
-    }
-
-    currentRow = 9; // Tabel tracking data mulai dari row 9 sesuai gambar
-
-    // ===== BAGIAN BAWAH: TRACKING DATA TABLE =====
-    // Sesuai gambar: Row 9-11 dengan struktur A-N
-
-    const headerRow1 = currentRow; // Row 9
-    const headerRow2 = currentRow + 1; // Row 10
-    const dataRow = currentRow + 2; // Row 11
-
-    // Set column widths untuk tabel (kolom A-N sesuai gambar)
-    const colWidths = [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12];
+    // ===== TABLE HEADER SECTION =====
+    // Header Row 1: Main Headers (LINE, WO, Style, Item, Buyer, Output Sewing, QC Endline, PQC, GOOD SEWING, BALANCE)
+    const headerRow1 = currentRow;
+    
+    // Set column widths
+    const colWidths = [15, 12, 12, 30, 30, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12];
     colWidths.forEach((width, idx) => {
-        const colNum = idx + 1;
-        worksheet.getColumn(colNum).width = width;
+        worksheet.getColumn(idx + 1).width = width;
     });
 
-    // Header Level 1 (Main Headers) - Row 9 sesuai gambar
-    const mainHeaderCells = [
-        { col: 1, text: 'Output', mergeEnd: 2 }, // A-B
-        { col: 3, text: 'QC Endline', mergeEnd: 6 }, // C-F
-        { col: 7, text: 'PQC', mergeEnd: 10 }, // G-J
-        { col: 11, text: 'GOOD', mergeEnd: 12 }, // K-L
-        { col: 13, text: 'BALANCE', mergeEnd: 14 } // M-N
+    // Main Headers - LINE, WO, Style, Item, Buyer, Output Sewing, GOOD SEWING, BALANCE merge ke baris 2 dan 3
+    // QC Endline dan PQC hanya merge di baris 1
+    const mainHeaders = [
+        { col: 1, text: 'LINE' }, // Merge A1-A2 dan ke data rows
+        { col: 2, text: 'WO' }, // Merge B1-B2 dan ke data rows
+        { col: 3, text: 'Style' }, // Merge C1-C2 dan ke data rows
+        { col: 4, text: 'Item' }, // Merge D1-D2 dan ke data rows
+        { col: 5, text: 'Buyer' }, // Merge E1-E2 dan ke data rows
+        { col: 6, text: 'Output Sewing' }, // Merge F1-F2 dan ke data rows (hanya 1 kolom)
+        { col: 7, text: 'QC Endline', mergeEnd: 10 }, // Merge G1-J1 (4 kolom: REWORK, WIRA, REJECT, GOOD)
+        { col: 11, text: 'PQC', mergeEnd: 14 }, // Merge K1-N1 (4 kolom: REWORK, WIRA, REJECT, GOOD)
+        { col: 15, text: 'GOOD SEWING' }, // Merge O1-O2 dan ke data rows
+        { col: 16, text: 'BALANCE' } // Merge P1-P2 dan ke data rows
     ];
 
-    mainHeaderCells.forEach(({ col, text, mergeEnd }) => {
+    mainHeaders.forEach(({ col, text, mergeEnd }) => {
         const cell = worksheet.getCell(headerRow1, col);
         cell.value = text;
         Object.assign(cell, headerStyle);
-
+        
         if (mergeEnd) {
+            // Merge horizontal di baris 1 saja (untuk QC Endline dan PQC)
             worksheet.mergeCells(headerRow1, col, headerRow1, mergeEnd);
         }
+        // Untuk merge vertikal akan dilakukan setelah headerRow2 dibuat
     });
 
-    // Header Level 2 (Sub Headers) - Row 10 sesuai gambar
-    const subHeaderCells = [
-        { col: 1, text: 'Sewing' },
-        { col: 2, text: '' },
-        { col: 3, text: 'REWORK' },
-        { col: 4, text: 'WIRA' },
-        { col: 5, text: 'REJECT' },
-        { col: 6, text: 'GOOD' },
-        { col: 7, text: 'REWORK' },
-        { col: 8, text: 'WIRA' },
-        { col: 9, text: 'REJECT' },
-        { col: 10, text: 'GOOD' },
-        { col: 11, text: 'SEWING' },
-        { col: 12, text: '' },
-        { col: 13, text: '' },
-        { col: 14, text: '' }
+    currentRow++;
+
+    // Header Row 2: Sub Headers (hanya untuk QC Endline dan PQC)
+    // Untuk kolom lain (LINE, WO, Style, Item, Buyer, Output Sewing, GOOD SEWING, BALANCE), 
+    // kita akan isi dengan data di baris ini juga
+    const headerRow2 = currentRow;
+    const subHeaders = [
+        { col: 7, text: 'REWORK' },  // QC Endline REWORK
+        { col: 8, text: 'WIRA' },   // QC Endline WIRA
+        { col: 9, text: 'REJECT' }, // QC Endline REJECT
+        { col: 10, text: 'GOOD' },  // QC Endline GOOD
+        { col: 11, text: 'REWORK' }, // PQC REWORK
+        { col: 12, text: 'WIRA' },   // PQC WIRA
+        { col: 13, text: 'REJECT' }, // PQC REJECT
+        { col: 14, text: 'GOOD' }    // PQC GOOD
     ];
 
-    subHeaderCells.forEach(({ col, text }) => {
+    subHeaders.forEach(({ col, text }) => {
         const cell = worksheet.getCell(headerRow2, col);
-        if (text) {
-            cell.value = text;
-            Object.assign(cell, subHeaderStyle);
-        }
+        cell.value = text;
+        Object.assign(cell, subHeaderStyle);
     });
 
-    // Merge cells untuk sub headers yang perlu merge
-    // Output Sewing
-    worksheet.mergeCells(headerRow2, 1, headerRow2, 2);
-    // GOOD SEWING
-    worksheet.mergeCells(headerRow2, 11, headerRow2, 12);
-    // BALANCE (row 10 tidak ada sub header, jadi tidak perlu merge di row 10)
+    currentRow++;
 
-    // Data rows - Row 11 sesuai gambar
+    // ===== DATA ROWS =====
+    const dataRows: number[] = [];
+    
     data.forEach((rowData) => {
+        const dataRow = currentRow;
+        dataRows.push(dataRow);
+        
         const dataValues = [
-            rowData.outputSewing,   // Col 1 - Output Sewing
-            '',                     // Col 2 (spacer untuk merge)
-            rowData.qcRework,       // Col 3 - QC REWORK
-            rowData.qcWira,         // Col 4 - QC WIRA
-            rowData.qcReject,       // Col 5 - QC REJECT
-            rowData.qcGood,         // Col 6 - QC GOOD
-            rowData.pqcRework,      // Col 7 - PQC REWORK
-            rowData.pqcWira,        // Col 8 - PQC WIRA
-            rowData.pqcReject,      // Col 9 - PQC REJECT
-            rowData.pqcGood,        // Col 10 - PQC GOOD
-            rowData.goodSewing,     // Col 11 - GOOD SEWING
-            '',                     // Col 12 (spacer untuk merge)
-            rowData.balance,        // Col 13 - BALANCE
-            ''                      // Col 14 (spacer untuk merge)
+            rowData.line || '-',           // Col 1 - LINE
+            rowData.wo || '-',             // Col 2 - WO
+            rowData.style || '-',          // Col 3 - Style
+            rowData.item || '-',           // Col 4 - Item
+            rowData.buyer || '-',         // Col 5 - Buyer
+            rowData.outputSewing || 0,     // Col 6 - Output Sewing
+            rowData.qcRework || 0,         // Col 7 - QC Endline REWORK
+            rowData.qcWira || 0,           // Col 8 - QC Endline WIRA
+            rowData.qcReject || 0,        // Col 9 - QC Endline REJECT
+            rowData.qcGood || 0,           // Col 10 - QC Endline GOOD
+            rowData.pqcRework || 0,        // Col 11 - PQC REWORK
+            rowData.pqcWira || 0,         // Col 12 - PQC WIRA
+            rowData.pqcReject || 0,       // Col 13 - PQC REJECT
+            rowData.pqcGood || 0,          // Col 14 - PQC GOOD
+            rowData.goodSewing || 0,       // Col 15 - GOOD SEWING
+            rowData.balance || 0           // Col 16 - BALANCE
         ];
 
         dataValues.forEach((value, colIdx) => {
             const col = colIdx + 1;
             const cell = worksheet.getCell(dataRow, col);
+            
+            // Isi semua cell dengan value (termasuk yang akan di-merge)
             cell.value = value;
+            Object.assign(cell, dataCellStyle);
 
-            // Style untuk data row - white background, bold, centered
-            Object.assign(cell, {
-                font: { size: 11, bold: true, color: { argb: 'FF000000' } },
-                fill: {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFFFFFFF' } // White
-                },
-                alignment: { horizontal: 'center', vertical: 'middle' },
-                border: {
-                    top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-                    bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-                    left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-                    right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-                }
-            });
-
-            // Balance column (col 13) - red if negative
-            if (col === 13 && typeof value === 'number' && value < 0) {
-                cell.font = { color: { argb: 'FFFF0000' }, bold: true };
+            // Balance column - red if negative
+            if (col === 16 && typeof value === 'number' && value < 0) {
+                cell.font = { color: { argb: 'FFFF0000' }, bold: true, size: 11 };
             }
         });
 
-        // Merge cells untuk data row sesuai gambar
-        // Output Sewing (A11-B11)
-        worksheet.mergeCells(dataRow, 1, dataRow, 2);
-        // GOOD SEWING (K11-L11)
-        worksheet.mergeCells(dataRow, 11, dataRow, 12);
-        // BALANCE (M11-N11)
-        worksheet.mergeCells(dataRow, 13, dataRow, 14);
+        worksheet.getRow(dataRow).height = 30;
+        currentRow++;
     });
 
-    currentRow = dataRow + 1;
+    // Merge cells setelah semua data diisi
+    if (dataRows.length > 0) {
+        try {
+            const mergeHeaderColumns = [1, 2, 3, 4, 5, 6, 15, 16]; // A, B, C, D, E, F, O, P
+            
+            // Merge QC Endline dan PQC dari headerRow1 ke headerRow2 (horizontal dan vertikal)
+            try {
+                worksheet.mergeCells(headerRow1, 7, headerRow2, 10); // QC Endline G1:J1 -> G2:J2
+            } catch (e) {
+                // Ignore jika sudah di-merge atau error
+            }
+            try {
+                worksheet.mergeCells(headerRow1, 11, headerRow2, 14); // PQC K1:N1 -> K2:N2
+            } catch (e) {
+                // Ignore jika sudah di-merge atau error
+            }
+            
+            // Merge cells untuk kolom yang perlu merge vertikal (LINE, WO, Style, Item, Buyer, Output Sewing, GOOD SEWING, BALANCE)
+            // Struktur: 
+            // - headerRow1 ke headerRow2: Header text di-merge (2 baris header)
+            // - Data tetap di data rows (1 baris, tidak di-merge dengan header)
+            mergeHeaderColumns.forEach(col => {
+                try {
+                    // Merge header dari headerRow1 ke headerRow2 (2 baris header yang di-merge)
+                    // Ini membuat header LINE, WO, Style, dll memiliki 2 baris yang di-merge
+                    worksheet.mergeCells(headerRow1, col, headerRow2, col);
+                } catch (e) {
+                    // Ignore error jika merge gagal
+                }
+            });
+        } catch (e) {
+            // Ignore error dan tetap lanjutkan export
+        }
+    }
 
-    // Set row heights sesuai gambar
-    worksheet.getRow(1).height = 25; // Title row
-    for (let i = 2; i <= 7; i++) {
-        worksheet.getRow(i).height = 25; // Chart area rows (increased for images)
-    }
-    worksheet.getRow(3).height = 22; // Info header
-    for (let i = 4; i <= 6; i++) {
-        worksheet.getRow(i).height = 20; // Info rows
-    }
-    worksheet.getRow(headerRow1).height = 25; // Main header (row 9)
-    worksheet.getRow(headerRow2).height = 22; // Sub header (row 10)
-    worksheet.getRow(dataRow).height = 25; // Data row (row 11)
+    // Set row heights
+    worksheet.getRow(headerRow1).height = 25;
+    worksheet.getRow(headerRow2).height = 22;
 
     // Generate filename
-    const now = new Date();
     const dateStr = now.toLocaleDateString('id-ID', {
         day: '2-digit',
         month: '2-digit',
@@ -394,29 +285,51 @@ export async function exportToExcel(
         // CSV export (simplified)
         const csvData: string[][] = [];
 
-        // Add info section
-        csvData.push(['INFORMASI PRODUCTION LINE']);
-        infoLabels.forEach(info => {
-            csvData.push([info.label, info.value]);
-        });
+        // Add title
+        const now = new Date();
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                           'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const tanggalStr = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+        csvData.push([`RFID TRACKING REPORT DAILY - ${tanggalStr}`]);
         csvData.push([]);
 
-        // Add headers
+        // Add headers - Row 1: Main Headers
         csvData.push([
-            'Tanggal', 'LINE', 'WO', 'Style', 'Item', 'Buyer',
-            'Output Sewing', 'QC REWORK', 'QC WIRA', 'QC REJECT', 'QC GOOD',
-            'PQC REWORK', 'PQC WIRA', 'PQC REJECT', 'PQC GOOD',
+            'LINE', 'WO', 'Style', 'Item', 'Buyer',
+            'Output Sewing',
+            'QC Endline', 'QC Endline', 'QC Endline', 'QC Endline',
+            'PQC', 'PQC', 'PQC', 'PQC',
             'GOOD SEWING', 'BALANCE'
+        ]);
+
+        // Add headers - Row 2: Sub Headers
+        csvData.push([
+            '', '', '', '', '',
+            '',
+            'REWORK', 'WIRA', 'REJECT', 'GOOD',
+            'REWORK', 'WIRA', 'REJECT', 'GOOD',
+            '', ''
         ]);
 
         // Add data
         data.forEach(row => {
             csvData.push([
-                row.tanggal, row.line, row.wo, row.style, row.item, row.buyer,
-                row.outputSewing.toString(),
-                row.qcRework.toString(), row.qcWira.toString(), row.qcReject.toString(), row.qcGood.toString(),
-                row.pqcRework.toString(), row.pqcWira.toString(), row.pqcReject.toString(), row.pqcGood.toString(),
-                row.goodSewing.toString(), row.balance.toString()
+                row.line || '-',
+                row.wo || '-',
+                row.style || '-',
+                row.item || '-',
+                row.buyer || '-',
+                (row.outputSewing || 0).toString(),
+                (row.qcRework || 0).toString(),
+                (row.qcWira || 0).toString(),
+                (row.qcReject || 0).toString(),
+                (row.qcGood || 0).toString(),
+                (row.pqcRework || 0).toString(),
+                (row.pqcWira || 0).toString(),
+                (row.pqcReject || 0).toString(),
+                (row.pqcGood || 0).toString(),
+                (row.goodSewing || 0).toString(),
+                (row.balance || 0).toString()
             ]);
         });
 
@@ -712,7 +625,7 @@ export async function exportListRFIDToExcel(
         worksheet.getRow(currentRow).height = 25;
         currentRow++;
 
-        // Set column widths untuk chart area
+    // Set column widths untuk chart area
         worksheet.getColumn(8).width = 12;
         worksheet.getColumn(9).width = 12;
         worksheet.getColumn(10).width = 12;
@@ -720,19 +633,19 @@ export async function exportListRFIDToExcel(
 
         // Insert Status Chart
         if (calculatedSummary.statusChartImage) {
-            const imageId = workbook.addImage({
+        const imageId = workbook.addImage({
                 base64: calculatedSummary.statusChartImage.replace('data:image/png;base64,', ''),
-                extension: 'png',
-            });
+            extension: 'png',
+        });
             worksheet.addImage(imageId, `A${currentRow}:D${currentRow + 5}`);
-        }
+    }
 
         // Insert Lokasi Chart
         if (calculatedSummary.lokasiChartImage) {
-            const imageId = workbook.addImage({
+        const imageId = workbook.addImage({
                 base64: calculatedSummary.lokasiChartImage.replace('data:image/png;base64,', ''),
-                extension: 'png',
-            });
+            extension: 'png',
+        });
             worksheet.addImage(imageId, `E${currentRow}:H${currentRow + 5}`);
         }
 
