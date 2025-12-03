@@ -6,29 +6,31 @@ import { QrCode, Calendar, X, ListChecks, XCircle } from 'lucide-react';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
 import { API_BASE_URL } from '../config/api';
 
-// Interface untuk data dari API
-interface ProductionBranchData {
-    breakdown_sizes: string;
+// Interface untuk data dari API /wo/branch
+interface BranchData {
+    branch: string;
     buyer: string;
-    colors: string;
+    color: string;
+    finish_date: string;
+    id: number;
     line: string;
     product_name: string;
-    production_branch: string;
+    qty: string;
+    size: string;
     start_date: string;
     style: string;
-    total_qty_order: string;
-    wo_id: number;
     wo_no: string;
 }
 
-interface ProductionBranchResponse {
+interface BranchResponse {
+    branch: string;
     count: number;
-    data: ProductionBranchData[];
-    date_from: string;
-    date_to: string;
+    data: BranchData[];
+    date_from: string | null;
+    date_to: string | null;
     line: string;
-    production_branch: string;
     success: boolean;
+    wo_list: string[];
 }
 
 // Interface untuk Work Order Data yang sudah diproses
@@ -89,7 +91,7 @@ export default function DaftarRFID() {
     const availableColors = selectedWOData?.colors || [];
     const availableSizes = selectedWOData?.sizes || [];
     
-    // Fetch data dari API
+    // Fetch data dari API /wo/branch
     const fetchProductionBranchData = async () => {
         try {
             setLoading(true);
@@ -99,7 +101,18 @@ export default function DaftarRFID() {
                 return `${year}-${parseInt(month)}-${parseInt(day)}`;
             };
             
-            const apiUrl = `${API_BASE_URL}/wo/production_branch?production_branch=CJL&line=L1&start_date_from=${formatDateForAPI(dateFrom)}&start_date_to=${formatDateForAPI(dateTo)}`;
+            // Build URL dengan parameter
+            let apiUrl = `${API_BASE_URL}/wo/branch?branch=cjl&line=L1`;
+            
+            // Tambahkan start_date_from jika ada
+            if (dateFrom) {
+                apiUrl += `&start_date_from=${formatDateForAPI(dateFrom)}`;
+            }
+            
+            // Tambahkan start_date_to jika ada
+            if (dateTo) {
+                apiUrl += `&start_date_to=${formatDateForAPI(dateTo)}`;
+            }
             
             const response = await fetch(apiUrl, {
                 method: 'GET',
@@ -113,7 +126,7 @@ export default function DaftarRFID() {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const result: ProductionBranchResponse = await response.json();
+            const result: BranchResponse = await response.json();
             
             // Process data dari API
             const processedData: Record<string, WorkOrderData> = {};
@@ -133,13 +146,10 @@ export default function DaftarRFID() {
                         };
                     }
                     
-                    // Process style - split by comma jika ada
-                    const styles = item.style ? item.style.split(',').map(s => s.trim()).filter(s => s) : [];
-                    styles.forEach(style => {
-                        if (!processedData[woNo].styles.includes(style)) {
-                            processedData[woNo].styles.push(style);
-                        }
-                    });
+                    // Process style - langsung dari field style (tidak perlu split)
+                    if (item.style && !processedData[woNo].styles.includes(item.style)) {
+                        processedData[woNo].styles.push(item.style);
+                    }
                     
                     // Process buyer
                     if (item.buyer && !processedData[woNo].buyers.includes(item.buyer)) {
@@ -151,21 +161,15 @@ export default function DaftarRFID() {
                         processedData[woNo].items.push(item.product_name);
                     }
                     
-                    // Process colors - split by comma
-                    const colors = item.colors ? item.colors.split(',').map(c => c.trim()).filter(c => c) : [];
-                    colors.forEach(color => {
-                        if (!processedData[woNo].colors.includes(color)) {
-                            processedData[woNo].colors.push(color);
-                        }
-                    });
+                    // Process color - langsung dari field color (tidak perlu split)
+                    if (item.color && !processedData[woNo].colors.includes(item.color)) {
+                        processedData[woNo].colors.push(item.color);
+                    }
                     
-                    // Process sizes - split by comma
-                    const sizes = item.breakdown_sizes ? item.breakdown_sizes.split(',').map(s => s.trim()).filter(s => s) : [];
-                    sizes.forEach(size => {
-                        if (!processedData[woNo].sizes.includes(size)) {
-                            processedData[woNo].sizes.push(size);
-                        }
-                    });
+                    // Process size - langsung dari field size (tidak perlu split)
+                    if (item.size && !processedData[woNo].sizes.includes(item.size)) {
+                        processedData[woNo].sizes.push(item.size);
+                    }
                 });
             }
             
