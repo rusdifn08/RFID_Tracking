@@ -97,6 +97,22 @@ const ListRFID: React.FC = () => {
     
     const currentLine = getLineFromUrl();
 
+    // Helper function to parse timestamp
+    const parseTimestamp = (timestamp: string): Date | null => {
+        if (!timestamp) return null;
+        try {
+            // Format: "Mon, 01 Dec 2025 11:08:06 GMT" atau format ISO
+            const date = new Date(timestamp);
+            // Validasi apakah date valid
+            if (isNaN(date.getTime())) {
+                return null;
+            }
+            return date;
+        } catch (e) {
+            return null;
+        }
+    };
+
     // Filters
     const [filterWO, setFilterWO] = useState<string>('');
     const [filterBuyer, setFilterBuyer] = useState<string>('');
@@ -230,7 +246,34 @@ const ListRFID: React.FC = () => {
                 });
             }
             
-            setRfidData(filteredByLine);
+            // Hilangkan duplikasi berdasarkan RFID ID, ambil data dengan timestamp terbaru
+            const uniqueRFIDData = filteredByLine.reduce((acc, current) => {
+                const existingIndex = acc.findIndex(item => item.rfid === current.rfid);
+                
+                if (existingIndex === -1) {
+                    // RFID belum ada, tambahkan
+                    acc.push(current);
+                } else {
+                    // RFID sudah ada, bandingkan timestamp
+                    const existingTimestamp = parseTimestamp(acc[existingIndex].timestamp || '');
+                    const currentTimestamp = parseTimestamp(current.timestamp || '');
+                    
+                    // Jika current timestamp lebih baru, ganti dengan data current
+                    if (currentTimestamp && existingTimestamp) {
+                        if (currentTimestamp > existingTimestamp) {
+                            acc[existingIndex] = current;
+                        }
+                    } else if (currentTimestamp && !existingTimestamp) {
+                        // Jika current punya timestamp tapi existing tidak, ganti dengan current
+                        acc[existingIndex] = current;
+                    }
+                    // Jika existing punya timestamp tapi current tidak, tetap pakai existing
+                }
+                
+                return acc;
+            }, [] as RFIDItem[]);
+            
+            setRfidData(uniqueRFIDData);
             setLoading(false);
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Gagal memuat data RFID');
@@ -243,22 +286,6 @@ const ListRFID: React.FC = () => {
     useEffect(() => {
         fetchRFIDData();
     }, [currentLine, id]);
-
-    // Helper function to parse timestamp
-    const parseTimestamp = (timestamp: string): Date | null => {
-        if (!timestamp) return null;
-        try {
-            // Format: "Mon, 01 Dec 2025 11:08:06 GMT" atau format ISO
-            const date = new Date(timestamp);
-            // Validasi apakah date valid
-            if (isNaN(date.getTime())) {
-                return null;
-            }
-            return date;
-        } catch (e) {
-            return null;
-        }
-    };
 
     // Filter data
     const filteredData = rfidData.filter(item => {
@@ -853,14 +880,15 @@ const ListRFID: React.FC = () => {
                                     {selectedScan.timestamp ? (() => {
                                         try {
                                             const date = new Date(selectedScan.timestamp);
-                                            return date.toLocaleString('id-ID', {
-                                                day: '2-digit',
-                                                month: 'short',
-                                                year: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                                second: '2-digit'
-                                            });
+                                            // Gunakan UTC methods untuk menampilkan waktu sesuai GMT dari API
+                                            const day = String(date.getUTCDate()).padStart(2, '0');
+                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                                            const month = monthNames[date.getUTCMonth()];
+                                            const year = date.getUTCFullYear();
+                                            const hours = String(date.getUTCHours()).padStart(2, '0');
+                                            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                                            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                                            return `${day} ${month} ${year}, ${hours}.${minutes}.${seconds}`;
                                         } catch (e) {
                                             return selectedScan.timestamp;
                                         }
