@@ -143,24 +143,18 @@ export default function DashboardRFID() {
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
     const [filterDateTo, setFilterDateTo] = useState<string>('');
 
-    // Fungsi untuk membandingkan data lama dan baru
-    const hasDataChanged = (
-        oldData: { good: number; rework: number; reject: number; wiraQc: number; pqcGood: number; pqcRework: number; pqcReject: number; wiraPqc: number; outputLine: number } | null,
-        newData: { good: number; rework: number; reject: number; wiraQc: number; pqcGood: number; pqcRework: number; pqcReject: number; wiraPqc: number; outputLine: number }
-    ): boolean => {
-        if (!oldData) return true; // Pertama kali, selalu update
-
-        return (
-            oldData.good !== newData.good ||
-            oldData.rework !== newData.rework ||
-            oldData.reject !== newData.reject ||
-            oldData.wiraQc !== newData.wiraQc ||
-            oldData.pqcGood !== newData.pqcGood ||
-            oldData.pqcRework !== newData.pqcRework ||
-            oldData.pqcReject !== newData.pqcReject ||
-            oldData.wiraPqc !== newData.wiraPqc ||
-            oldData.outputLine !== newData.outputLine
-        );
+    // Fungsi helper untuk format tanggal dari YYYY-MM-DD ke YYYY-M-D
+    const formatDateForAPI = (dateString: string): string => {
+        if (!dateString) return '';
+        // Input: YYYY-MM-DD, Output: YYYY-M-D
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            const year = parts[0];
+            const month = String(parseInt(parts[1], 10)); // Remove leading zero
+            const day = String(parseInt(parts[2], 10)); // Remove leading zero
+            return `${year}-${month}-${day}`;
+        }
+        return dateString;
     };
 
     // Fetch data dari server.js menggunakan useEffect dengan polling agresif
@@ -170,7 +164,18 @@ export default function DashboardRFID() {
 
         const fetchTrackingData = async () => {
             try {
-                const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}`;
+                // Build URL dengan parameter filter tanggal jika ada
+                let url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}`;
+                
+                // Tambahkan parameter tanggal jika ada
+                if (filterDateFrom) {
+                    const formattedFrom = formatDateForAPI(filterDateFrom);
+                    url += `&tanggalfrom=${encodeURIComponent(formattedFrom)}`;
+                }
+                if (filterDateTo) {
+                    const formattedTo = formatDateForAPI(filterDateTo);
+                    url += `&tanggalto=${encodeURIComponent(formattedTo)}`;
+                }
 
                 // Timeout controller
                 const controller = new AbortController();
@@ -343,7 +348,7 @@ export default function DashboardRFID() {
                 clearInterval(intervalId);
             }
         };
-    }, [lineId]); // Re-fetch jika lineId berubah
+    }, [lineId, filterDateFrom, filterDateTo]); // Re-fetch jika lineId atau filter tanggal berubah
 
     // Fetch data WO/Production dari API monitoring/line untuk card "DATA LINE"
     useEffect(() => {
@@ -689,8 +694,8 @@ export default function DashboardRFID() {
 
             {/* Date Filter Modal */}
             {showDateFilterModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-md transform transition-all border border-white/20">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
                             <div className="flex items-center gap-3">
@@ -745,7 +750,10 @@ export default function DashboardRFID() {
                                 Reset
                             </button>
                             <button
-                                onClick={() => setShowDateFilterModal(false)}
+                                onClick={() => {
+                                    setShowDateFilterModal(false);
+                                    // Data akan otomatis di-fetch ulang karena dependency filterDateFrom dan filterDateTo berubah
+                                }}
                                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
                             >
                                 Terapkan

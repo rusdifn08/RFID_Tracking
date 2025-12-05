@@ -1,4 +1,5 @@
 import Sidebar from '../components/Sidebar';
+
 import Header from '../components/Header';
 import RFIDLineContent from '../components/RFIDLineContent';
 import { useSidebar } from '../context/SidebarContext';

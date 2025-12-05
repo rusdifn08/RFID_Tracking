@@ -9,7 +9,9 @@ import DataRFID from '../pages/DataRFID.tsx';
 import LineDetail from '../pages/LineDetail.tsx';
 import DashboardRFID from '../pages/DashboardRFID.tsx';
 import CheckingRFID from '../pages/CheckingRFID.tsx';
+import StatusRFID from '../pages/StatusRFID.tsx';
 import ListRFID from '../pages/ListRFID.tsx';
+import AboutUs from '../pages/AboutUs.tsx';
 import ProtectedRoute from '../components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -90,6 +92,14 @@ const router = createBrowserRouter([
         ),
     },
     {
+        path: '/status-rfid',
+        element: (
+            <ProtectedRoute>
+                <StatusRFID />
+            </ProtectedRoute>
+        ),
+    },
+    {
         path: '/list-rfid',
         element: (
             <ProtectedRoute>
@@ -102,6 +112,14 @@ const router = createBrowserRouter([
         element: (
             <ProtectedRoute>
                 <ListRFID />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/about-us',
+        element: (
+            <ProtectedRoute>
+                <AboutUs />
             </ProtectedRoute>
         ),
     },
