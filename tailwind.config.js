@@ -6,6 +6,14 @@ export default {
     ],
     theme: {
         extend: {
+            fontFamily: {
+                sans: ['Poppins', 'sans-serif'],
+            },
+            fontWeight: {
+                normal: '400',
+                medium: '500',
+                bold: '700',
+            },
             keyframes: {
                 'fade-in': {
                     'from': { opacity: '0', transform: 'translateY(-10px)' },

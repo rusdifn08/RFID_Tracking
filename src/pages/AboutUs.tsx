@@ -264,7 +264,7 @@ export default function AboutUs() {
                                 {/* Left Side - Text Content */}
                                 <div className="space-y-4 order-2 lg:order-1">
                                     {/* Title - Improved Font & Size */}
-                                    <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 leading-relaxed tracking-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                                    <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 leading-relaxed tracking-tight" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
                                         Menyatukan Pengetahuan, Ide, dan{' '}
                                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600 font-extrabold">
                                             Teknologi Kelas Dunia

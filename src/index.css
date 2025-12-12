@@ -71,42 +71,30 @@ textarea {
     transition-duration: 200ms;
 }
 
-/* Custom scrollbar */
+/* Hide scrollbar but keep scrolling functionality */
+/* For Webkit browsers (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
 }
 
-::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
+/* For Firefox */
+html, body, * {
+    scrollbar-width: none;
+    -ms-overflow-style: none; /* IE and Edge */
 }
 
-::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
+/* Ensure scrolling still works */
+html, body, * {
+    -webkit-overflow-scrolling: touch;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-/* Custom scrollbar untuk sidebar */
+/* Custom scrollbar untuk sidebar - juga disembunyikan */
 .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 10px;
-    transition: background 0.3s ease;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
 }

@@ -1,8 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import Breadcrumb from '../components/Breadcrumb';
 import { useState } from 'react';
 import { useSidebar } from '../context/SidebarContext';
+import backgroundImage from '../assets/background.jpg';
 
 // Material-UI Imports
 import { Paper } from '@mui/material';
@@ -10,9 +12,7 @@ import {
     Dns as DaftarRfidIcon,
     Dashboard as DashboardIcon,
     EventNote as ListRfidIcon,
-    ArrowForward as ArrowRightIcon,
-    Person as UserIcon,
-    Factory as FactoryIcon
+    Person as UserIcon
 } from '@mui/icons-material';
 
 export default function LineDetail() {
@@ -26,47 +26,47 @@ export default function LineDetail() {
     const productionLines = [
         {
             id: 1,
-            title: 'SEWING LINE 1',
+            title: 'Production Line 1',
             supervisor: 'Risman ',
         },
         {
             id: 2,
-            title: 'SEWING LINE 2',
+            title: 'Production Line 2',
             supervisor: 'Asep Supriadi',
         },
         {
             id: 3,
-            title: 'SEWING LINE 3',
+            title: 'Production Line 3',
             supervisor: '-',
         },
         {
             id: 4,
-            title: 'SEWING LINE 4',
+            title: 'Production Line 4',
             supervisor: 'Agus Bencoy',
         },
         {
             id: 5,
-            title: 'SEWING LINE 5',
+            title: 'Production Line 5',
             supervisor: 'Euis Sutisna',
         },
         {
             id: 6,
-            title: 'SEWING LINE 6',
+            title: 'Production Line 6',
             supervisor: 'Tatang Beratang',
         },
         {
             id: 7,
-            title: 'CUTTING GM1',
+            title: 'Cutting Gm1',
             supervisor: 'Agus Bencoy',
         },
         {
             id: 8,
-            title: 'SEWING LINE 8',
+            title: 'Production Line 8',
             supervisor: 'Euis Sutisna',
         },
         {
             id: 9,
-            title: 'SEWING LINE 9',
+            title: 'Production Line 9',
             supervisor: 'Tatang Beratang',
         },
     ];
@@ -80,32 +80,37 @@ export default function LineDetail() {
     const cards = [
         {
             id: 1,
-            title: 'DAFTAR RFID',
+            title: 'Daftar RFID',
             subtitle: 'Registrasi Tag Baru',
             icon: DaftarRfidIcon,
             path: '/daftar-rfid',
-            color: { main: '#8B5CF6', light: '#F3E8FF', shadow: 'rgba(139, 92, 246, 0.5)' }
         },
         {
             id: 2,
-            title: 'DASHBOARD RFID',
+            title: 'Dashboard RFID',
             subtitle: 'Monitoring Real-time',
             icon: DashboardIcon,
             path: `/dashboard-rfid/${id}`,
-            color: { main: '#EC4899', light: '#FCE7F3', shadow: 'rgba(236, 72, 153, 0.5)' }
         },
         {
             id: 3,
-            title: 'LIST RFID',
+            title: 'List RFID',
             subtitle: 'Database & Log',
             icon: ListRfidIcon,
             path: `/list-rfid/${id}`,
-            color: { main: '#F59E0B', light: '#FEF3C7', shadow: 'rgba(245, 158, 11, 0.5)' }
         },
     ];
 
     return (
-        <div className="flex min-h-screen bg-[#F8F9FA] font-sans text-slate-800 overflow-hidden">
+        <div className="flex min-h-screen w-full h-screen font-sans text-slate-800 overflow-hidden fixed inset-0 m-0 p-0"
+            style={{
+                backgroundImage: `url(${backgroundImage})`,
+                backgroundSize: '100% 100%',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundAttachment: 'fixed',
+            }}
+        >
             {/* Sidebar */}
             <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
                 <Sidebar />
@@ -113,10 +118,10 @@ export default function LineDetail() {
 
             {/* Main Content Area */}
             <div
-                className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out"
+                className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out relative"
                 style={{
-                    marginLeft: isOpen ? '15%' : '5rem',
-                    width: isOpen ? 'calc(100% - 15%)' : 'calc(100% - 5rem)'
+                    marginLeft: isOpen ? '18%' : '5rem',
+                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
                 }}
             >
                 {/* Header */}
@@ -124,24 +129,23 @@ export default function LineDetail() {
                     <Header />
                 </div>
 
+                {/* Breadcrumb */}
+                <Breadcrumb />
+
                 {/* Main Content */}
                 <main
-                    className="flex-1 w-full overflow-y-auto bg-[#F8F9FA] pt-8 pb-8 px-6 md:px-8 lg:px-10 h-full"
+                    className="flex-1 w-full overflow-y-auto px-6 md:px-8 lg:px-10 relative"
                     style={{
-                        marginTop: '1rem'
+                        marginTop: '1 rem',
+                        paddingTop: '0',
+                        paddingBottom: '5rem', // Tambah padding bottom untuk footer
+                        height: 'calc(100vh - 4.5rem)',
+                        maxHeight: 'calc(100vh - 4.5rem)',
                     }}
                 >
 
                     {/* --- TITLE SECTION --- */}
-                    <div className="flex flex-col items-center justify-center animate-fade-in-down text-center">
-                        <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center">
-                            <FactoryIcon sx={{ fontSize: 42, color: '#334155' }} />
-                        </div>
-
-                        <h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
-                            {currentLine.title}
-                        </h1>
-
+                    <div className="flex flex-col items-center justify-center animate-fade-in-down text-center mt-3">
                         <div className="inline-flex items-center gap-3 px-6 py-2.5 bg-white rounded-full shadow-sm border border-slate-100">
                             <div className="p-1.5 bg-slate-100 rounded-full">
                                 <UserIcon sx={{ fontSize: 18, color: '#64748B' }} />
@@ -156,7 +160,10 @@ export default function LineDetail() {
                     </div>
 
                     {/* --- CARDS GRID --- */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6 lg:gap-8 max-w-7xl mx-auto">
+                    <div 
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 xs:gap-4 sm:gap-5 md:gap-6 max-w-6xl mx-auto mt-3"
+                        onMouseLeave={() => setHoveredCard(null)}
+                    >
                         {cards.map((card, index) => {
                             const isHovered = hoveredCard === card.id;
                             const isDimmed = hoveredCard !== null && hoveredCard !== card.id;
@@ -166,79 +173,59 @@ export default function LineDetail() {
                                     key={card.id}
                                     onClick={() => navigate(card.path)}
                                     onMouseEnter={() => setHoveredCard(card.id)}
-                                    onMouseLeave={() => setHoveredCard(null)}
-                                    className={`
-                                            gap-10
-                                            relative h-full group cursor-pointer
-                                            transition-all duration-500 ease-out
-                                            ${isDimmed ? 'grayscale blur-[1px] opacity-60 scale-95' : 'opacity-100 scale-100'}
-                                            ${isHovered ? 'z-20' : 'z-0'}
-                                        `}
+                                    className="relative group cursor-pointer transition-all duration-300"
                                     style={{
                                         animation: `fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards ${index * 150}ms`,
-                                        opacity: 0
+                                        opacity: 0,
+                                        zIndex: isHovered ? 10 : 1
                                     }}
                                 >
                                     <Paper
                                         elevation={0}
-                                        className="relative flex items-center p-4 sm:p-5 md:p-6 lg:p-8 min-h-[140px] sm:min-h-[160px] md:min-h-[170px] lg:min-h-[180px] bg-white border-2 transition-all duration-500"
+                                        className="relative flex flex-col p-4 xs:p-5 sm:p-6 bg-white transition-all duration-300"
                                         style={{
-                                            borderRadius: '35px',
-                                            overflow: 'visible',
-                                            borderColor: isHovered ? card.color.main : '#ECF5FF',
-                                            boxShadow: isHovered
-                                                ? `0 30px 60px -15px ${card.color.shadow}`
-                                                : '0 10px 30px -10px rgba(0,0,0,0.05)',
-                                            transform: isHovered ? 'translateY(-10px)' : 'translateY(0)'
+                                            borderRadius: '16px',
+                                            boxShadow: isHovered 
+                                                ? '0 10px 40px -10px rgba(0, 115, 238, 0.2)'
+                                                : '0 4px 20px -5px rgba(0,0,0,0.1)',
+                                            transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+                                            filter: isDimmed ? 'grayscale(100%)' : 'none',
+                                            opacity: isDimmed ? 0.5 : 1
                                         }}
                                     >
-                                        {/* Icon Container */}
-                                        <div
-                                            className="w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] md:w-[80px] md:h-[80px] lg:w-[88px] lg:h-[88px] rounded-[16px] sm:rounded-[18px] md:rounded-[20px] flex items-center justify-center shrink-0 transition-transform duration-500"
-                                            style={{
-                                                backgroundColor: card.color.light,
-                                                color: card.color.main,
-                                                transform: isHovered ? 'scale(1.1) rotate(-5deg)' : 'scale(1)',
-                                                marginLeft: '-30px',
-                                                marginRight: '8%',
-                                            }}
-                                        >
-                                            <card.icon sx={{ fontSize: 'clamp(28px, 4vw, 40px)' }} />
+                                        {/* Icon - Biru seperti gambar 1 */}
+                                        <div className="mb-3 xs:mb-4 flex items-center justify-start">
+                                            <div className="flex items-center justify-center">
+                                                <card.icon 
+                                                    sx={{ 
+                                                        fontSize: 'clamp(32px, 4vw, 48px)',
+                                                        color: isDimmed ? '#9CA3AF' : (isHovered ? '#0073EE' : '#0073EE'),
+                                                        transition: 'color 0.3s ease'
+                                                    }} 
+                                                />
+                                            </div>
                                         </div>
 
                                         {/* Text Content */}
-                                        <div className="flex-1 pr-6 sm:pr-8 overflow-hidden">
+                                        <div className="flex-1">
                                             <h3
-                                                className="text-base sm:text-sm md:text-md lg:text-lg font-black leading-tight mb-1 sm:mb-1.5 transition-colors duration-300 truncate"
-                                                style={{ color: isHovered ? card.color.main : '#0073EE' }}
+                                                className="text-base xs:text-lg sm:text-xl md:text-2xl font-bold leading-tight mb-1 xs:mb-1.5 sm:mb-2 transition-colors duration-300"
+                                                style={{ 
+                                                    color: isDimmed ? '#9CA3AF' : (isHovered ? '#0073EE' : '#0073EE'),
+                                                    textTransform: 'capitalize'
+                                                }}
                                             >
                                                 {card.title}
                                             </h3>
-                                            <p className="text-xs sm:text-sm md:text-base font-semibold text-slate-400 tracking-wide truncate">
+                                            <p 
+                                                className="text-xs xs:text-sm sm:text-base font-medium leading-relaxed transition-colors duration-300"
+                                                style={{ 
+                                                    color: isHovered ? '#0073EE' : (isDimmed ? '#9CA3AF' : '#6B7280'),
+                                                    textTransform: 'capitalize' 
+                                                }}
+                                            >
                                                 {card.subtitle}
                                             </p>
-                                        </div>
-
-                                        {/* Floating Arrow Button */}
-                                        <div
-                                            className="absolute top-1/2 right-0 flex items-center justify-center shadow-lg transition-all duration-500"
-                                            style={{
-                                                width: 'clamp(50px, 6vw, 60px)',
-                                                height: 'clamp(50px, 6vw, 60px)',
-                                                borderRadius: '50%',
-                                                transform: 'translate(50%, -50%) scale(1)',
-                                                backgroundColor: isHovered ? card.color.main : '#F1F5F9',
-                                                color: isHovered ? '#fff' : '#94A3B8',
-                                                boxShadow: isHovered ? `0 10px 25px -5px ${card.color.shadow}` : 'none'
-                                            }}
-                                        >
-                                            <ArrowRightIcon
-                                                sx={{
-                                                    fontSize: 'clamp(22px, 3vw, 28px)',
-                                                    transition: 'transform 0.3s',
-                                                    transform: isHovered ? 'translateX(4px)' : 'translateX(0)'
-                                                }}
-                                            />
                                         </div>
                                     </Paper>
                                 </div>
@@ -246,6 +233,20 @@ export default function LineDetail() {
                         })}
                     </div>
                 </main>
+
+                {/* Footer - Transparan di belakang konten */}
+                <footer 
+                    className="absolute bottom-0 left-0 right-0 py-4 border-t border-gray-200/50 pointer-events-none"
+                    style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                        backdropFilter: 'blur(2px)',
+                        zIndex: -1
+                    }}
+                >
+                    <div className="text-center text-gray-600 text-sm pointer-events-auto" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 400 }}>
+                        Gistex Garmen Indonesia Monitoring System (GMS) © 2025 Served by Supernova
+                    </div>
+                </footer>
             </div>
 
             <style>{`

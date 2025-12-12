@@ -5,6 +5,9 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/robot.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;550;600;700&display=swap" rel="stylesheet">
     <title>Robotics Monitoring System</title>
     <style>
         /* Global Reset & Root Styles migrated from index.css */
@@ -23,6 +26,7 @@
             min-height: 100vh;
             overflow: hidden;
             /* Prevent double scrollbars */
+            font-family: 'Poppins', sans-serif;
         }
 
         /* Smooth transitions */
@@ -36,24 +40,24 @@
             transition-duration: 200ms;
         }
 
-        /* Custom scrollbar */
+        /* Hide scrollbar but keep scrolling functionality */
+        /* For Webkit browsers (Chrome, Safari, Edge) */
         ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+            display: none;
+            width: 0;
+            height: 0;
+            background: transparent;
         }
 
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 4px;
+        /* For Firefox */
+        html, body, * {
+            scrollbar-width: none;
+            -ms-overflow-style: none; /* IE and Edge */
         }
 
-        ::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
+        /* Ensure scrolling still works */
+        html, body, * {
+            -webkit-overflow-scrolling: touch;
         }
 
         /* Custom scrollbar for sidebar */

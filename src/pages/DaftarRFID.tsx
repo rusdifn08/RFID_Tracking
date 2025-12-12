@@ -1,783 +1,130 @@
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
-import { QrCode, Calendar, X, ListChecks, XCircle, Search } from 'lucide-react';
+import { X, ListChecks, Search, Calendar } from 'lucide-react';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
-import { API_BASE_URL } from '../config/api';
-
-// Interface untuk data dari API /wo/branch
-interface BranchData {
-    branch: string;
-    buyer: string;
-    color: string;
-    finish_date: string;
-    id: number;
-    line: string;
-    product_name: string;
-    qty: string;
-    size: string;
-    start_date: string;
-    style: string;
-    wo_no: string;
-}
-
-interface BranchResponse {
-    branch: string;
-    count: number;
-    data: BranchData[];
-    date_from: string | null;
-    date_to: string | null;
-    line: string;
-    success: boolean;
-    wo_list: string[];
-}
-
-// Interface untuk Work Order Data yang sudah diproses
-interface WorkOrderData {
-    workOrder: string;
-    styles: string[];
-    buyers: string[];
-    items: string[];
-    colors: string[];
-    sizes: string[];
-}
+import backgroundImage from '../assets/background.jpg';
+import { useDaftarRFID } from '../hooks/useDaftarRFID';
+import RegistrationForm from '../components/daftar/RegistrationForm';
 
 export default function DaftarRFID() {
     const { isOpen } = useSidebar();
     
-    // Date range state - default hari ini
-    const getTodayDate = () => {
+    // Custom hook untuk semua state dan logic
+    const {
+        dateFrom,
+        setDateFrom,
+        dateTo,
+        setDateTo,
+        showDateFilterModal,
+        setShowDateFilterModal,
+        showRegisteredModal,
+        setShowRegisteredModal,
+        showScanRejectModal,
+        setShowScanRejectModal,
+        rejectRfidInput,
+        setRejectRfidInput,
+        rejectScannedItems,
+        isProcessingReject,
+        rejectInputRef,
+        loadingRegistered,
+        filterStatus,
+        setFilterStatus,
+        searchTerm,
+        setSearchTerm,
+        filterColor,
+        setFilterColor,
+        filterSize,
+        setFilterSize,
+        workOrderData,
+        loading,
+        formData,
+        focusedInput,
+        setFocusedInput,
+        hoveredCard,
+        setHoveredCard,
+        isModalOpen,
+        setIsModalOpen,
+        fetchProductionBranchData,
+        handleRejectRfidSubmit,
+        handleInputChange,
+        handleSubmit,
+        getItemStatus,
+        filteredRegisteredData,
+        uniqueColors,
+        uniqueSizes,
+    } = useDaftarRFID();
+
+    const getTodayDate = useCallback(() => {
         const today = new Date();
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const day = String(today.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
-    };
-    
-    const [dateFrom, setDateFrom] = useState<string>(getTodayDate());
-    const [dateTo, setDateTo] = useState<string>(getTodayDate());
-    const [showDateFilterModal, setShowDateFilterModal] = useState<boolean>(false);
-    const [showRegisteredModal, setShowRegisteredModal] = useState<boolean>(false);
-    const [showScanRejectModal, setShowScanRejectModal] = useState<boolean>(false);
-    const [rejectRfidInput, setRejectRfidInput] = useState<string>('');
-    const [rejectScannedItems, setRejectScannedItems] = useState<Array<{ rfid: string; timestamp: Date; status: 'success' | 'error'; message?: string }>>([]);
-    const [isProcessingReject, setIsProcessingReject] = useState<boolean>(false);
-    const rejectInputRef = useRef<HTMLInputElement>(null);
-    const [registeredRFIDData, setRegisteredRFIDData] = useState<any[]>([]);
-    const [loadingRegistered, setLoadingRegistered] = useState<boolean>(false);
-    const [filterStatus, setFilterStatus] = useState<string>('Semua');
-    const [searchTerm, setSearchTerm] = useState<string>('');
-    const [filterColor, setFilterColor] = useState<string>('Semua');
-    const [filterSize, setFilterSize] = useState<string>('Semua');
-    const [workOrderData, setWorkOrderData] = useState<Record<string, WorkOrderData>>({});
-    const [loading, setLoading] = useState<boolean>(false);
-    
-    const [formData, setFormData] = useState({
-        workOrder: '',
-        style: '',
-        buyer: '',
-        item: '',
-        color: '',
-        size: ''
-    });
-    const [focusedInput, setFocusedInput] = useState<string | null>(null);
-    const [hoveredCard, setHoveredCard] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const modalOpenRef = useRef(false); // Ref untuk tracking modal state
-    
-    // Get available options based on selected Work Order
-    const selectedWOData = formData.workOrder ? workOrderData[formData.workOrder] : null;
-    const availableStyles = selectedWOData?.styles || [];
-    const availableBuyers = selectedWOData?.buyers || [];
-    const availableItems = selectedWOData?.items || [];
-    const availableColors = selectedWOData?.colors || [];
-    const availableSizes = selectedWOData?.sizes || [];
-    
-    // Fetch data dari API /wo/branch
-    const fetchProductionBranchData = async () => {
-        try {
-            setLoading(true);
-            // Format date untuk API: YYYY-M-D (tanpa leading zero di bulan dan hari jika < 10)
-            const formatDateForAPI = (dateStr: string) => {
-                const [year, month, day] = dateStr.split('-');
-                return `${year}-${parseInt(month)}-${parseInt(day)}`;
-            };
-            
-            // Build URL dengan parameter
-            let apiUrl = `${API_BASE_URL}/wo/branch?branch=cjl&line=L1`;
-            
-            // Tambahkan start_date_from jika ada
-            if (dateFrom) {
-                apiUrl += `&start_date_from=${formatDateForAPI(dateFrom)}`;
-            }
-            
-            // Tambahkan start_date_to jika ada
-            if (dateTo) {
-                apiUrl += `&start_date_to=${formatDateForAPI(dateTo)}`;
-            }
-            
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const result: BranchResponse = await response.json();
-            
-            // Process data dari API
-            const processedData: Record<string, WorkOrderData> = {};
-            
-            if (result.data && Array.isArray(result.data)) {
-                result.data.forEach((item) => {
-                    const woNo = item.wo_no;
-                    
-                    if (!processedData[woNo]) {
-                        processedData[woNo] = {
-                            workOrder: woNo,
-                            styles: [],
-                            buyers: [],
-                            items: [],
-                            colors: [],
-                            sizes: []
-                        };
-                    }
-                    
-                    // Process style - langsung dari field style (tidak perlu split)
-                    if (item.style && !processedData[woNo].styles.includes(item.style)) {
-                        processedData[woNo].styles.push(item.style);
-                    }
-                    
-                    // Process buyer
-                    if (item.buyer && !processedData[woNo].buyers.includes(item.buyer)) {
-                        processedData[woNo].buyers.push(item.buyer);
-                    }
-                    
-                    // Process item (product_name)
-                    if (item.product_name && !processedData[woNo].items.includes(item.product_name)) {
-                        processedData[woNo].items.push(item.product_name);
-                    }
-                    
-                    // Process color - langsung dari field color (tidak perlu split)
-                    if (item.color && !processedData[woNo].colors.includes(item.color)) {
-                        processedData[woNo].colors.push(item.color);
-                    }
-                    
-                    // Process size - langsung dari field size (tidak perlu split)
-                    if (item.size && !processedData[woNo].sizes.includes(item.size)) {
-                        processedData[woNo].sizes.push(item.size);
-                    }
-                });
-            }
-            
-            setWorkOrderData(processedData);
-            
-            // Reset form jika work order yang dipilih tidak ada lagi
-            if (formData.workOrder && !processedData[formData.workOrder]) {
-                setFormData({
-                    workOrder: '',
-                    style: '',
-                    buyer: '',
-                    item: '',
-                    color: '',
-                    size: ''
-                });
-            }
-            
-            setLoading(false);
-        } catch (error) {
-            setWorkOrderData({});
-            setLoading(false);
-        }
-    };
-    
-    // Fetch data registered RFID dari 3 endpoint baru
-    const fetchRegisteredRFID = async () => {
-        try {
-            setLoadingRegistered(true);
-            
-            // Fetch data dari 3 endpoint secara parallel melalui proxy server
-            const [progressResponse, doneResponse, waitingResponse] = await Promise.all([
-                fetch(`${API_BASE_URL}/card/progress`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                }),
-                fetch(`${API_BASE_URL}/card/done`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                }),
-                fetch(`${API_BASE_URL}/card/waiting`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                }),
-            ]);
-
-            // Parse responses dengan error handling
-            let progressData = { data: [] };
-            let doneData = { data: [] };
-            let waitingData = { data: [] };
-
-            if (progressResponse.ok) {
-                try {
-                    progressData = await progressResponse.json();
-                } catch (e) {
-                    console.error('Error parsing progress response:', e);
-                }
-            } else {
-                console.error('Progress response not OK:', progressResponse.status, progressResponse.statusText);
-            }
-
-            if (doneResponse.ok) {
-                try {
-                    doneData = await doneResponse.json();
-                } catch (e) {
-                    console.error('Error parsing done response:', e);
-                }
-            } else {
-                console.error('Done response not OK:', doneResponse.status, doneResponse.statusText);
-            }
-
-            if (waitingResponse.ok) {
-                try {
-                    waitingData = await waitingResponse.json();
-                } catch (e) {
-                    console.error('Error parsing waiting response:', e);
-                }
-            } else {
-                console.error('Waiting response not OK:', waitingResponse.status, waitingResponse.statusText);
-            }
-
-            // Gabungkan semua data dari ketiga endpoint dengan menambahkan identifier
-            // untuk membedakan status "Waiting" dari "In Progress"
-            const allData = [
-                ...(progressData.data || []).map((item: any) => ({ ...item, _source: 'progress' })),
-                ...(doneData.data || []).map((item: any) => ({ ...item, _source: 'done' })),
-                ...(waitingData.data || []).map((item: any) => ({ ...item, _source: 'waiting', isDone: 'waiting' })),
-            ];
-
-            console.log('Fetched registered RFID data:', {
-                progress: progressData.data?.length || 0,
-                done: doneData.data?.length || 0,
-                waiting: waitingData.data?.length || 0,
-                total: allData.length
-            });
-
-            setRegisteredRFIDData(Array.isArray(allData) ? allData : []);
-        } catch (error) {
-            console.error('Error fetching registered RFID:', error);
-            setRegisteredRFIDData([]);
-        } finally {
-            setLoadingRegistered(false);
-        }
-    };
-
-    // Fetch data saat modal dibuka
-    useEffect(() => {
-        if (showRegisteredModal) {
-            fetchRegisteredRFID();
-        }
-    }, [showRegisteredModal]);
-
-    // Helper function untuk mendapatkan status dari item - KONSISTEN
-    // Fungsi ini digunakan baik untuk filtering maupun display
-    // Memastikan filter dan display menggunakan logika yang sama
-    const getItemStatus = (item: any): string => {
-        // Handle jika item tidak ada
-        if (!item) {
-            return 'In Progress';
-        }
-        
-        const isDone = item.isDone;
-        
-        // Jika isDone adalah falsy atau empty -> In Progress
-        // Cek untuk: null, undefined, '', 0, false, '0', 'false', 'null', 'undefined'
-        if (!isDone || 
-            isDone === '' || 
-            isDone === null || 
-            isDone === undefined || 
-            isDone === 0 || 
-            isDone === false ||
-            String(isDone).trim().toLowerCase() === '0' ||
-            String(isDone).trim().toLowerCase() === 'false' ||
-            String(isDone).trim().toLowerCase() === 'null' ||
-            String(isDone).trim().toLowerCase() === 'undefined') {
-            return 'In Progress';
-        }
-        
-        // Convert ke string dan normalize (lowercase, trim)
-        const isDoneStr = String(isDone).trim().toLowerCase();
-        
-        // Jika setelah trim menjadi empty string -> In Progress
-        if (isDoneStr === '') {
-            return 'In Progress';
-        }
-        
-        // Jika isDone adalah 'waiting' (case insensitive) -> Waiting
-        if (isDoneStr === 'waiting') {
-            return 'Waiting';
-        }
-        
-        // Jika isDone memiliki nilai truthy selain 'waiting' -> isDone
-        // Ini mencakup: 'done', '1', 'true', 'yes', true, 1, atau nilai truthy lainnya
-        // Karena jika ada nilai berarti sudah selesai/done
-        return 'isDone';
-    };
-
-    // Get unique values untuk filter
-    const uniqueColors = [...new Set(registeredRFIDData.map(item => item.color).filter(Boolean))].sort();
-    const uniqueSizes = [...new Set(registeredRFIDData.map(item => item.size).filter(Boolean))].sort();
-
-    // Filter data
-    const filteredRegisteredData = registeredRFIDData.filter(item => {
-        // Filter berdasarkan status - menggunakan helper function yang konsisten
-        if (filterStatus !== 'Semua') {
-            const itemStatus = getItemStatus(item);
-            if (itemStatus !== filterStatus) return false;
-        }
-        
-        // Filter berdasarkan color
-        if (filterColor !== 'Semua' && item.color !== filterColor) return false;
-        
-        // Filter berdasarkan size
-        if (filterSize !== 'Semua' && item.size !== filterSize) return false;
-        
-        // Filter berdasarkan search term
-        if (searchTerm.trim()) {
-            const searchLower = searchTerm.toLowerCase();
-            return (
-                (item.rfid_garment?.toLowerCase() || '').includes(searchLower) ||
-                (item.wo?.toLowerCase() || '').includes(searchLower) ||
-                (item.style?.toLowerCase() || '').includes(searchLower) ||
-                (item.buyer?.toLowerCase() || '').includes(searchLower) ||
-                (item.item?.toLowerCase() || '').includes(searchLower) ||
-                (item.color?.toLowerCase() || '').includes(searchLower) ||
-                (item.size?.toLowerCase() || '').includes(searchLower)
-            );
-        }
-        
-        return true;
-    });
-
-    // Handle Reject RFID Submit
-    const handleRejectRfidSubmit = async (rfid: string) => {
-        if (!rfid.trim() || isProcessingReject) return;
-
-        setIsProcessingReject(true);
-        const timestamp = new Date();
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/scrap`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                    rfid_garment: rfid
-                })
-            });
-
-            const responseData = await response.json();
-
-            if (response.ok && responseData.success) {
-                setRejectScannedItems(prev => [{
-                    rfid: rfid,
-                    timestamp: timestamp,
-                    status: 'success' as const,
-                    message: responseData.message || 'Berhasil diset ke SCRAP'
-                }, ...prev]);
-                setRejectRfidInput('');
-                setTimeout(() => {
-                    rejectInputRef.current?.focus();
-                }, 100);
-            } else {
-                throw new Error(responseData.message || 'Gagal menyimpan data');
-            }
-        } catch (error) {
-            setRejectScannedItems(prev => [{
-                rfid: rfid,
-                timestamp: timestamp,
-                status: 'error' as const,
-                message: error instanceof Error ? error.message : 'Gagal menyimpan data'
-            }, ...prev]);
-            setRejectRfidInput('');
-            setTimeout(() => {
-                rejectInputRef.current?.focus();
-            }, 100);
-        } finally {
-            setIsProcessingReject(false);
-        }
-    };
-
-    // Reset reject modal saat dibuka/ditutup
-    useEffect(() => {
-        if (showScanRejectModal) {
-            setRejectRfidInput('');
-            setRejectScannedItems([]);
-            setIsProcessingReject(false);
-            setTimeout(() => {
-                rejectInputRef.current?.focus();
-            }, 100);
-        }
-    }, [showScanRejectModal]);
+    }, []);
 
     // Fetch data saat component mount dan saat date berubah
     useEffect(() => {
         fetchProductionBranchData();
-    }, [dateFrom, dateTo]);
-    
-    // Sync ref dengan state
-    useEffect(() => {
-        modalOpenRef.current = isModalOpen;
-    }, [isModalOpen]);
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        
-        // Jika Work Order berubah, reset semua field lainnya
-        if (name === 'workOrder') {
-            setFormData({
-                workOrder: value,
-                style: '',
-                buyer: '',
-                item: '',
-                color: '',
-                size: ''
-            });
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: value
-            }));
-        }
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.nativeEvent.stopImmediatePropagation(); // Stop all event propagation
-        
-        // Validasi form
-        if (!formData.workOrder || !formData.style || !formData.buyer || !formData.item || !formData.color || !formData.size) {
-            alert('Mohon lengkapi semua field sebelum melanjutkan.');
-            return false; // Prevent default behavior
-        }
-        
-        // Buka modal scanning - langsung set tanpa setTimeout
-        
-        // Set ref terlebih dahulu
-        modalOpenRef.current = true;
-        
-        // Gunakan functional update untuk memastikan state update
-        setIsModalOpen(prev => {
-            if (prev === true) {
-                return prev;
-            }
-            return true;
-        });
-        
-        // Return false untuk mencegah form submission
-        return false;
-    };
+    }, [dateFrom, dateTo, fetchProductionBranchData]);
 
     return (
-        <div className="flex min-h-screen bg-gray-50"
-
+        <div className="flex min-h-screen w-full h-screen fixed inset-0 m-0 p-0"
+            style={{
+                backgroundImage: `url(${backgroundImage})`,
+                backgroundSize: '100% 100%',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundAttachment: 'fixed',
+            }}
         >
+
+        
             {/* Sidebar */}
             <Sidebar />
 
             {/* Main Content Area */}
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out"
-                style={{ marginLeft: isOpen ? '15%' : '5rem', width: isOpen ? 'calc(100% - 15%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
             >
                 {/* Header */}
                 <Header />
 
+                {/* Breadcrumb */}
+                <Breadcrumb />
+
                 {/* Content */}
                 <main
-                    className="flex-1 w-full bg-gray-50 flex items-center justify-center"
+                    className="flex-1 w-full flex items-center justify-center"
                     style={{
-                        marginTop: '4rem',
-                        height: 'calc(100vh - 4rem)',
-                        minHeight: 'calc(100vh - 4rem)',
+                        marginTop: '0',
+                        height: 'calc(100vh - 4rem - 3rem)',
+                        minHeight: 'calc(100vh - 4rem - 3rem)',
                         maxHeight: 'calc(100vh - 4rem)',
                         overflow: 'hidden'
                     }}
                 >
-                    {/* Register RFID Card */}
-                    <div className="w-full max-w-4xl h-full flex items-center justify-center px-3 py-2 sm:px-6 sm:py-6">
-                        <div
-                            className="rounded-xl sm:rounded-2xl shadow-[0_4px_20px_rgba(59,130,246,0.15)] p-3 sm:p-5 md:p-6 relative overflow-hidden transition-all duration-500 w-full bg-white flex flex-col max-h-full"
-                            onMouseEnter={() => setHoveredCard(true)}
-                            onMouseLeave={() => setHoveredCard(false)}
-                            style={{
-                                boxShadow: hoveredCard
-                                    ? '0_8px_30px_rgba(59,130,246,0.25)'
-                                    : '0_4px_20px_rgba(59,130,246,0.15)',
-                                transform: hoveredCard ? 'translateY(-4px)' : 'translateY(0)'
-                            }}
-                        >
-                            {/* Blue glow effect dengan animasi */}
-                            <div className={`absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none transition-opacity duration-500 ${hoveredCard ? 'opacity-100' : 'opacity-50'}`}></div>
-
-                            {/* Header Section - Compact untuk Mobile */}
-                            <div className="flex-shrink-0 mb-2 sm:mb-4 relative">
-                                {/* Date Range Picker dan Icon RFID */}
-                                <div className="flex items-center justify-between mb-1.5 sm:mb-3 gap-2">
-                                    {/* Date Range Picker - Tombol untuk membuka modal */}
-                                    <div className="flex items-center gap-2 flex-1">
-                                        <button
-                                            onClick={() => setShowDateFilterModal(true)}
-                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
-                                            title="Filter Tanggal"
-                                        >
-                                            <Calendar size={18} />
-                                            <span className="text-xs sm:text-sm font-medium">
-                                                {dateFrom === dateTo 
-                                                    ? new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                    : `${new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} - ${new Date(dateTo).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                                                }
-                                            </span>
-                                        </button>
-                                    </div>
-                                    
-                                    {/* Icon RFID di tengah - Absolute center */}
-                                    <div className="absolute left-1/2 transform -translate-x-1/2 flex-shrink-0 z-10">
-                                        <div
-                                            className={`w-10 h-10 sm:w-14 sm:h-14 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
-                                        >
-                                            <QrCode
-                                                className={`w-6 h-6 sm:w-8 sm:h-8 text-white transition-all duration-500 ${hoveredCard ? 'scale-110' : 'scale-100'}`}
-                                                strokeWidth={2.5}
-                                            />
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Spacer untuk balance */}
-                                    <div className="flex-1"></div>
-                                    
-                                    {/* Registered RFID Button - Paling Kanan */}
-                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                                        <button
-                                            onClick={() => setShowRegisteredModal(true)}
-                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
-                                            title="Registered RFID"
-                                        >
-                                            <ListChecks size={18} />
-                                            <span className="text-xs sm:text-sm font-medium">REGISTERED RFID</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setShowScanRejectModal(true)}
-                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
-                                            title="Scan Reject"
-                                        >
-                                            <XCircle size={18} />
-                                            <span className="text-xs sm:text-sm font-medium">SCAN REJECT</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Title */}
-                                <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-800 text-center mb-1 sm:mb-2 transition-colors duration-300">
-                                    REGISTER RFID
-                                </h1>
-
-                                {/* Instruction */}
-                                <p className="text-gray-600 text-center mb-2 sm:mb-4 text-[11px] sm:text-sm leading-tight">
-                                    Input informasi Work Order, Style, Buyer, Item, Color, dan Size untuk scanning RFID
-                                </p>
-                            </div>
-
-                            {/* Form - Compact layout dengan flex untuk fit content */}
-                            <form 
-                                onSubmit={handleSubmit} 
-                                className="flex flex-col flex-1 min-h-0 overflow-y-auto"
-                                noValidate
-                            >
-                                {/* Form Fields Container - Gap lebih kecil untuk mobile */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4">
-                                    {/* Work Order - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="workOrder"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'workOrder' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Work Order
-                                        </label>
-                                        <select
-                                            id="workOrder"
-                                            name="workOrder"
-                                            value={formData.workOrder}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('workOrder')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={loading}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">
-                                                {loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order'}
-                                            </option>
-                                            {Object.keys(workOrderData).map(wo => (
-                                                <option key={wo} value={wo}>{wo}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Style - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="style"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'style' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Style
-                                        </label>
-                                        <select
-                                            id="style"
-                                            name="style"
-                                            value={formData.style}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('style')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={!formData.workOrder}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">{formData.workOrder ? 'Pilih Style' : 'Pilih Work Order dulu'}</option>
-                                            {availableStyles.map(style => (
-                                                <option key={style} value={style}>{style}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Buyer - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="buyer"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'buyer' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Buyer
-                                        </label>
-                                        <select
-                                            id="buyer"
-                                            name="buyer"
-                                            value={formData.buyer}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('buyer')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={!formData.workOrder}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">{formData.workOrder ? 'Pilih Buyer' : 'Pilih Work Order dulu'}</option>
-                                            {availableBuyers.map(buyer => (
-                                                <option key={buyer} value={buyer}>{buyer}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Item - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="item"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'item' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Item
-                                        </label>
-                                        <select
-                                            id="item"
-                                            name="item"
-                                            value={formData.item}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('item')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={!formData.workOrder}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">{formData.workOrder ? 'Pilih Item' : 'Pilih Work Order dulu'}</option>
-                                            {availableItems.map(item => (
-                                                <option key={item} value={item}>{item}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Color - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="color"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'color' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Color
-                                        </label>
-                                        <select
-                                            id="color"
-                                            name="color"
-                                            value={formData.color}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('color')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={!formData.workOrder}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">{formData.workOrder ? 'Pilih Color' : 'Pilih Work Order dulu'}</option>
-                                            {availableColors.map(color => (
-                                                <option key={color} value={color}>{color}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Size - Dropdown */}
-                                    <div className="transition-all duration-300 flex flex-col">
-                                        <label
-                                            htmlFor="size"
-                                            className={`block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === 'size' ? 'text-blue-600' : ''}`}
-                                        >
-                                            Size
-                                        </label>
-                                        <select
-                                            id="size"
-                                            name="size"
-                                            value={formData.size}
-                                            onChange={handleInputChange}
-                                            onFocus={() => setFocusedInput('size')}
-                                            onBlur={() => setFocusedInput(null)}
-                                            disabled={!formData.workOrder}
-                                            className="w-full h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                        >
-                                            <option value="">{formData.workOrder ? 'Pilih Size' : 'Pilih Work Order dulu'}</option>
-                                            {availableSizes.map(size => (
-                                                <option key={size} value={size}>{size}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Submit Button - Fixed di bawah, lebih compact untuk mobile */}
-                                <div className="flex-shrink-0 mt-2 sm:mt-4">
-                                    <button
-                                        type="submit"
-                                        className="w-full h-10 sm:h-11 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-bold text-sm sm:text-base px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-blue-500/50 transform hover:-translate-y-1 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-blue-300 flex items-center justify-center"
-                                    >
-                                        REGISTER
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+                    <RegistrationForm
+                        formData={formData}
+                        workOrderData={workOrderData}
+                        loading={loading}
+                        focusedInput={focusedInput}
+                        hoveredCard={hoveredCard}
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onInputChange={handleInputChange}
+                        onFocus={setFocusedInput}
+                        onBlur={() => setFocusedInput(null)}
+                        onMouseEnter={() => setHoveredCard(true)}
+                        onMouseLeave={() => setHoveredCard(false)}
+                        onDateFilterClick={() => setShowDateFilterModal(true)}
+                        onRegisteredClick={() => setShowRegisteredModal(true)}
+                        onRejectClick={() => setShowScanRejectModal(true)}
+                        onSubmit={handleSubmit}
+                    />
                 </main>
             </div>
 

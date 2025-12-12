@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
 import { Radio, Search, CheckCircle2, XCircle, AlertCircle, Activity, Filter, Download, RefreshCw, TrendingUp, TrendingDown, BarChart3, Clock, Package } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import backgroundImage from '../assets/background.jpg';
 
 interface GarmentData {
     buyer: string;
@@ -174,7 +176,15 @@ export default function StatusRFID() {
     const sidebarWidth = isOpen ? '15%' : '3%';
 
     return (
-        <div className="flex min-h-screen w-full bg-gray-100 font-sans overflow-x-hidden">
+        <div className="flex min-h-screen w-full h-screen font-sans overflow-x-hidden fixed inset-0 m-0 p-0"
+            style={{
+                backgroundImage: `url(${backgroundImage})`,
+                backgroundSize: '100% 100%',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundAttachment: 'fixed',
+            }}
+        >
             {/* Sidebar */}
             <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
                 <Sidebar />
@@ -193,8 +203,11 @@ export default function StatusRFID() {
                     <Header />
                 </div>
 
+                {/* Breadcrumb */}
+                <Breadcrumb />
+
                 {/* Page Content */}
-                <main className="flex-1 p-6 space-y-6 pt-16 overflow-y-auto h-full">
+                <main className="flex-1 p-6 space-y-6 pt-4 overflow-y-auto h-full">
                     {/* Page Title */}
                     <div className="text-center mb-8">
                         <div className="flex items-center justify-center gap-4 mb-4">

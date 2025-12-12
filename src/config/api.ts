@@ -30,6 +30,16 @@ export const WS_BASE_URL = isDevelopment
     : import.meta.env.VITE_WS_URL || `ws://${getLocalIP()}:${PROXY_PORT}`;
 
 // ============================================
+// PRODUCTION SCHEDULE API CONFIGURATION
+// ============================================
+
+// Base URL untuk Production Schedule API
+export const PROD_SCH_API_BASE_URL = 'http://10.8.18.60:7186';
+
+// API Key untuk Production Schedule API
+export const PROD_SCH_API_KEY = '332100185';
+
+// ============================================
 // TYPES
 // ============================================
 
@@ -660,5 +670,106 @@ export const getCardDone = async (): Promise<ApiResponse<CardResponse>> => {
  */
 export const getCardWaiting = async (): Promise<ApiResponse<CardResponse>> => {
     return await apiGet<CardResponse>('/card/waiting');
+};
+
+// ============================================
+// PRODUCTION SCHEDULE API ENDPOINTS
+// ============================================
+
+export interface WOBreakdownData {
+    id: number;
+    wo_no: string;
+    start_date: string;
+    finish_date: string;
+    style: string;
+    buyer: string;
+    product_name: string;
+    color: string;
+    size: string;
+    qty: string;
+    branch: string;
+    line: string;
+}
+
+export interface WOBreakdownResponse {
+    data: WOBreakdownData[];
+}
+
+/**
+ * Get WO Breakdown dari Production Schedule API
+ * @param branch - Branch code (contoh: 'CJL')
+ * @param line - Line code (contoh: 'L1')
+ * @param startDateFrom - Start date from (format: YYYY-MM-DD)
+ * @param startDateTo - Start date to (format: YYYY-MM-DD, optional)
+ * @returns WO Breakdown data
+ */
+export const getWOBreakdown = async (
+    branch: string = 'CJL',
+    line: string = 'L1',
+    startDateFrom?: string,
+    startDateTo?: string
+): Promise<ApiResponse<WOBreakdownResponse>> => {
+    try {
+        // Gunakan proxy endpoint dari server.js untuk menghindari CORS dan rate limiting
+        // Proxy akan memanggil ke 10.8.18.60:7186 dengan header GCC-API-KEY
+        let apiUrl = `${API_BASE_URL}/api/prod-sch/get-wo-breakdown?branch=${encodeURIComponent(branch)}&line=${encodeURIComponent(line)}`;
+        
+        // Tambahkan start_date_from jika ada
+        if (startDateFrom) {
+            apiUrl += `&start_date_from=${encodeURIComponent(startDateFrom)}`;
+        }
+        
+        // Tambahkan start_date_to jika ada
+        if (startDateTo) {
+            apiUrl += `&start_date_to=${encodeURIComponent(startDateTo)}`;
+        }
+        
+        console.log('🔵 [WO BREAKDOWN API] Fetching via proxy:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+        
+        console.log('🔵 [WO BREAKDOWN API] Response status:', response.status, response.statusText);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+            console.error('❌ [WO BREAKDOWN API] Error response:', errorMessage);
+            return {
+                success: false,
+                error: errorMessage,
+                data: undefined,
+                status: response.status
+            };
+        }
+
+        const result: WOBreakdownResponse = await response.json();
+        console.log('✅ [WO BREAKDOWN API] Success:', result);
+        
+        return {
+            success: true,
+            data: result,
+            status: response.status
+        };
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('❌ [WO BREAKDOWN API] Fetch error:', error);
+        console.error('❌ [WO BREAKDOWN API] Error details:', {
+            message: errorMessage,
+            stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        return {
+            success: false,
+            error: errorMessage,
+            data: undefined,
+            status: 500
+        };
+    }
 };
 

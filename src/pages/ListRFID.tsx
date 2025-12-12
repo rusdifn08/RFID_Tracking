@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import React, { useMemo, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
 import ExportModal from '../components/ExportModal';
-import { exportListRFIDToExcel } from '../utils/exportToExcel';
-import { API_BASE_URL } from '../config/api';
+import backgroundImage from '../assets/background.jpg';
 import {
     Search,
     Filter,
@@ -21,431 +20,64 @@ import {
     Calendar,
     Download
 } from 'lucide-react';
-
-interface RFIDItem {
-    id: string | number;
-    rfid: string;
-    style?: string;
-    buyer?: string;
-    nomor_wo?: string;
-    item?: string;
-    color?: string;
-    size?: string;
-    status: string;
-    lokasi?: string;
-    line?: string;
-    lineNumber?: string; // Line number asli dari API (untuk filtering)
-    timestamp?: string;
-}
-
-// Interface untuk response dari API tracking/rfid_garment
-interface TrackingRFIDGarmentResponse {
-    count: number;
-    data: Array<{
-        bagian: string;
-        buyer: string;
-        color: string;
-        id: number;
-        id_garment: number;
-        item: string;
-        last_status: string;
-        line: string;
-        nama: string;
-        rejectCount: number;
-        reworkCount: number;
-        rfid_garment: string;
-        rfid_user: string;
-        size: string;
-        style: string;
-        timestamp: string;
-        wo: string;
-    }>;
-}
+import { useListRFID } from '../hooks/useListRFID';
 
 const ListRFID: React.FC = () => {
     const { isOpen } = useSidebar();
-    const location = useLocation();
-    const { id } = useParams<{ id: string }>();
-    const [rfidData, setRfidData] = useState<RFIDItem[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState<string>('');
     
-    // Deteksi line dari URL parameter atau default ke line 1
-    const getLineFromUrl = (): string => {
-        // Prioritas 1: Path parameter /list-rfid/:id
-        if (id) {
-            return id;
-        }
-        
-        // Prioritas 2: Query parameter ?line=1
-        const urlParams = new URLSearchParams(location.search);
-        const lineParam = urlParams.get('line');
-        if (lineParam) {
-            return lineParam;
-        }
-        
-        // Prioritas 3: Path parameter dari pathname
-        const lineMatch = location.pathname.match(/\/list-rfid\/(\d+)/);
-        if (lineMatch && lineMatch[1]) {
-            return lineMatch[1];
-        }
-        
-        // Default ke line 1 untuk /list-rfid
-        return '1';
-    };
-    
-    const currentLine = getLineFromUrl();
+    // Custom hook untuk semua state dan logic
+    const {
+        filteredData,
+        loading,
+        error,
+        searchTerm,
+        setSearchTerm,
+        filterWO,
+        setFilterWO,
+        filterBuyer,
+        setFilterBuyer,
+        filterStatus,
+        setFilterStatus,
+        filterLocation,
+        setFilterLocation,
+        showFilterModal,
+        setShowFilterModal,
+        filterDateFrom,
+        setFilterDateFrom,
+        filterDateTo,
+        setFilterDateTo,
+        filterStatusModal,
+        setFilterStatusModal,
+        filterSize,
+        setFilterSize,
+        filterColor,
+        setFilterColor,
+        selectedScan,
+        showModal,
+        showDeleteModal,
+        itemToDelete,
+        isDeleting,
+        showExportModal,
+        setShowExportModal,
+        uniqueWO,
+        uniqueBuyers,
+        uniqueStatuses,
+        uniqueLocations,
+        uniqueSizes,
+        uniqueColors,
+        handleView,
+        handleCloseModal,
+        handleDelete,
+        confirmDelete,
+        cancelDelete,
+        handleRefresh,
+        handleExport,
+        handleResetFilter,
+        handleFilterData,
+    } = useListRFID();
 
-    // Helper function to parse timestamp
-    const parseTimestamp = (timestamp: string): Date | null => {
-        if (!timestamp) return null;
-        try {
-            // Format: "Mon, 01 Dec 2025 11:08:06 GMT" atau format ISO
-            const date = new Date(timestamp);
-            // Validasi apakah date valid
-            if (isNaN(date.getTime())) {
-                return null;
-            }
-            return date;
-        } catch (e) {
-            return null;
-        }
-    };
-
-    // Filters
-    const [filterWO, setFilterWO] = useState<string>('');
-    const [filterBuyer, setFilterBuyer] = useState<string>('');
-    const [filterStatus, setFilterStatus] = useState<string>('');
-    const [filterLocation, setFilterLocation] = useState<string>('');
-    
-    // New filters for modal
-    const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
-    const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-    const [filterDateTo, setFilterDateTo] = useState<string>('');
-    const [filterStatusModal, setFilterStatusModal] = useState<string>('Semua');
-    const [filterSize, setFilterSize] = useState<string>('Semua');
-    const [filterColor, setFilterColor] = useState<string>('Semua');
-
-    const [selectedScan, setSelectedScan] = useState<RFIDItem | null>(null);
-    const [showModal, setShowModal] = useState<boolean>(false);
-    const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
-    const [itemToDelete, setItemToDelete] = useState<RFIDItem | null>(null);
-    const [isDeleting, setIsDeleting] = useState<boolean>(false);
-    const [showExportModal, setShowExportModal] = useState<boolean>(false);
-
-    // Fetch data dari API tracking/rfid_garment
-    const fetchRFIDData = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            
-            // Panggil API: http://10.8.0.104:7000/tracking/rfid_garment
-            // API ini akan dipanggil melalui proxy server (server.js)
-            const apiUrl = `${API_BASE_URL}/tracking/rfid_garment`;
-            
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            });
-
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-            }
-
-            const rawResult = await response.json();
-            
-            // Handle berbagai format response
-            let result: TrackingRFIDGarmentResponse;
-            if (rawResult.data && Array.isArray(rawResult.data)) {
-                // Format: { count, data: [...] }
-                result = rawResult as TrackingRFIDGarmentResponse;
-            } else if (Array.isArray(rawResult)) {
-                // Format: [...] (langsung array)
-                result = {
-                    count: rawResult.length,
-                    data: rawResult
-                };
-            } else {
-                // Format lain, coba ambil data dari berbagai kemungkinan key
-                result = {
-                    count: rawResult.count || 0,
-                    data: rawResult.data || rawResult.items || rawResult.results || []
-                };
-            }
-            
-            
-            // Pastikan result.data adalah array
-            if (!result.data || !Array.isArray(result.data)) {
-                setRfidData([]);
-                setLoading(false);
-                return;
-            }
-            
-            // Mapping data dari API ke format RFIDItem
-            const mappedData: RFIDItem[] = result.data.map((item) => {
-                // Convert last_status ke format yang sesuai (Good, Rework, Reject, OUTPUT)
-                let status = 'Unknown';
-                if (item.last_status) {
-                    const upperStatus = item.last_status.toUpperCase().trim();
-                    if (upperStatus === 'GOOD') {
-                        status = 'Good';
-                    } else if (upperStatus === 'REWORK') {
-                        status = 'Rework';
-                    } else if (upperStatus === 'REJECT') {
-                        status = 'Reject';
-                    } else if (upperStatus === 'OUTPUT_SEWING' || upperStatus.includes('OUTPUT_SEWING')) {
-                        status = 'OUTPUT';
-                    } else {
-                        status = item.last_status;
-                    }
-                }
-                
-                const itemLine = item.line?.toString() || '1';
-                
-                return {
-                    id: item.id,
-                    rfid: item.rfid_garment,
-                    style: item.style,
-                    buyer: item.buyer,
-                    nomor_wo: item.wo,
-                    item: item.item,
-                    color: item.color,
-                    size: item.size,
-                    status: status,
-                    lokasi: (() => {
-                        // Jika bagian adalah "IRON" atau "OPERATOR", tampilkan "SEWING"
-                        const bagian = (item.bagian || '').trim().toUpperCase();
-                        if (bagian === 'IRON' || bagian === 'OPERATOR') {
-                            return 'SEWING';
-                        }
-                        return (item.bagian || '').trim(); // bagian -> lokasi, trim untuk menghilangkan whitespace
-                    })(),
-                    line: `Line ${itemLine}`,
-                    lineNumber: itemLine, // Simpan line number asli untuk filtering
-                    timestamp: item.timestamp || '',
-                };
-            });
-            
-            
-            // Filter berdasarkan line jika currentLine ada
-            let filteredByLine = mappedData;
-            
-            if (currentLine && currentLine !== 'all') {
-                filteredByLine = mappedData.filter(item => {
-                    // Gunakan lineNumber yang sudah disimpan dari API
-                    const itemLineNumber = item.lineNumber || '1';
-                    // Normalize comparison - pastikan kedua nilai adalah string
-                    const matches = String(itemLineNumber).trim() === String(currentLine).trim();
-                    return matches;
-                });
-            }
-            
-            // Hilangkan duplikasi berdasarkan RFID ID, ambil data dengan timestamp terbaru
-            const uniqueRFIDData = filteredByLine.reduce((acc, current) => {
-                const existingIndex = acc.findIndex(item => item.rfid === current.rfid);
-                
-                if (existingIndex === -1) {
-                    // RFID belum ada, tambahkan
-                    acc.push(current);
-                } else {
-                    // RFID sudah ada, bandingkan timestamp
-                    const existingTimestamp = parseTimestamp(acc[existingIndex].timestamp || '');
-                    const currentTimestamp = parseTimestamp(current.timestamp || '');
-                    
-                    // Jika current timestamp lebih baru, ganti dengan data current
-                    if (currentTimestamp && existingTimestamp) {
-                        if (currentTimestamp > existingTimestamp) {
-                            acc[existingIndex] = current;
-                        }
-                    } else if (currentTimestamp && !existingTimestamp) {
-                        // Jika current punya timestamp tapi existing tidak, ganti dengan current
-                        acc[existingIndex] = current;
-                    }
-                    // Jika existing punya timestamp tapi current tidak, tetap pakai existing
-                }
-                
-                return acc;
-            }, [] as RFIDItem[]);
-            
-            setRfidData(uniqueRFIDData);
-            setLoading(false);
-        } catch (error) {
-            setError(error instanceof Error ? error.message : 'Gagal memuat data RFID');
-            setRfidData([]);
-            setLoading(false);
-        }
-    };
-
-    // Load data saat component mount dan saat line berubah
-    useEffect(() => {
-        fetchRFIDData();
-    }, [currentLine, id]);
-
-    // Filter data
-    const filteredData = rfidData.filter(item => {
-        // Search di semua kolom - trim untuk menghilangkan whitespace
-        const searchTrimmed = searchTerm.trim();
-        const searchLower = searchTrimmed.toLowerCase();
-        const matchSearch = !searchTrimmed || 
-            (item.rfid?.toLowerCase() || '').includes(searchLower) ||
-            (item.nomor_wo?.toLowerCase() || '').includes(searchLower) ||
-            (item.style?.toLowerCase() || '').includes(searchLower) ||
-            (item.buyer?.toLowerCase() || '').includes(searchLower) ||
-            (item.item?.toLowerCase() || '').includes(searchLower) ||
-            (item.color?.toLowerCase() || '').includes(searchLower) ||
-            (item.size?.toLowerCase() || '').includes(searchLower) ||
-            (item.status?.toLowerCase() || '').includes(searchLower) ||
-            (item.lokasi?.toLowerCase() || '').includes(searchLower) ||
-            (item.line?.toLowerCase() || '').includes(searchLower);
-
-        const matchWO = !filterWO || item.nomor_wo === filterWO;
-        const matchBuyer = !filterBuyer || item.buyer === filterBuyer;
-        const matchStatus = !filterStatus || item.status === filterStatus;
-        const matchLocation = !filterLocation || item.lokasi === filterLocation;
-
-        // Filter dari modal: Date range
-        let matchDate = true;
-        if (filterDateFrom || filterDateTo) {
-            const itemDate = parseTimestamp(item.timestamp || '');
-            if (itemDate) {
-                if (filterDateFrom) {
-                    const fromDate = new Date(filterDateFrom);
-                    fromDate.setHours(0, 0, 0, 0);
-                    if (itemDate < fromDate) {
-                        matchDate = false;
-                    }
-                }
-                if (filterDateTo) {
-                    const toDate = new Date(filterDateTo);
-                    toDate.setHours(23, 59, 59, 999);
-                    if (itemDate > toDate) {
-                        matchDate = false;
-                    }
-                }
-            } else {
-                matchDate = false; // Jika tidak ada timestamp, exclude jika filter date aktif
-            }
-        }
-
-        // Filter dari modal: Status
-        const matchStatusModal = filterStatusModal === 'Semua' || item.status === filterStatusModal;
-
-        // Filter dari modal: Size
-        const matchSize = filterSize === 'Semua' || item.size === filterSize;
-
-        // Filter dari modal: Color
-        const matchColor = filterColor === 'Semua' || item.color === filterColor;
-
-        return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation && 
-               matchDate && matchStatusModal && matchSize && matchColor;
-    });
-
-    // Get unique values for filters
-    const uniqueWOs = [...new Set(rfidData.map(item => item.nomor_wo).filter(Boolean))].sort();
-    const uniqueBuyers = [...new Set(rfidData.map(item => item.buyer).filter(Boolean))].sort();
-    const uniqueStatuses = [...new Set(rfidData.map(item => item.status).filter(Boolean))].sort();
-    const uniqueLocations = [...new Set(rfidData.map(item => item.lokasi).filter(Boolean))].sort();
-    const uniqueSizes = [...new Set(rfidData.map(item => item.size).filter(Boolean))].sort();
-    const uniqueColors = [...new Set(rfidData.map(item => item.color).filter(Boolean))].sort();
-
-    // Handle filter modal
-    const handleFilterData = () => {
-        setShowFilterModal(false);
-        // Filter sudah diterapkan melalui filteredData
-    };
-
-    const handleResetFilter = () => {
-        setFilterDateFrom('');
-        setFilterDateTo('');
-        setFilterStatusModal('Semua');
-        setFilterSize('Semua');
-        setFilterColor('Semua');
-    };
-
-    // Handle view details
-    const handleView = (item: RFIDItem) => {
-        setSelectedScan(item);
-        setShowModal(true);
-    };
-
-    // Handle close modal
-    const handleCloseModal = () => {
-        setShowModal(false);
-        setSelectedScan(null);
-    };
-
-    // Fungsi untuk handle export
-    const handleExport = async (format: 'excel' | 'csv') => {
-        const statusCounts = {
-            Good: filteredData.filter(item => item.status === 'Good').length,
-            Rework: filteredData.filter(item => item.status === 'Rework').length,
-            Reject: filteredData.filter(item => item.status === 'Reject').length,
-            OUTPUT: filteredData.filter(item => item.status === 'OUTPUT').length,
-            Unknown: filteredData.filter(item => !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(item.status)).length
-        };
-
-        const lokasiCounts: Record<string, number> = {};
-        filteredData.forEach(item => {
-            const lokasi = item.lokasi || 'Unknown';
-            lokasiCounts[lokasi] = (lokasiCounts[lokasi] || 0) + 1;
-        });
-
-        const lineId = currentLine || '1';
-        const summary = {
-            totalData: filteredData.length,
-            statusCounts,
-            lokasiCounts,
-            line: `Line ${lineId}`,
-            exportDate: new Date().toLocaleDateString('id-ID', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric'
-            })
-        };
-
-        await exportListRFIDToExcel(filteredData, lineId, format, summary);
-    };
-
-    // Handle refresh data
-    const handleRefresh = () => {
-        fetchRFIDData();
-    };
-
-    // Handle delete data - show modal
-    const handleDelete = (item: RFIDItem) => {
-        setItemToDelete(item);
-        setShowDeleteModal(true);
-    };
-
-    // Confirm delete data
-    const confirmDelete = async () => {
-        if (!itemToDelete) return;
-
-        setIsDeleting(true);
-        setTimeout(() => {
-            setRfidData(prev => prev.filter(item => item.id !== itemToDelete.id));
-            showNotification(`✅ Data RFID "${itemToDelete.rfid}" berhasil dihapus!`);
-            setShowDeleteModal(false);
-            setItemToDelete(null);
-            setIsDeleting(false);
-        }, 500);
-    };
-
-    // Cancel delete
-    const cancelDelete = () => {
-        setShowDeleteModal(false);
-        setItemToDelete(null);
-        setIsDeleting(false);
-    };
-
-    // Show notification
-    const showNotification = (message: string) => {
+    // Show notification helper
+    const showNotification = useCallback((message: string) => {
         const notification = document.createElement('div');
         notification.className = 'fixed top-5 right-5 bg-gradient-to-br from-emerald-500 to-green-600 text-white px-5 py-3 rounded-lg shadow-lg z-[1000] transform transition-transform duration-300 translate-x-full font-semibold text-sm';
         notification.textContent = message;
@@ -463,14 +95,28 @@ const ListRFID: React.FC = () => {
                 }
             }, 300);
         }, 3000);
-    };
-
-    // Sidebar width logic matching Header.tsx
-    // Header uses: isOpen ? '15%' : '5rem'
-    const sidebarWidth = isOpen ? '15%' : '5rem';
+    }, []);
+    
+    // Enhanced confirm delete with notification
+    const handleConfirmDelete = useCallback(async () => {
+        if (!itemToDelete) return;
+        await confirmDelete();
+        showNotification(`✅ Data RFID "${itemToDelete.rfid}" berhasil dihapus!`);
+    }, [itemToDelete, confirmDelete, showNotification]);
+    
+    // Sidebar width
+    const sidebarWidth = useMemo(() => isOpen ? '18%' : '5rem', [isOpen]);
 
     return (
-        <div className="flex min-h-screen w-full bg-[#f4f6f8] font-sans text-gray-800 overflow-hidden">
+        <div className="flex min-h-screen w-full h-screen font-sans text-gray-800 overflow-hidden fixed inset-0 m-0 p-0"
+            style={{
+                backgroundImage: `url(${backgroundImage})`,
+                backgroundSize: '100% 100%',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundAttachment: 'fixed',
+            }}
+        >
             {/* Sidebar */}
             <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
                 <Sidebar />
@@ -487,20 +133,23 @@ const ListRFID: React.FC = () => {
                 {/* Header - Fixed Position handled in Header component */}
                 <Header />
 
+                {/* Breadcrumb */}
+                <Breadcrumb />
+
                 {/* Page Content */}
                 <main
                     className="flex-1 overflow-hidden flex flex-col min-h-0"
                     style={{
-                        marginTop: '80px', // Jarak dari atas agar tidak tertutup header
-                        padding: '20px',   // Padding konten
+                        padding: '1rem', // Padding konten
+                        paddingTop: '0.5rem', // Mengurangi padding top agar lebih dekat dengan breadcrumb
                         height: 'calc(100vh - 80px)', // Sesuaikan tinggi agar tidak double scroll
                         maxHeight: 'calc(100vh - 80px)'
                     }}
                 >
                     {/* Page Header */}
                     <div
-                        className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4 shrink-0"
-                        style={{ marginBottom: '20px' }}
+                        className="flex flex-col md:flex-row items-center justify-between gap-4 shrink-0"
+                        style={{ marginBottom: '0.75rem', marginTop: '0.5rem' }}
                     >
                         <div className="flex items-center gap-3">
                             <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl shadow-lg shadow-blue-500/30 text-white">
@@ -569,7 +218,7 @@ const ListRFID: React.FC = () => {
                                         className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                     >
                                         <option value="">All WO</option>
-                                        {uniqueWOs.map((wo: any) => (
+                                        {uniqueWO.map((wo: any) => (
                                             <option key={wo} value={wo}>{wo}</option>
                                         ))}
                                     </select>
@@ -655,7 +304,7 @@ const ListRFID: React.FC = () => {
                                 {/* Wrapper untuk header dan body dengan scroll horizontal bersama */}
                                 <div className="min-w-max flex flex-col h-full">
                                     {/* Table Header - Sticky dengan gradient yang menarik */}
-                                    <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 border-b-2 border-slate-600 shrink-0 sticky top-0 z-10 shadow-md">
+                                    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 border-b-2 border-blue-800 shrink-0 sticky top-0 z-10 shadow-md">
                                         <div className="flex items-center px-3 h-14 text-xs font-extrabold text-white uppercase tracking-wider gap-2">
                                             <div className="w-[130px] shrink-0 text-center font-semibold">RFID ID</div>
                                             <div className="w-[75px] shrink-0 text-center font-semibold">WO</div>
@@ -938,7 +587,7 @@ const ListRFID: React.FC = () => {
                                     Batal
                                 </button>
                                 <button
-                                    onClick={confirmDelete}
+                                    onClick={handleConfirmDelete}
                                     disabled={isDeleting}
                                     className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
                                 >

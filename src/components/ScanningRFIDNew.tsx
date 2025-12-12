@@ -308,13 +308,13 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             >
                 <div 
                     ref={containerRef}
-                    className="bg-white rounded-3xl shadow-2xl w-[95%] max-w-[900px] max-h-[95vh] flex flex-col"
+                    className="bg-white rounded-xl xs:rounded-2xl sm:rounded-3xl shadow-2xl w-[95%] max-w-[900px] max-h-[95vh] flex flex-col"
                     style={{
                         background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(148, 163, 184, 0.1), 0 8px 16px -8px rgba(59, 130, 246, 0.1)',
                         animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
                         border: '1px solid rgba(226, 232, 240, 0.8)',
-                        padding: '1.5rem',
+                        padding: '0.75rem',
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column'
@@ -323,7 +323,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                 >
                     {/* Header */}
                     <div 
-                        className="text-center mb-2"
+                        className="text-center mb-1.5 xs:mb-2"
                         style={{
                             background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 50%, #DBEAFE 100%)',
                             borderRadius: '6px',
@@ -333,7 +333,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                         }}
                     >
                         <h2 
-                            className="text-xl font-extrabold mb-1"
+                            className="text-base xs:text-lg sm:text-xl font-extrabold mb-0.5 xs:mb-1"
                             style={{
                                 background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
                                 WebkitBackgroundClip: 'text',
@@ -344,18 +344,18 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                         >
                             📡 Batch Scanning Mode
                         </h2>
-                        <p className="text-sm font-medium" style={{ color: '#475569' }}>
+                        <p className="text-xs xs:text-sm font-medium" style={{ color: '#475569' }}>
                             Scan beberapa RFID sekaligus
                         </p>
                         {serverStatus === 'checking' && (
                             <div 
-                                className="mt-2 px-3 py-1.5 rounded-md inline-block"
+                                className="mt-1.5 xs:mt-2 px-2 xs:px-3 py-1 xs:py-1.5 rounded-md inline-block"
                                 style={{
                                     background: 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)',
                                     border: '2px solid #3B82F6'
                                 }}
                             >
-                                <p className="text-xs font-bold" style={{ color: '#1E40AF' }}>
+                                <p className="text-[10px] xs:text-xs font-bold" style={{ color: '#1E40AF' }}>
                                     ⏳ Memeriksa koneksi server...
                                 </p>
                             </div>
@@ -364,13 +364,13 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
 
                     {/* Work Order Info */}
                     <div 
-                        className="mb-2"
+                        className="mb-1.5 xs:mb-2"
                         style={{
                             background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
                             borderRadius: '6px',
-                            padding: '0.3rem 0.5rem',
+                            padding: '0.25rem 0.4rem',
                             display: 'flex',
-                            gap: '0.7rem',
+                            gap: '0.5rem',
                             justifyContent: 'space-around',
                             flexWrap: 'wrap',
                             border: '1px solid #E2E8F0',
@@ -385,26 +385,26 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             { label: 'Color', value: workOrderData.color },
                             { label: 'Size', value: workOrderData.size }
                         ].map((item, idx) => (
-                            <div key={idx} className="relative" style={{ paddingLeft: '1rem' }}>
+                            <div key={idx} className="relative" style={{ paddingLeft: '0.75rem' }}>
                                 <div 
                                     className="absolute left-0 top-1/2 -translate-y-1/2"
                                     style={{
-                                        width: '4px',
+                                        width: '3px',
                                         height: '60%',
                                         background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
                                         borderRadius: '2px'
                                     }}
                                 />
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-0.5 xs:gap-1">
                                     <span 
-                                        className="text-xs font-semibold uppercase tracking-wide"
-                                        style={{ color: '#64748B', fontSize: '0.65rem' }}
+                                        className="text-[9px] xs:text-xs font-semibold uppercase tracking-wide"
+                                        style={{ color: '#64748B' }}
                                     >
                                         {item.label}
                                     </span>
                                     <span 
-                                        className="font-bold"
-                                        style={{ color: '#0F172A', fontSize: '0.9rem', letterSpacing: '-0.25px' }}
+                                        className="font-bold text-xs xs:text-sm"
+                                        style={{ color: '#0F172A', letterSpacing: '-0.25px' }}
                                     >
                                         {item.value}
                                     </span>

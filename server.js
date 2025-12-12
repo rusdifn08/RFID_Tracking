@@ -1213,6 +1213,89 @@ app.get('/wo/branch', async (req, res) => {
     return await proxyRequest('/wo/branch', req, res);
 });
 
+/**
+ * Proxy untuk Production Schedule API - get-wo-breakdown
+ * GET /api/prod-sch/get-wo-breakdown?branch=CJL&line=L1&start_date_from=2025-12-01
+ * Proxy ke 10.8.18.60:7186 dengan header GCC-API-KEY
+ */
+app.get('/api/prod-sch/get-wo-breakdown', async (req, res) => {
+    try {
+        const { branch, line, start_date_from, start_date_to } = req.query;
+        
+        // Build query string
+        const queryParams = new URLSearchParams();
+        if (branch) queryParams.append('branch', branch);
+        if (line) queryParams.append('line', line);
+        if (start_date_from) queryParams.append('start_date_from', start_date_from);
+        if (start_date_to) queryParams.append('start_date_to', start_date_to);
+        
+        const queryString = queryParams.toString();
+        const url = `http://10.8.18.60:7186/api/prod-sch/get-wo-breakdown${queryString ? `?${queryString}` : ''}`;
+        
+        console.log(`\n🔵 [PROD-SCH PROXY] GET /api/prod-sch/get-wo-breakdown`);
+        console.log(`🔵 [PROD-SCH PROXY] URL: ${url}`);
+        
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 detik timeout
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'GCC-API-KEY': '332100185',
+            },
+            signal: controller.signal
+        }).catch((fetchError) => {
+            clearTimeout(timeoutId);
+            console.error(`❌ [PROD-SCH PROXY] Fetch error:`, fetchError);
+            throw fetchError;
+        });
+        
+        clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
+        console.log(`⏱️  [PROD-SCH PROXY] Request duration: ${duration}ms`);
+        console.log(`📥 [PROD-SCH PROXY] Response status: ${response.status} ${response.statusText}`);
+        
+        let data;
+        try {
+            const textData = await response.text();
+            if (textData) {
+                data = JSON.parse(textData);
+            }
+        } catch (parseError) {
+            console.error(`❌ [PROD-SCH PROXY] JSON parse error:`, parseError);
+            throw new Error('Invalid JSON response from Production Schedule API');
+        }
+        
+        // Forward response dengan status code yang sama
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error(`\n❌ [PROD-SCH PROXY] Error:`, error);
+        let errorMessage = 'Error connecting to Production Schedule API';
+        let statusCode = 500;
+        
+        if (error.name === 'AbortError' || error.message.includes('timeout')) {
+            errorMessage = 'Request timeout - Production Schedule API tidak merespon dalam 30 detik';
+            statusCode = 504;
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+            errorMessage = 'Tidak dapat terhubung ke Production Schedule API (10.8.18.60:7186)';
+            statusCode = 503;
+        } else if (error.message.includes('Invalid JSON')) {
+            errorMessage = 'Production Schedule API mengembalikan response yang tidak valid';
+            statusCode = 502;
+        }
+        
+        return res.status(statusCode).json({
+            success: false,
+            message: errorMessage,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 // Endpoint wo/production_branch yang lama dihapus karena sudah diganti dengan proxyRequest di atas
 /*
 app.get('/wo/production_branch', async (req, res) => {
@@ -1590,6 +1673,7 @@ app.listen(PORT, HOST, () => {
     console.log(`   GET  http://${LOCAL_IP}:${PORT}/card/waiting (Proxy ke Backend API)`);
     console.log(`   POST http://${LOCAL_IP}:${PORT}/inputRFID (Proxy ke Backend API)`);
     console.log(`   POST http://${LOCAL_IP}:${PORT}/inputUser (Proxy ke Backend API)`);
+    console.log(`   GET  http://${LOCAL_IP}:${PORT}/api/prod-sch/get-wo-breakdown (Proxy ke Production Schedule API)`);
     console.log(`\n🚀 Server running on:`);
     console.log(`   - http://localhost:${PORT} (Local access)`);
     console.log(`   - http://${LOCAL_IP}:${PORT} (Network access - gunakan IP ini untuk akses dari komputer lain)`);

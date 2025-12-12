@@ -10,12 +10,12 @@ export default function HomeContent() {
         {
             id: 1,
             title: 'RFID Tracking',
-            subtitle: 'Real-time Garment Data',
-            location: '6 Locations',
+            subtitle: 'Real-time Tracking of Garment Data',
+            location: '9 Locations',
             icon: Rss,
             color: 'text-[#0073EE]',
-            bgStart: 'from-blue-400',
-            bgEnd: 'to-blue-600',
+            bgStart: 'from-sky-400',
+            bgEnd: 'to-blue-800',
             shadow: 'shadow-blue-200',
             lightBg: 'bg-blue-50'
         },
@@ -30,41 +30,14 @@ export default function HomeContent() {
         // md:pl-80: Memberi jarak aman dari Sidebar kiri (sekitar 320px)
         // pt-32: Memberi jarak aman dari Header atas
         // pr-8: Memberi jarak kanan agar seimbang
-        <div className="w-full min-h-screen bg-[#F8F9FA] md:pl-80 pt-32 pr-8 pb-12 transition-all duration-300"
+        <div className="w-full h-full transition-all duration-300 relative flex items-center justify-center"
             style={{
-                padding: '1%',
+                padding: '2rem 1rem',
                 overflow: 'hidden',
             }}
         >
-
-            {/* --- HEADER SECTION (CENTERED) --- */}
-            <div className=" w-full content-center items-center justify-center mx-auto text-center mb-4 animate-fade-in-down h-1/5 flex flex-col"
-                >
-                <h1 className="text-4xl">🛰️</h1>
-                <h1 className=" text-4xl font-extrabold font-serif text-slate-10 tracking-tight mb-3"
-
-                    style={{
-                        marginTop: '1%',
-                    }}
-                >
-                    MONITORING SYSTEM ROBOTICS TEAMS
-                </h1>
-                <p className="w-full text-slate-500 text-lg font-medium mx-auto"
-                    style={{
-                        height: '100%',
-                    }}
-                >
-                    Select a monitoring module below to view detailed analytics and real-time status reports.
-                </p>
-                {/* Decorative small line under title */}
-                <div className=" w-full content-center items-center justify-center w-24 h-1.5 bg-gradient-to-r from-orange-400 to-yellow-400 rounded-full mx-auto
-                 mt-6 opacity-80"
-
-                ></div>
-            </div>
-
             {/* --- GRID CONTAINER --- */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 w-full mx-auto"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 xs:gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:gap-7 2xl:gap-8 w-full max-w-7xl mx-auto"
                 >
                 {modules.map((module, index) => {
                     const IconComponent = module.icon;
@@ -76,12 +49,15 @@ export default function HomeContent() {
                             onClick={() => handleModuleClick(module.id)}
                             onMouseEnter={() => setHoveredCard(module.id)}
                             onMouseLeave={() => setHoveredCard(null)}
-                            style={{ animationDelay: `${index * 150}ms` }}
+                            style={{ 
+                                animationDelay: `${index * 150}ms`,
+                                zIndex: 1
+                            }}
                             // CARD STYLING:Select a monitoring module below to view detailed analytics and real-time status reports.i
                             // Flex-col & items-center: Kunci agar isi berada di tengah (center alignment)
                             // h-[380px]: Tinggi yang proporsional untuk menampung layout vertikal
                             className={`
-                                group relative h-[300px] bg-white rounded-[2.5rem] p-8
+                                group relative aspect-[3/2] bg-white rounded-2xl xs:rounded-[2rem] sm:rounded-[2.5rem] p-1
                                 border border-slate-100
                                 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)]
                                 cursor-pointer
@@ -93,65 +69,75 @@ export default function HomeContent() {
                             `}
                         >
                             {/* Hover Effect: Gradient Stroke at Top */}
-                            <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r ${module.bgStart} ${module.bgEnd} transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500`}></div>
+                            <div className={`absolute top-0 left-0 w-full h-1 xs:h-1.5 sm:h-2 bg-gradient-to-r ${module.bgStart} ${module.bgEnd} transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500`}></div>
 
                             {/* Hover Effect: Background Glow */}
-                            <div className={`absolute inset-0 rounded-[2.5rem] bg-gradient-to-br ${module.bgStart} ${module.bgEnd} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-500 pointer-events-none`}></div>
+                            <div className={`absolute inset-0 rounded-2xl xs:rounded-[2rem] sm:rounded-[2.5rem] bg-gradient-to-br ${module.bgStart} ${module.bgEnd} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-500 pointer-events-none`}></div>
 
                             {/* --- CONTENT BAGIAN ATAS (ICON & TEXT) --- */}
-                            <div className="h-200 flex flex-col items-center justify-center w-full mt-4 flex-grow">
-                                {/* ICON CIRCLE (Centered & Big) */}
-                                <div className={`
-                                    relative w-32 h-32 rounded-full mb-6
-                                    bg-gradient-to-br ${module.bgStart} ${module.bgEnd}
-                                    shadow-lg ${module.shadow}
-                                    flex items-center justify-center
-                                    transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6
-                                `}>
-                                    <IconComponent className="w-15 h-15 text-white" strokeWidth={2} />
-
-                                    {/* Ring Animation Pulse */}
-                                    <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping opacity-20"></div>
+                            <div className="flex flex-col items-center justify-center w-full flex-1" style={{ 
+                                paddingTop: 'clamp(0.25rem, 1.5vh, 0.75rem)',
+                                paddingLeft: '0.5rem',
+                                paddingRight: '0.5rem',
+                                paddingBottom: '0.25rem'
+                            }}>
+                                {/* ICON (Centered & Big) - Tanpa lingkaran, hanya icon dengan gradasi */}
+                                <div className="relative mb-1 xs:mb-1.5 sm:mb-2 md:mb-2.5 lg:mb-3 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6 flex-shrink-0">
+                                    <div className="relative" style={{ 
+                                        width: 'clamp(2.5rem, 7vw, 5rem)',
+                                        height: 'clamp(2.5rem, 7vw, 5rem)'
+                                    }}>
+                                        <svg width="0" height="0" style={{ position: 'absolute' }}>
+                                            <defs>
+                                                <linearGradient id={`iconGradient-${module.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                                    <stop offset="0%" stopColor="#38bdf8" />
+                                                    <stop offset="100%" stopColor="#1e40af" />
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                        <IconComponent 
+                                            className="w-full h-full" 
+                                            strokeWidth={2.5}
+                                            style={{
+                                                stroke: `url(#iconGradient-${module.id})`,
+                                            }}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* TEXT (Centered) */}
-                                <h3 className="text-4xl font-bold mb-2 text-center transition-colors duration-300"
+                                <h3 className="font-bold mb-0.5 xs:mb-0.75 sm:mb-1 md:mb-1.5 text-center transition-colors duration-300 flex-shrink-0 w-full"
                                     style={{
-                                        paddingTop: '2%',
-                                        color: isHovered ? '#0073EE' : '#0073EE'
+                                        fontSize: 'clamp(0.875rem, 2.2vw, 1.875rem)',
+                                        color: isHovered ? '#0073EE' : '#0073EE',
+                                        lineHeight: '1.3',
+                                        fontFamily: 'Poppins, sans-serif',
+                                        fontWeight: 700
                                     }}
                                 >
                                     {module.title}
                                 </h3>
-                                <p className="text-2xl text-slate-400 font-medium text-sm tracking-wider uppercase text-center">
+                                <p className="text-slate-400 font-medium tracking-wider text-center flex-shrink-0 w-full"
+                                    style={{
+                                        fontSize: 'clamp(0.55rem, 1.3vw, 0.9rem)',
+                                        lineHeight: '1.4',
+                                        wordBreak: 'break-word',
+                                        overflowWrap: 'break-word',
+                                        fontFamily: 'Poppins, sans-serif',
+                                        fontWeight: 500
+                                    }}
+                                >
                                     {module.subtitle}
                                 </p>
                             </div>
 
                             {/* --- CONTENT BAGIAN BAWAH (FOOTER) --- */}
-                            <div className=" w-full flex items-center justify-between pt-6 border-t border-slate-50 mt-auto"
-
-                                style={{
-                                    paddingRight: '2%',
-                                    paddingLeft: '5%',
-                                }}
+                            <div className="-mt-5 w-full flex items-center justify-between pt-1.5 xs:pt-2 sm:pt-2.5 md:pt-3 lg:pt-3.5 border-t border-slate-50 flex-shrink-0"
+                               
                             >
                                 {/* Location Tag */}
-                                <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${module.lightBg} transition-colors duration-300`}>
-                                    <MapPin className={`w-4 h-4 ${module.color}`} />
-                                    <span className={`text-sm font-semibold ${module.color}`}>
-                                        {module.location}
-                                    </span>
-                                </div>
 
-                                {/* Action Arrow Button */}
-                                <div className={`
-                                    w-12 h-12 rounded-full flex items-center justify-center
-                                    transition-all duration-300 
-                                    ${isHovered ? `bg-gradient-to-r ${module.bgStart} ${module.bgEnd} text-white shadow-md scale-110` : 'bg-slate-50 text-slate-300'}
-                                `}>
-                                    <ArrowRight className={`w-5 h-5 transition-transform duration-300 ${isHovered ? 'translate-x-1' : ''}`} />
-                                </div>
+                               
                             </div>
                         </div>
                     );

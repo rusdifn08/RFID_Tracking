@@ -77,7 +77,7 @@ export default function Sidebar() {
 
             {/* Sidebar Container */}
             <aside
-                className={`bg-gradient-to-b from-[#0073EE] to-[#0073EE] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${isOpen ? 'w-[15%] px-4' : 'w-20 px-2'
+                className={`bg-gradient-to-b from-[#0073EE] to-[#0073EE] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${isOpen ? 'w-[18%] px-4' : 'w-20 px-2'
                     }`}
             >
                 {/* --- LOGO AREA - DI PALING ATAS --- */}
@@ -102,12 +102,7 @@ export default function Sidebar() {
                     </div>
 
                     <div className={`text-center space-y-0.5 transform transition-all duration-300 ${!isOpen ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100'}`}>
-                        <h2 className="text-yellow-400 font-bold text-xs tracking-wider drop-shadow-lg hover:text-yellow-300 transition-colors">
-                            PT GISTEX
-                        </h2>
-                        <h2 className="text-yellow-400/90 font-bold text-[10px] tracking-widest drop-shadow-md hover:text-yellow-300/90 transition-colors">
-                            GARMENT INDONESIA
-                        </h2>
+                        
                     </div>
                 </div>
 
@@ -124,9 +119,12 @@ export default function Sidebar() {
                     <Link
                         to="/home"
                         className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/home' || location.pathname === '/'
-                            ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
-                            : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
+                            ? 'bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
+                            : 'hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                             }`}
+                        style={{ 
+                            color: (location.pathname === '/home' || location.pathname === '/') ? '#f7f9fa' : '#e6f2ff' 
+                        }}
                     >
                         {/* Active indicator dengan glow */}
                         {(location.pathname === '/home' || location.pathname === '/') && isOpen && (
@@ -153,8 +151,9 @@ export default function Sidebar() {
                                     size={18}
                                     className={`transition-all duration-500 ease-in-out drop-shadow-lg ${location.pathname === '/home' || location.pathname === '/'
                                         ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                        : 'text-white/70 group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
+                                        : 'group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
                                         }`}
+                                    style={{ color: (location.pathname === '/home' || location.pathname === '/') ? '#f7f9fa' : '#e6f2ff' }}
                                     strokeWidth={2.5}
                                 />
                             </div>
@@ -172,9 +171,12 @@ export default function Sidebar() {
                         <Link
                             to="/monitoring-rfid"
                             className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${isRFIDPage
-                                ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
-                                : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
+                                ? 'bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
+                                : 'hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                                 }`}
+                            style={{ 
+                                color: isRFIDPage ? '#f7f9fa' : '#e6f2ff' 
+                            }}
                         >
                             {/* Active indicator dengan glow */}
                             {isRFIDPage && isOpen && (
@@ -195,8 +197,9 @@ export default function Sidebar() {
                                         size={18}
                                         className={`transition-all duration-500 ease-in-out drop-shadow-lg ${isRFIDPage
                                             ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                            : 'text-white/70 group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
+                                            : 'group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
                                             }`}
+                                        style={{ color: isRFIDPage ? '#f7f9fa' : '#e6f2ff' }}
                                         strokeWidth={2.5}
                                     />
                                 </div>
@@ -213,8 +216,8 @@ export default function Sidebar() {
                             <div className="ml-3 space-y-0.5">
                                 {/* Production Lines - Muncul jika di halaman monitoring-rfid atau lebih dalam */}
                                 {isProductionLinesPage && (
-                                    <div className="px-3 py-1.5 text-white/80 font-medium text-xs border-l-2 border-white/30"
-                                       
+                                    <div className="px-3 py-1.5 font-medium text-xs border-l-2 border-white/30"
+                                        style={{ color: '#e6f2ff' }}
                                     >
                                         Production Lines
                                     </div>
@@ -229,7 +232,10 @@ export default function Sidebar() {
                                         {!isProductionLinesPage && (
                                             <Link
                                                 to="/monitoring-rfid"
-                                                className="group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-yellow-400/40"
+                                                className="group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full hover:bg-white/8 border-l-2 border-transparent hover:border-yellow-400/40"
+                                                style={{ color: '#e6f2ff' }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = '#f7f9fa'}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = '#e6f2ff'}
                                             >
                                                 <span className="font-medium tracking-wide text-left">Production Lines</span>
                                             </Link>
@@ -238,12 +244,27 @@ export default function Sidebar() {
                                         {/* Current Line */}
                                         <Link
                                             to={`/line/${currentLineId}`}
-                                            className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === `/line/${currentLineId}`
-                                                ? 'text-white bg-white/20 shadow-lg shadow-white/10 border-l-2 border-yellow-400/70'
-                                                : 'text-white/70 hover:text-white hover:bg-white/10 border-l-2 border-transparent hover:border-yellow-400/50'
+                                            className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === `/line/${currentLineId}`
+                                                ? 'bg-white/20 shadow-lg shadow-white/10 border-l-2 border-yellow-400/70'
+                                                : 'hover:bg-white/10 border-l-2 border-transparent hover:border-yellow-400/50'
                                                 }`}
+                                            style={{ 
+                                                color: location.pathname === `/line/${currentLineId}` ? '#f7f9fa' : '#e6f2ff',
+                                                fontFamily: 'Poppins, sans-serif',
+                                                fontWeight: 'bold'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (location.pathname !== `/line/${currentLineId}`) {
+                                                    e.currentTarget.style.color = '#f7f9fa';
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (location.pathname !== `/line/${currentLineId}`) {
+                                                    e.currentTarget.style.color = '#e6f2ff';
+                                                }
+                                            }}
                                         >
-                                            <span className="font-semibold tracking-wide text-left">{currentLineData.title}</span>
+                                            <span className="tracking-wide text-left" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>{currentLineData.title}</span>
                                         </Link>
 
                                         {/* Submenu - Muncul jika di halaman detail line atau dashboard/daftar/list */}
@@ -258,9 +279,20 @@ export default function Sidebar() {
                                                         <Link
                                                             to="/daftar-rfid"
                                                             className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === '/daftar-rfid'
-                                                                ? 'text-white bg-white/15 shadow-md border-l-2 border-purple-400'
-                                                                : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-purple-400/40'
+                                                                ? 'bg-white/15 shadow-md border-l-2 border-purple-400'
+                                                                : 'hover:bg-white/8 border-l-2 border-transparent hover:border-purple-400/40'
                                                                 }`}
+                                                            style={{ color: location.pathname === '/daftar-rfid' ? '#f7f9fa' : '#e6f2ff' }}
+                                                            onMouseEnter={(e) => {
+                                                                if (location.pathname !== '/daftar-rfid') {
+                                                                    e.currentTarget.style.color = '#f7f9fa';
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                if (location.pathname !== '/daftar-rfid') {
+                                                                    e.currentTarget.style.color = '#e6f2ff';
+                                                                }
+                                                            }}
                                                         >
                                                             <span className="font-medium tracking-wide text-left">DAFTAR RFID</span>
                                                         </Link>
@@ -270,9 +302,20 @@ export default function Sidebar() {
                                                     <Link
                                                         to={`/dashboard-rfid/${currentLineId}`}
                                                         className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === `/dashboard-rfid/${currentLineId}`
-                                                            ? 'text-white bg-white/15 shadow-md border-l-2 border-pink-400'
-                                                            : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-pink-400/40'
+                                                            ? 'bg-white/15 shadow-md border-l-2 border-pink-400'
+                                                            : 'hover:bg-white/8 border-l-2 border-transparent hover:border-pink-400/40'
                                                             }`}
+                                                        style={{ color: location.pathname === `/dashboard-rfid/${currentLineId}` ? '#f7f9fa' : '#e6f2ff' }}
+                                                        onMouseEnter={(e) => {
+                                                            if (location.pathname !== `/dashboard-rfid/${currentLineId}`) {
+                                                                e.currentTarget.style.color = '#f7f9fa';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (location.pathname !== `/dashboard-rfid/${currentLineId}`) {
+                                                                e.currentTarget.style.color = '#e6f2ff';
+                                                            }
+                                                        }}
                                                     >
                                                         <span className="font-medium tracking-wide text-left">DASHBOARD RFID</span>
                                                     </Link>
@@ -281,9 +324,20 @@ export default function Sidebar() {
                                                     <Link
                                                         to={`/list-rfid/${currentLineId}`}
                                                         className={`group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full ${location.pathname === `/list-rfid/${currentLineId}` || location.pathname.startsWith('/list-rfid')
-                                                            ? 'text-white bg-white/15 shadow-md border-l-2 border-orange-400'
-                                                            : 'text-white/60 hover:text-white hover:bg-white/8 border-l-2 border-transparent hover:border-orange-400/40'
+                                                            ? 'bg-white/15 shadow-md border-l-2 border-orange-400'
+                                                            : 'hover:bg-white/8 border-l-2 border-transparent hover:border-orange-400/40'
                                                             }`}
+                                                        style={{ color: (location.pathname === `/list-rfid/${currentLineId}` || location.pathname.startsWith('/list-rfid')) ? '#f7f9fa' : '#e6f2ff' }}
+                                                        onMouseEnter={(e) => {
+                                                            if (location.pathname !== `/list-rfid/${currentLineId}` && !location.pathname.startsWith('/list-rfid')) {
+                                                                e.currentTarget.style.color = '#f7f9fa';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (location.pathname !== `/list-rfid/${currentLineId}` && !location.pathname.startsWith('/list-rfid')) {
+                                                                e.currentTarget.style.color = '#e6f2ff';
+                                                            }
+                                                        }}
                                                     >
                                                         <span className="font-medium tracking-wide text-left">LIST RFID</span>
                                                     </Link>
@@ -299,9 +353,12 @@ export default function Sidebar() {
                     <Link
                         to="/about-us"
                         className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname === '/about-us'
-                            ? 'text-white bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
-                            : 'text-white/80 hover:text-white hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
+                            ? 'bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
+                            : 'hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
                             }`}
+                        style={{ 
+                            color: location.pathname === '/about-us' ? '#f7f9fa' : '#e6f2ff' 
+                        }}
                     >
                         {/* Active indicator dengan glow */}
                         {location.pathname === '/about-us' && isOpen && (
@@ -328,8 +385,9 @@ export default function Sidebar() {
                                     size={18}
                                     className={`transition-all duration-500 ease-in-out drop-shadow-lg ${location.pathname === '/about-us'
                                         ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                        : 'text-white/70 group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
+                                        : 'group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
                                         }`}
+                                    style={{ color: location.pathname === '/about-us' ? '#f7f9fa' : '#e6f2ff' }}
                                     strokeWidth={2.5}
                                 />
                             </div>
@@ -351,18 +409,21 @@ export default function Sidebar() {
                 {isOpen && (
                     <div className="px-2 py-2 flex-shrink-0">
                         {/* TEAMS Title - Di tengah */}
-                        <div className="text-white/70 font-semibold uppercase tracking-widest mb-2 px-2 flex items-center justify-center">
-                            <span className="text-xs text-center">TEAMS</span>
+                        <div className="text-white/70 font-bold tracking-widest mb-1.5 xs:mb-2 px-2 flex items-center justify-center">
+                            <span className="text-[10px] xs:text-xs sm:text-sm md:text-base text-center" style={{ textTransform: 'capitalize' }}>Teams</span>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1 xs:space-y-1.5">
                             {/* Bagian dari API */}
-                            <div className="group relative flex items-center justify-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-all duration-300 cursor-pointer border border-transparent hover:border-blue-400/30 hover:shadow-lg hover:shadow-blue-400/20">
+                            <div className="group relative flex items-center justify-center gap-1.5 xs:gap-2 px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 rounded-lg hover:bg-white/10 transition-all duration-300 cursor-pointer border border-transparent hover:border-blue-400/30 hover:shadow-lg hover:shadow-blue-400/20">
                                 <div className="relative">
-                                    <div className="w-2 h-2 rounded-full bg-blue-400 shadow-lg shadow-blue-400/70 flex-shrink-0 group-hover:scale-125 group-hover:shadow-blue-400 transition-all duration-300 animate-pulse"></div>
-                                    <div className="absolute inset-0 w-2 h-2 rounded-full bg-blue-400/30 blur-md group-hover:blur-lg transition-all duration-300"></div>
+                                    <div className="w-1.5 xs:w-2 h-1.5 xs:h-2 rounded-full bg-blue-400 shadow-lg shadow-blue-400/70 flex-shrink-0 group-hover:scale-125 group-hover:shadow-blue-400 transition-all duration-300 animate-pulse"></div>
+                                    <div className="absolute inset-0 w-1.5 xs:w-2 h-1.5 xs:h-2 rounded-full bg-blue-400/30 blur-md group-hover:blur-lg transition-all duration-300"></div>
                                 </div>
-                                <span className="text-white/90 text-xs font-medium group-hover:text-white transition-colors tracking-wide text-center">
-                                    {user?.bagian || user?.jabatan || 'GUEST'}
+                                <span className="font-bold transition-colors tracking-wide text-center text-[10px] xs:text-xs sm:text-sm md:text-base" style={{ color: '#e6f2ff', textTransform: 'capitalize' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = '#f7f9fa'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = '#e6f2ff'}
+                                >
+                                    {user?.bagian || user?.jabatan || 'Guest'}
                                 </span>
                             </div>
                         </div>
