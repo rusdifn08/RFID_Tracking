@@ -297,7 +297,10 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
         const timestamp = new Date();
 
         try {
-            const response = await fetch(`${API_BASE_URL}/scrap`, {
+            // API endpoint langsung sesuai spesifikasi
+            const API_SCRAP_URL = 'http://10.8.0.104:7000/scrap';
+            
+            const response = await fetch(API_SCRAP_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

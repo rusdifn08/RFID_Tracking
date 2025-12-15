@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { QrCode, Calendar, ListChecks, XCircle } from 'lucide-react';
+import { QrCode, Calendar, ListChecks, XCircle, Edit } from 'lucide-react';
 
 interface WorkOrderData {
     workOrder: string;
@@ -33,6 +33,7 @@ interface RegistrationFormProps {
     onDateFilterClick: () => void;
     onRegisteredClick: () => void;
     onRejectClick: () => void;
+    onUpdateClick: () => void;
     onSubmit: (e: React.FormEvent) => void;
 }
 
@@ -52,6 +53,7 @@ const RegistrationForm = memo(({
     onDateFilterClick,
     onRegisteredClick,
     onRejectClick,
+    onUpdateClick,
     onSubmit,
 }: RegistrationFormProps) => {
     const selectedWOData = useMemo(() => 
@@ -121,7 +123,7 @@ const RegistrationForm = memo(({
                             </div>
                         </div>
                         
-                        {/* Registered RFID & Scan Reject Buttons - Kanan (Vertikal) */}
+                        {/* Registered RFID, Update & Scan Reject Buttons - Kanan (Vertikal) */}
                         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                             <button
                                 onClick={onRegisteredClick}
@@ -131,6 +133,15 @@ const RegistrationForm = memo(({
                                 <ListChecks size={12} className="xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0" />
                                 <span className="font-semibold hidden sm:inline">REGISTERED RFID</span>
                                 <span className="font-semibold sm:hidden">REGISTERED</span>
+                            </button>
+                            <button
+                                onClick={onUpdateClick}
+                                className="px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 font-medium text-[9px] xs:text-[10px] sm:text-xs"
+                                title="Update Data"
+                            >
+                                <Edit size={12} className="xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0" />
+                                <span className="font-semibold hidden sm:inline">UPDATE RFID</span>
+                                <span className="font-semibold sm:hidden">UPDATE</span>
                             </button>
                             <button
                                 onClick={onRejectClick}

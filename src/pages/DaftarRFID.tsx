@@ -1,9 +1,9 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
-import { X, ListChecks, Search, Calendar } from 'lucide-react';
+import { X, ListChecks, Search, Calendar, Edit, Radio, Loader2 } from 'lucide-react';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
 import backgroundImage from '../assets/background.jpg';
 import { useDaftarRFID } from '../hooks/useDaftarRFID';
@@ -11,6 +11,21 @@ import RegistrationForm from '../components/daftar/RegistrationForm';
 
 export default function DaftarRFID() {
     const { isOpen } = useSidebar();
+    
+    // State untuk Update Modal
+    const [showUpdateModal, setShowUpdateModal] = useState(false);
+    const [updateFormData, setUpdateFormData] = useState({
+        rfid_garment: '',
+        wo: '',
+        style: '',
+        buyer: '',
+        item: '',
+        color: '',
+        size: ''
+    });
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const updateRfidInputRef = useRef<HTMLInputElement>(null);
     
     // Custom hook untuk semua state dan logic
     const {
@@ -64,6 +79,81 @@ export default function DaftarRFID() {
         const day = String(today.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }, []);
+
+    // Fungsi untuk handle update data garment
+    const handleUpdateSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        if (!updateFormData.rfid_garment.trim()) {
+            setUpdateMessage({ type: 'error', text: 'RFID Garment wajib diisi' });
+            return;
+        }
+
+        setIsUpdating(true);
+        setUpdateMessage(null);
+
+        try {
+            // API endpoint langsung sesuai spesifikasi
+            const API_UPDATE_URL = 'http://10.8.0.104:7000/garment/update';
+            
+            const response = await fetch(API_UPDATE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    rfid_garment: updateFormData.rfid_garment.trim(),
+                    wo: updateFormData.wo.trim(),
+                    style: updateFormData.style.trim(),
+                    buyer: updateFormData.buyer.trim(),
+                    item: updateFormData.item.trim(),
+                    color: updateFormData.color.trim(),
+                    size: updateFormData.size.trim()
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                setUpdateMessage({ type: 'success', text: data.message || 'Data garment berhasil diperbarui' });
+                // Reset form setelah 2 detik
+                setTimeout(() => {
+                    setUpdateFormData({
+                        rfid_garment: '',
+                        wo: '',
+                        style: '',
+                        buyer: '',
+                        item: '',
+                        color: '',
+                        size: ''
+                    });
+                    setUpdateMessage(null);
+                }, 2000);
+            } else {
+                setUpdateMessage({ 
+                    type: 'error', 
+                    text: data.message || `Error: ${response.status} ${response.statusText}` 
+                });
+            }
+        } catch (error) {
+            setUpdateMessage({ 
+                type: 'error', 
+                text: error instanceof Error ? error.message : 'Terjadi kesalahan saat update data' 
+            });
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    // Auto focus input RFID saat modal dibuka
+    useEffect(() => {
+        if (showUpdateModal && updateRfidInputRef.current) {
+            setTimeout(() => {
+                updateRfidInputRef.current?.focus();
+            }, 100);
+        }
+    }, [showUpdateModal]);
 
     // Fetch data saat component mount dan saat date berubah
     useEffect(() => {
@@ -123,6 +213,7 @@ export default function DaftarRFID() {
                         onDateFilterClick={() => setShowDateFilterModal(true)}
                         onRegisteredClick={() => setShowRegisteredModal(true)}
                         onRejectClick={() => setShowScanRejectModal(true)}
+                        onUpdateClick={() => setShowUpdateModal(true)}
                         onSubmit={handleSubmit}
                     />
                 </main>
@@ -601,6 +692,230 @@ export default function DaftarRFID() {
                                 Simpan Reject
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Update Data Modal */}
+            {showUpdateModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => {
+                    setShowUpdateModal(false);
+                    setUpdateFormData({
+                        rfid_garment: '',
+                        wo: '',
+                        style: '',
+                        buyer: '',
+                        item: '',
+                        color: '',
+                        size: ''
+                    });
+                    setUpdateMessage(null);
+                }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-purple-600 p-4 sm:p-6 flex-shrink-0">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                                        <Edit className="text-white" size={24} strokeWidth={2.5} />
+                                    </div>
+                                    <h2 className="text-xl sm:text-2xl font-bold text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
+                                        Update Data Garment
+                                    </h2>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowUpdateModal(false);
+                                        setUpdateFormData({
+                                            rfid_garment: '',
+                                            wo: '',
+                                            style: '',
+                                            buyer: '',
+                                            item: '',
+                                            color: '',
+                                            size: ''
+                                        });
+                                        setUpdateMessage(null);
+                                    }}
+                                    className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white hover:bg-white/30"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <form onSubmit={handleUpdateSubmit} className="p-4 sm:p-6 space-y-4">
+                            {/* Message Alert */}
+                            {updateMessage && (
+                                <div className={`p-3 rounded-lg flex items-center gap-2 ${
+                                    updateMessage.type === 'success' 
+                                        ? 'bg-green-50 border border-green-200 text-green-800' 
+                                        : 'bg-red-50 border border-red-200 text-red-800'
+                                }`}>
+                                    {updateMessage.type === 'success' ? (
+                                        <ListChecks className="w-5 h-5 text-green-600" />
+                                    ) : (
+                                        <X className="w-5 h-5 text-red-600" />
+                                    )}
+                                    <span className="text-sm font-medium">{updateMessage.text}</span>
+                                </div>
+                            )}
+
+                            {/* RFID Garment Input */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    RFID Garment <span className="text-red-500">*</span>
+                                </label>
+                                <div className="relative">
+                                    <Radio className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-500" />
+                                    <input
+                                        ref={updateRfidInputRef}
+                                        type="text"
+                                        value={updateFormData.rfid_garment}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, rfid_garment: e.target.value }))}
+                                        placeholder="Scan atau ketik RFID Garment..."
+                                        className="w-full pl-10 pr-4 py-3 bg-white border-2 border-purple-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 font-mono text-base"
+                                        required
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Form Fields Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* WO */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Work Order (WO)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.wo}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, wo: e.target.value }))}
+                                        placeholder="Masukkan WO"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+
+                                {/* Style */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Style
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.style}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, style: e.target.value }))}
+                                        placeholder="Masukkan Style"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+
+                                {/* Buyer */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Buyer
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.buyer}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, buyer: e.target.value }))}
+                                        placeholder="Masukkan Buyer"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+
+                                {/* Item */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Item
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.item}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, item: e.target.value }))}
+                                        placeholder="Masukkan Item"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+
+                                {/* Color */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Color
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.color}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, color: e.target.value }))}
+                                        placeholder="Masukkan Color"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+
+                                {/* Size */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Size
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={updateFormData.size}
+                                        onChange={(e) => setUpdateFormData(prev => ({ ...prev, size: e.target.value }))}
+                                        placeholder="Masukkan Size"
+                                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                                        disabled={isUpdating}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer Buttons */}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowUpdateModal(false);
+                                        setUpdateFormData({
+                                            rfid_garment: '',
+                                            wo: '',
+                                            style: '',
+                                            buyer: '',
+                                            item: '',
+                                            color: '',
+                                            size: ''
+                                        });
+                                        setUpdateMessage(null);
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium text-sm transition-colors"
+                                    disabled={isUpdating}
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2"
+                                    disabled={isUpdating || !updateFormData.rfid_garment.trim()}
+                                >
+                                    {isUpdating ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Memproses...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Edit className="w-4 h-4" />
+                                            <span>Update Data</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
