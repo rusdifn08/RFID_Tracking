@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Rss, ArrowRight, MapPin } from 'lucide-react';
+import { Rss } from 'lucide-react';
 
 export default function HomeContent() {
     const navigate = useNavigate();
@@ -32,12 +32,12 @@ export default function HomeContent() {
         // pr-8: Memberi jarak kanan agar seimbang
         <div className="w-full h-full transition-all duration-300 relative flex items-center justify-center"
             style={{
-                padding: '2rem 1rem',
+                padding: 'clamp(0.5rem, 2vw, 2rem) clamp(0.5rem, 3vw, 1rem)',
                 overflow: 'hidden',
             }}
         >
             {/* --- GRID CONTAINER --- */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 xs:gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:gap-7 2xl:gap-8 w-full max-w-7xl mx-auto"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 xs:gap-2.5 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6 2xl:gap-8 w-full max-w-7xl mx-auto px-2 xs:px-3 sm:px-4"
                 >
                 {modules.map((module, index) => {
                     const IconComponent = module.icon;
@@ -49,24 +49,24 @@ export default function HomeContent() {
                             onClick={() => handleModuleClick(module.id)}
                             onMouseEnter={() => setHoveredCard(module.id)}
                             onMouseLeave={() => setHoveredCard(null)}
-                            style={{ 
-                                animationDelay: `${index * 150}ms`,
-                                zIndex: 1
-                            }}
-                            // CARD STYLING:Select a monitoring module below to view detailed analytics and real-time status reports.i
-                            // Flex-col & items-center: Kunci agar isi berada di tengah (center alignment)
-                            // h-[380px]: Tinggi yang proporsional untuk menampung layout vertikal
                             className={`
-                                group relative aspect-[3/2] bg-white rounded-2xl xs:rounded-[2rem] sm:rounded-[2.5rem] p-1
+                                group relative bg-white rounded-xl xs:rounded-2xl sm:rounded-[2rem] md:rounded-[2.5rem] 
                                 border border-slate-100
                                 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)]
                                 cursor-pointer
                                 flex flex-col items-center justify-between
                                 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
-                                hover:-translate-y-3 hover:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)]
+                                hover:-translate-y-2 xs:hover:-translate-y-3 hover:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)]
                                 animate-fade-in-up
                                 overflow-hidden
                             `}
+                            style={{ 
+                                animationDelay: `${index * 150}ms`,
+                                zIndex: 1,
+                                aspectRatio: '3/2',
+                                minHeight: 'clamp(180px, 35vh, 380px)',
+                                padding: 'clamp(0.5rem, 1.5vw, 1rem)'
+                            }}
                         >
                             {/* Hover Effect: Gradient Stroke at Top */}
                             <div className={`absolute top-0 left-0 w-full h-1 xs:h-1.5 sm:h-2 bg-gradient-to-r ${module.bgStart} ${module.bgEnd} transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500`}></div>

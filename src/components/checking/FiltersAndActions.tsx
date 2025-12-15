@@ -37,46 +37,45 @@ const FiltersAndActions = memo(({
     };
 
     return (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 xs:gap-3 sm:gap-4">
-            <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3 sm:gap-4 w-full sm:w-auto">
-                <div className="flex items-center gap-1.5 xs:gap-2 bg-white border-2 border-blue-500 rounded-lg p-1.5 xs:p-2 sm:p-2 hover:shadow-md hover:border-blue-600 transition-all duration-300">
-                    <Filter className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-blue-500" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-white border-2 border-blue-500 rounded-lg p-2 hover:bg-blue-500 hover:text-white transition-all duration-300">
+                    <Filter className="w-5 h-5 text-blue-500 hover:text-white" />
                     <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value as 'all' | 'found' | 'not_found')}
-                        className="bg-transparent text-gray-700 border-none outline-none cursor-pointer text-[10px] xs:text-xs sm:text-sm"
+                        className="bg-transparent text-gray-700 border-none outline-none cursor-pointer hover:text-white"
                     >
                         <option value="all">All Status</option>
                         <option value="found">Found Only</option>
                         <option value="not_found">Not Found Only</option>
                     </select>
                 </div>
-                <div className="flex items-center gap-1.5 xs:gap-2 bg-white border-2 border-blue-500 rounded-lg p-1.5 xs:p-2 sm:p-2 flex-1 sm:max-w-xs hover:shadow-md hover:border-blue-600 transition-all duration-300">
-                    <Search className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-blue-500 flex-shrink-0" />
+                <div className="flex items-center gap-2 bg-white border-2 border-blue-500 rounded-lg p-2 flex-1 max-w-xs hover:bg-blue-500 hover:text-white transition-all duration-300">
+                    <Search className="w-5 h-5 text-blue-500 hover:text-white" />
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search RFID..."
-                        className="bg-transparent text-gray-700 border-none outline-none flex-1 placeholder:text-gray-400 text-[10px] xs:text-xs sm:text-sm"
+                        className="bg-transparent text-gray-700 border-none outline-none flex-1 placeholder:text-gray-400 hover:text-white"
                     />
                 </div>
             </div>
-            <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-3">
                 <button
                     onClick={handleClearAll}
-                    className="px-2 xs:px-3 sm:px-4 py-1.5 xs:py-2 bg-white border-2 border-blue-500 rounded-lg text-blue-500 font-medium hover:bg-blue-500 hover:text-white transition-all duration-200 flex items-center gap-1.5 xs:gap-2 justify-center flex-1 sm:flex-initial text-[10px] xs:text-xs sm:text-sm"
+                    className="px-4 py-2 bg-white border-2 border-blue-500 rounded-lg text-blue-500 font-medium hover:bg-blue-500 hover:text-white transition-all duration-200 flex items-center gap-2"
                 >
-                    <RefreshCw className="w-3.5 xs:w-4 h-3.5 xs:h-4" />
-                    <span className="hidden xs:inline">Clear All</span>
-                    <span className="xs:hidden">Clear</span>
+                    <RefreshCw className="w-4 h-4" />
+                    Clear All
                 </button>
                 <button
                     onClick={handleExport}
                     disabled={checkItems.length === 0}
-                    className="px-2 xs:px-3 sm:px-4 py-1.5 xs:py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 xs:gap-2 justify-center flex-1 sm:flex-initial text-[10px] xs:text-xs sm:text-sm"
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center gap-2"
                 >
-                    <Download className="w-3.5 xs:w-4 h-3.5 xs:h-4" />
+                    <Download className="w-4 h-4" />
                     Export
                 </button>
             </div>

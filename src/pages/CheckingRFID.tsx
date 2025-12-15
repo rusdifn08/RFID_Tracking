@@ -7,7 +7,6 @@ import { API_BASE_URL } from '../config/api';
 import backgroundImage from '../assets/background.jpg';
 import { useCheckingRFID } from '../hooks/useCheckingRFID';
 import PageHeader from '../components/checking/PageHeader';
-import StatisticsCards from '../components/checking/StatisticsCards';
 import RFIDInputSection from '../components/checking/RFIDInputSection';
 import FiltersAndActions from '../components/checking/FiltersAndActions';
 import CheckResultsList from '../components/checking/CheckResultsList';
@@ -126,9 +125,16 @@ export default function CheckingRFID() {
                 <Breadcrumb />
 
                 {/* Page Content */}
-                <main className="flex-1 p-4 sm:p-6 space-y-6 pt-4 overflow-y-auto h-full">
+                <main 
+                    className="flex-1 p-2 xs:p-3 sm:p-4 md:p-5 lg:p-6 space-y-3 xs:space-y-4 sm:space-y-5 md:space-y-6 pt-2 xs:pt-3 sm:pt-4 overflow-y-auto min-h-0"
+                    style={{
+                        WebkitOverflowScrolling: 'touch',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#cbd5e1 #f1f5f9',
+                        paddingBottom: 'clamp(2rem, 4vh, 4rem)'
+                    }}
+                >
                     <PageHeader />
-                    <StatisticsCards checkItems={checkItems} />
                     <RFIDInputSection
                         rfidInput={rfidInput}
                         setRfidInput={setRfidInput}
@@ -136,6 +142,7 @@ export default function CheckingRFID() {
                         isChecking={isChecking}
                         onKeyPress={handleKeyPress}
                         onCheck={handleCheckRFID}
+                        checkItems={checkItems}
                     />
                     <FiltersAndActions
                         filterStatus={filterStatus}

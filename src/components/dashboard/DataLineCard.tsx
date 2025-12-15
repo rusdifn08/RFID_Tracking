@@ -12,7 +12,8 @@ interface DataLineCardProps {
 }
 
 const DataLineCard = memo(({ lineTitle, woData, onDateFilterClick, onExportClick, onWoFilterClick }: DataLineCardProps) => {
-    const dataRows = [
+    // Data untuk desktop: 3 kolom x 2 baris
+    const dataRowsDesktop = [
         [
             { label: 'WO', value: woData?.wo },
             { label: 'Style', value: woData?.style },
@@ -20,6 +21,22 @@ const DataLineCard = memo(({ lineTitle, woData, onDateFilterClick, onExportClick
         ],
         [
             { label: 'Buyer', value: woData?.buyer },
+            { label: 'Item', value: woData?.item },
+            { label: 'Color', value: woData?.color }
+        ]
+    ];
+    
+    // Data untuk mobile portrait: 2 kolom x 3 baris
+    const dataRowsMobile = [
+        [
+            { label: 'WO', value: woData?.wo },
+            { label: 'Style', value: woData?.style }
+        ],
+        [
+            { label: 'Size', value: woData?.size },
+            { label: 'Buyer', value: woData?.buyer }
+        ],
+        [
             { label: 'Item', value: woData?.item },
             { label: 'Color', value: woData?.color }
         ]
@@ -114,23 +131,44 @@ const DataLineCard = memo(({ lineTitle, woData, onDateFilterClick, onExportClick
         >
             <div className="w-full h-full overflow-hidden p-0.5 xs:p-0.5 sm:p-1 md:p-1.5 flex items-center justify-center">
                 {woData ? (
-                    <div className="w-full h-full flex flex-col justify-center gap-0.5 xs:gap-0.5 sm:gap-1 md:gap-1.5">
-                        {dataRows.map((row, rowIdx) => (
-                            <div key={rowIdx} className="grid grid-cols-3 gap-0.5 xs:gap-0.5 sm:gap-1 md:gap-1.5">
-                                {row.map((item, idx) => (
-                                    <div key={idx} className="group relative overflow-hidden bg-white rounded-lg border border-blue-500 p-0.5 xs:p-0.5 sm:p-1 md:p-1.5 flex flex-col items-center justify-center gap-0.5 transition-all duration-300 hover:shadow-sm">
-                                        <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-amber-400"></div>
-                                        <span className="text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px] font-bold text-blue-600 tracking-widest group-hover:text-blue-800 transition-colors delay-75" style={{ textTransform: 'capitalize' }}>{item.label}</span>
-                                        <div className="w-full text-center px-0.5">
-                                            <span className="text-[9px] xs:text-[10px] sm:text-xs md:text-sm font-black text-slate-700 group-hover:text-slate-900 truncate block transition-colors" title={item.value || '-'}>
-                                                {item.value || '-'}
-                                            </span>
+                    <>
+                        {/* Desktop: 3 kolom x 2 baris */}
+                        <div className="hidden md:flex w-full h-full flex-col justify-center gap-0.5 xs:gap-0.5 sm:gap-1 md:gap-1.5">
+                            {dataRowsDesktop.map((row, rowIdx) => (
+                                <div key={rowIdx} className="grid grid-cols-3 gap-0.5 xs:gap-0.5 sm:gap-1 md:gap-1.5">
+                                    {row.map((item, idx) => (
+                                        <div key={idx} className="group relative overflow-hidden bg-white rounded-lg border border-blue-500 p-0.5 xs:p-0.5 sm:p-1 md:p-1.5 flex flex-col items-center justify-center gap-0.5 transition-all duration-300 hover:shadow-sm">
+                                            <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-amber-400"></div>
+                                            <span className="text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px] font-bold text-blue-600 tracking-widest group-hover:text-blue-800 transition-colors delay-75" style={{ textTransform: 'capitalize' }}>{item.label}</span>
+                                            <div className="w-full text-center px-0.5">
+                                                <span className="text-[9px] xs:text-[10px] sm:text-xs md:text-sm font-black text-slate-700 group-hover:text-slate-900 truncate block transition-colors" title={item.value || '-'}>
+                                                    {item.value || '-'}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ))}
-                    </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                        {/* Mobile Portrait: 2 kolom x 3 baris */}
+                        <div className="flex md:hidden w-full h-full flex-col justify-center gap-0.5 xs:gap-0.5 sm:gap-1">
+                            {dataRowsMobile.map((row, rowIdx) => (
+                                <div key={rowIdx} className="grid grid-cols-2 gap-0.5 xs:gap-0.5 sm:gap-1">
+                                    {row.map((item, idx) => (
+                                        <div key={idx} className="group relative overflow-hidden bg-white rounded-lg border border-blue-500 p-0.5 xs:p-0.5 sm:p-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-300 hover:shadow-sm">
+                                            <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-amber-400"></div>
+                                            <span className="text-[6px] xs:text-[7px] sm:text-[8px] font-bold text-blue-600 tracking-widest group-hover:text-blue-800 transition-colors delay-75" style={{ textTransform: 'capitalize' }}>{item.label}</span>
+                                            <div className="w-full text-center px-0.5">
+                                                <span className="text-[9px] xs:text-[10px] sm:text-xs font-black text-slate-700 group-hover:text-slate-900 truncate block transition-colors" title={item.value || '-'}>
+                                                    {item.value || '-'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-1 xs:gap-1.5 sm:gap-2 text-slate-400 animate-pulse">
                         <div className="w-8 xs:w-10 sm:w-12 md:w-14 h-8 xs:h-10 sm:h-12 md:h-14 rounded-full bg-slate-100 flex items-center justify-center">

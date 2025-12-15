@@ -565,14 +565,14 @@ export default function DashboardRFID() {
                     className="flex-1 flex flex-col overflow-hidden pt-2 sm:pt-3 md:pt-4"
                 >
                     {/* PAGE TITLE */}
-                    <div className="flex-shrink-0 text-center py-2">
-                        <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-gray-700 uppercase tracking-wide drop-shadow-sm">
+                    <div className="flex-shrink-0 text-center py-1 xs:py-1.5 sm:py-2">
+                        <h1 className="text-base xs:text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-gray-700 uppercase tracking-wide drop-shadow-sm" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
                             <span className="text-blue-600">Dashboard</span> Monitoring RFID {lineTitle}
                         </h1>
                     </div>
 
                     {/* GRID CONTAINER */}
-                    <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden px-2 sm:px-3 md:px-4 pb-4 sm:pb-6">
+                    <div className="flex-1 flex flex-col gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 min-h-0 overflow-hidden px-1.5 xs:px-2 sm:px-3 md:px-4 pb-2 xs:pb-3 sm:pb-4 md:pb-6">
 
                         {/* ROW 1: CHARTS - Tetap 1 baris di semua ukuran, proporsi 1/3 dan 2/3 */}
                         <div className="flex-none flex flex-row gap-1 xs:gap-1.5 sm:gap-2 overflow-hidden" style={{ height: '38%', maxHeight: '38%', minHeight: '38%' }}>

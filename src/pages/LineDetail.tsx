@@ -134,13 +134,14 @@ export default function LineDetail() {
 
                 {/* Main Content */}
                 <main
-                    className="flex-1 w-full overflow-y-auto px-6 md:px-8 lg:px-10 relative"
+                    className="flex-1 w-full overflow-y-auto px-2 xs:px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 relative"
                     style={{
-                        marginTop: '1 rem',
-                        paddingTop: '0',
-                        paddingBottom: '5rem', // Tambah padding bottom untuk footer
-                        height: 'calc(100vh - 4.5rem)',
-                        maxHeight: 'calc(100vh - 4.5rem)',
+                        paddingTop: 'clamp(0.5rem, 1vh, 1rem)',
+                        paddingBottom: 'clamp(4rem, 8vh, 5rem)',
+                        minHeight: 0,
+                        WebkitOverflowScrolling: 'touch',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#cbd5e1 #f1f5f9'
                     }}
                 >
 
@@ -260,6 +261,22 @@ export default function LineDetail() {
                     }
                     .animate-fade-in-down {
                         animation: fadeInDown 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                    }
+                    /* Custom Scrollbar */
+                    main::-webkit-scrollbar {
+                        width: 8px;
+                        height: 8px;
+                    }
+                    main::-webkit-scrollbar-track {
+                        background: #f1f5f9;
+                        border-radius: 4px;
+                    }
+                    main::-webkit-scrollbar-thumb {
+                        background: #cbd5e1;
+                        border-radius: 4px;
+                    }
+                    main::-webkit-scrollbar-thumb:hover {
+                        background: #94a3b8;
                     }
                 `}</style>
         </div >

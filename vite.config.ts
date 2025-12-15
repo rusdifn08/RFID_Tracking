@@ -7,13 +7,13 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0', // Akses dari semua interface (localhost dan jaringan lokal)
-    port: 5173,
+    port: 3000,
     strictPort: true,
     open: false, // Jangan auto-open browser
   },
   preview: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 3000,
     strictPort: true,
   },
 })

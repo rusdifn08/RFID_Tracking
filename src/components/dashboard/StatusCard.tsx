@@ -35,7 +35,7 @@ const StatusCard = memo(({ type, count, label, onClick }: StatusCardProps) => {
             </div>
             <div className="flex flex-col items-center justify-center flex-1 w-full min-h-0">
                 <h3 className="text-[8px] xs:text-[9px] sm:text-xs md:text-sm lg:text-base xl:text-lg 2xl:text-xl font-black tracking-widest transition-colors mb-0.5 xs:mb-1" style={{ color: labelColor, textTransform: 'capitalize' }}>{displayLabel}</h3>
-                <span className="text-7xl xs:text-2xl sm:text-3xl md:text-3xl lg:text-4xl xl:text-5xl 2xl:text-7xl 3xl:text-8xl 4xl:text-9xl font-black leading-none tracking-tighter transition-all duration-500 ease-in-out transform scale-100 hover:scale-105" style={{ color: countColor }}>{count}</span>
+                <span className="text-4xl xs:text-2xl sm:text-3xl md:text-3xl lg:text-4xl xl:text-5xl 2xl:text-7xl 3xl:text-8xl 4xl:text-9xl font-black leading-none tracking-tighter transition-all duration-500 ease-in-out transform scale-100 hover:scale-105" style={{ color: countColor }}>{count}</span>
             </div>
         </div>
     );

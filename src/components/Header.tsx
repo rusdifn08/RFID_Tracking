@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../hooks/useAuth';
-import { Menu, Bell, Radio, X, Activity, CheckCircle2 } from 'lucide-react';
+import { Menu, Bell, Radio, X, Activity, CheckCircle2, Maximize2, Minimize2 } from 'lucide-react';
 import headerIcon from '../assets/header.svg';
 import handIcon from '../assets/hand.svg';
 
@@ -11,6 +11,68 @@ export default function Header() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [showCheckRfidModal, setShowCheckRfidModal] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    // Check fullscreen state on mount and when it changes
+    useEffect(() => {
+        const checkFullscreen = () => {
+            const isCurrentlyFullscreen = !!(
+                document.fullscreenElement ||
+                (document as any).webkitFullscreenElement ||
+                (document as any).mozFullScreenElement ||
+                (document as any).msFullscreenElement
+            );
+            setIsFullscreen(isCurrentlyFullscreen);
+        };
+
+        // Check initial state
+        checkFullscreen();
+
+        // Listen for fullscreen changes
+        document.addEventListener('fullscreenchange', checkFullscreen);
+        document.addEventListener('webkitfullscreenchange', checkFullscreen);
+        document.addEventListener('mozfullscreenchange', checkFullscreen);
+        document.addEventListener('MSFullscreenChange', checkFullscreen);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', checkFullscreen);
+            document.removeEventListener('webkitfullscreenchange', checkFullscreen);
+            document.removeEventListener('mozfullscreenchange', checkFullscreen);
+            document.removeEventListener('MSFullscreenChange', checkFullscreen);
+        };
+    }, []);
+
+    // Toggle fullscreen function
+    const toggleFullscreen = async () => {
+        try {
+            if (!isFullscreen) {
+                // Enter fullscreen
+                const element = document.documentElement;
+                if (element.requestFullscreen) {
+                    await element.requestFullscreen();
+                } else if ((element as any).webkitRequestFullscreen) {
+                    await (element as any).webkitRequestFullscreen();
+                } else if ((element as any).mozRequestFullScreen) {
+                    await (element as any).mozRequestFullScreen();
+                } else if ((element as any).msRequestFullscreen) {
+                    await (element as any).msRequestFullscreen();
+                }
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    await document.exitFullscreen();
+                } else if ((document as any).webkitExitFullscreen) {
+                    await (document as any).webkitExitFullscreen();
+                } else if ((document as any).mozCancelFullScreen) {
+                    await (document as any).mozCancelFullScreen();
+                } else if ((document as any).msExitFullscreen) {
+                    await (document as any).msExitFullscreen();
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling fullscreen:', error);
+        }
+    };
 
     return (
         <header
@@ -53,6 +115,20 @@ export default function Header() {
                     <Radio className="w-3 xs:w-3.5 sm:w-4 h-3 xs:h-3.5 sm:h-4 group-hover:scale-110 transition-transform" strokeWidth={2.5} />
                     <span className="tracking-wide hidden sm:inline">CHECKING RFID</span>
                     <span className="tracking-wide sm:hidden">CHECK</span>
+                </button>
+
+                {/* Fullscreen Toggle Button - Kotak di samping Checking RFID */}
+                <button
+                    onClick={toggleFullscreen}
+                    className="p-1.5 xs:p-2 sm:p-2.5 bg-white border-2 border-gray-300 hover:border-blue-500 hover:bg-blue-50 rounded-lg shadow-sm hover:shadow-md transition-all duration-300 flex items-center justify-center"
+                    aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                    title={isFullscreen ? 'Keluar Fullscreen' : 'Masuk Fullscreen'}
+                >
+                    {isFullscreen ? (
+                        <Minimize2 className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-gray-700 hover:text-blue-600 transition-colors" strokeWidth={2.5} />
+                    ) : (
+                        <Maximize2 className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-gray-700 hover:text-blue-600 transition-colors" strokeWidth={2.5} />
+                    )}
                 </button>
 
                 {/* Hand Icon */}

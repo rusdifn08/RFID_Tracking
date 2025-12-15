@@ -30,17 +30,17 @@ export default function Home() {
 
                 {/* Content - dengan margin untuk header fixed (h-16 = 64px) dan padding untuk spacing */}
                 <main
-                    className="flex-1 w-full overflow-y-auto pt-8 pb-8 px-6 md:px-8 lg:px-10"
+                    className="flex-1 w-full overflow-y-auto pt-4 xs:pt-6 sm:pt-8 pb-4 xs:pb-6 sm:pb-8 px-2 xs:px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10"
                     style={{
-                        marginTop: "1rem" // 64px untuk header (h-16 = 4rem)
+                        marginTop: "clamp(0.5rem, 2vh, 1rem)"
                     }}
                 >
                     <HomeContent />
                 </main>
 
                 {/* Footer */}
-                <footer className="w-full py-4 border-t border-gray-200 relative" style={{ zIndex: -1 }}>
-                    <div className="text-center text-gray-600 text-sm" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 400 }}>
+                <footer className="w-full py-2 xs:py-3 sm:py-4 border-t border-gray-200 relative" style={{ zIndex: -1 }}>
+                    <div className="text-center text-gray-600 text-[10px] xs:text-xs sm:text-sm px-2" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 400 }}>
                         Gistex Garmen Indonesia Monitoring System (GMS) © 2025 Served by Supernova
                     </div>
                 </footer>
