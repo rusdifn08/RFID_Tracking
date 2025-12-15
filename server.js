@@ -1525,6 +1525,13 @@ app.get('/tracking/rfid_garment', async (req, res) => {
 });
 
 /**
+ * GET /tracking/check?rfid_garment=0003221040 - Cek data garment berdasarkan RFID
+ */
+app.get('/tracking/check', async (req, res) => {
+    return await proxyRequest('/tracking/check', req, res);
+});
+
+/**
  * GET /monitoring/line?line=1 - Dashboard
  */
 app.get('/monitoring/line', async (req, res) => {

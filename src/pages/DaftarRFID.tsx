@@ -8,6 +8,7 @@ import ScanningRFIDNew from '../components/ScanningRFIDNew';
 import backgroundImage from '../assets/background.jpg';
 import { useDaftarRFID } from '../hooks/useDaftarRFID';
 import RegistrationForm from '../components/daftar/RegistrationForm';
+import { API_BASE_URL } from '../config/api';
 
 export default function DaftarRFID() {
     const { isOpen } = useSidebar();
@@ -25,6 +26,7 @@ export default function DaftarRFID() {
     });
     const [isUpdating, setIsUpdating] = useState(false);
     const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [isLoadingGarmentData, setIsLoadingGarmentData] = useState(false);
     const updateRfidInputRef = useRef<HTMLInputElement>(null);
     
     // Custom hook untuk semua state dan logic
@@ -79,6 +81,113 @@ export default function DaftarRFID() {
         const day = String(today.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }, []);
+
+    // Fungsi untuk fetch data garment berdasarkan RFID
+    const fetchGarmentData = useCallback(async (rfid: string) => {
+        if (!rfid.trim()) {
+            return;
+        }
+
+        setIsLoadingGarmentData(true);
+        setUpdateMessage(null);
+
+        try {
+            // Menggunakan proxy server (sama seperti StatusRFID.tsx)
+            const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(rfid.trim())}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.garment) {
+                    // Auto-fill form dengan data dari API
+                    setUpdateFormData(prev => ({
+                        ...prev,
+                        wo: data.garment.wo || data.garment.wo_no || '',
+                        style: data.garment.style || '',
+                        buyer: data.garment.buyer || '',
+                        item: data.garment.item || '',
+                        color: data.garment.color || '',
+                        size: data.garment.size || ''
+                    }));
+                    setUpdateMessage({ type: 'success', text: 'Data garment berhasil dimuat' });
+                } else {
+                    setUpdateMessage({ type: 'error', text: data.message || 'Data garment tidak ditemukan' });
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                setUpdateMessage({ type: 'error', text: errorData.message || `Gagal memuat data garment (${response.status})` });
+            }
+        } catch (error: any) {
+            console.error('Error fetching garment data:', error);
+            const errorMessage = error.message || 'Terjadi kesalahan saat memuat data garment';
+            
+            // Tampilkan error yang lebih spesifik
+            if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+                setUpdateMessage({ 
+                    type: 'error', 
+                    text: 'Tidak dapat terhubung ke server. Pastikan proxy server (server.js) berjalan.' 
+                });
+            } else {
+                setUpdateMessage({ type: 'error', text: errorMessage });
+            }
+        } finally {
+            setIsLoadingGarmentData(false);
+        }
+    }, []);
+
+    // Reset form ketika modal dibuka
+    useEffect(() => {
+        if (showUpdateModal) {
+            setUpdateFormData({
+                rfid_garment: '',
+                wo: '',
+                style: '',
+                buyer: '',
+                item: '',
+                color: '',
+                size: ''
+            });
+            setUpdateMessage(null);
+            setIsLoadingGarmentData(false);
+            // Auto-focus pada input RFID setelah modal dibuka
+            setTimeout(() => {
+                updateRfidInputRef.current?.focus();
+            }, 100);
+        }
+    }, [showUpdateModal]);
+
+    // useEffect untuk auto-fetch data garment ketika RFID di-input (dengan debounce)
+    useEffect(() => {
+        if (!showUpdateModal) return;
+
+        const trimmedRfid = updateFormData.rfid_garment.trim();
+        if (!trimmedRfid) {
+            // Reset form jika RFID kosong
+            setUpdateFormData(prev => ({
+                ...prev,
+                wo: '',
+                style: '',
+                buyer: '',
+                item: '',
+                color: '',
+                size: ''
+            }));
+            setUpdateMessage(null);
+            return;
+        }
+
+        // Debounce: tunggu 500ms setelah user selesai mengetik/scan
+        const timeoutId = setTimeout(() => {
+            fetchGarmentData(trimmedRfid);
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+    }, [updateFormData.rfid_garment, showUpdateModal, fetchGarmentData]);
 
     // Fungsi untuk handle update data garment
     const handleUpdateSubmit = async (e: React.FormEvent) => {
@@ -146,14 +255,6 @@ export default function DaftarRFID() {
         }
     };
 
-    // Auto focus input RFID saat modal dibuka
-    useEffect(() => {
-        if (showUpdateModal && updateRfidInputRef.current) {
-            setTimeout(() => {
-                updateRfidInputRef.current?.focus();
-            }, 100);
-        }
-    }, [showUpdateModal]);
 
     // Fetch data saat component mount dan saat date berubah
     useEffect(() => {
@@ -777,9 +878,15 @@ export default function DaftarRFID() {
                                         placeholder="Scan atau ketik RFID Garment..."
                                         className="w-full pl-10 pr-4 py-3 bg-white border-2 border-purple-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 font-mono text-base"
                                         required
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
+                                    {isLoadingGarmentData && (
+                                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-500 animate-spin" />
+                                    )}
                                 </div>
+                                {isLoadingGarmentData && (
+                                    <p className="text-xs text-purple-600 mt-1">Memuat data garment...</p>
+                                )}
                             </div>
 
                             {/* Form Fields Grid */}
@@ -793,9 +900,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.wo}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, wo: e.target.value }))}
-                                        placeholder="Masukkan WO"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
 
@@ -808,9 +915,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.style}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, style: e.target.value }))}
-                                        placeholder="Masukkan Style"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
 
@@ -823,9 +930,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.buyer}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, buyer: e.target.value }))}
-                                        placeholder="Masukkan Buyer"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
 
@@ -838,9 +945,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.item}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, item: e.target.value }))}
-                                        placeholder="Masukkan Item"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
 
@@ -853,9 +960,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.color}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, color: e.target.value }))}
-                                        placeholder="Masukkan Color"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
 
@@ -868,9 +975,9 @@ export default function DaftarRFID() {
                                         type="text"
                                         value={updateFormData.size}
                                         onChange={(e) => setUpdateFormData(prev => ({ ...prev, size: e.target.value }))}
-                                        placeholder="Masukkan Size"
+                                        placeholder="Akan terisi otomatis setelah scan RFID"
                                         className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || isLoadingGarmentData}
                                     />
                                 </div>
                             </div>
