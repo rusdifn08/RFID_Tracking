@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -25,6 +25,16 @@ export default function DashboardRFID() {
     const lineId = id || '1';
     const lineTitle = `LINE ${lineId}`;
 
+    // State untuk WO filter - harus dideklarasikan sebelum hook
+    const [appliedFilterWo, setAppliedFilterWo] = useState<string>(''); // Filter WO yang diterapkan ke dashboard
+    const [showWoFilterModal, setShowWoFilterModal] = useState(false);
+    const [filterWo, setFilterWo] = useState('');
+    const [availableWOList, setAvailableWOList] = useState<string[]>([]);
+    const [loadingWOList, setLoadingWOList] = useState(false);
+    const [wiraData, setWiraData] = useState<any>(null);
+    const [loadingWira, setLoadingWira] = useState(false);
+    const [showPreview, setShowPreview] = useState(false); // Untuk menampilkan preview data
+
     // Custom hook untuk semua state dan logic
     const {
         good,
@@ -45,11 +55,8 @@ export default function DashboardRFID() {
         setFilterDateFrom,
         filterDateTo,
         setFilterDateTo,
-    } = useDashboardRFID(lineId);
-
-    // State untuk WO filter
-    const [showWoFilterModal, setShowWoFilterModal] = useState(false);
-    const [filterWo, setFilterWo] = useState('');
+        setFilterWo: setDashboardFilterWo,
+    } = useDashboardRFID(lineId, appliedFilterWo);
 
     // State untuk detail modal
     const [showDetailModal, setShowDetailModal] = useState(false);
@@ -259,6 +266,106 @@ export default function DashboardRFID() {
             setDetailLoading(false);
         }
     }, [lineId]);
+
+    // Fetch WO List dari API tracking/rfid_garment
+    const fetchWOList = useCallback(async () => {
+        try {
+            setLoadingWOList(true);
+            const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            // Extract unique WO numbers from the data
+            const woSet = new Set<string>();
+            if (data.data && Array.isArray(data.data)) {
+                data.data.forEach((item: any) => {
+                    if (item.wo) {
+                        woSet.add(item.wo);
+                    }
+                });
+            } else if (Array.isArray(data)) {
+                data.forEach((item: any) => {
+                    if (item.wo) {
+                        woSet.add(item.wo);
+                    }
+                });
+            }
+
+            const woList = Array.from(woSet).sort();
+            setAvailableWOList(woList);
+        } catch (error) {
+            console.error('Error fetching WO list:', error);
+            setAvailableWOList([]);
+        } finally {
+            setLoadingWOList(false);
+        }
+    }, []);
+
+    // Fetch WIRA data berdasarkan WO dan Line
+    const fetchWiraData = useCallback(async (wo: string, line: string) => {
+        if (!wo || !line) {
+            setWiraData(null);
+            return;
+        }
+
+        try {
+            setLoadingWira(true);
+            setWiraData(null);
+
+            const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(line)}&wo=${encodeURIComponent(wo)}`;
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success && data.data && data.data.length > 0) {
+                setWiraData(data.data[0]);
+            } else {
+                setWiraData(null);
+            }
+        } catch (error) {
+            console.error('Error fetching WIRA data:', error);
+            setWiraData(null);
+        } finally {
+            setLoadingWira(false);
+        }
+    }, []);
+
+    // Fetch WO List saat modal dibuka
+    useEffect(() => {
+        if (showWoFilterModal) {
+            fetchWOList();
+        }
+    }, [showWoFilterModal, fetchWOList]);
+
+    // Fetch WIRA data saat WO dipilih
+    useEffect(() => {
+        if (showWoFilterModal && filterWo && lineId) {
+            fetchWiraData(filterWo, lineId);
+        } else if (showWoFilterModal && !filterWo) {
+            setWiraData(null);
+        }
+    }, [filterWo, lineId, showWoFilterModal, fetchWiraData]);
 
     // Data fetching sudah ditangani oleh custom hook useDashboardRFID
 
@@ -607,8 +714,8 @@ export default function DashboardRFID() {
 
             {/* WO Filter Modal */}
             {showWoFilterModal && (
-                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4">
-                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-md transform transition-all border border-white/20">
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-4xl my-8 transform transition-all border border-white/20">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
                             <div className="flex items-center gap-3">
@@ -618,7 +725,12 @@ export default function DashboardRFID() {
                                 <h3 className="text-lg font-bold text-gray-800">Filter WO</h3>
                             </div>
                             <button
-                                onClick={() => setShowWoFilterModal(false)}
+                                onClick={() => {
+                                    setShowWoFilterModal(false);
+                                    setFilterWo('');
+                                    setWiraData(null);
+                                    setShowPreview(false);
+                                }}
                                 className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                             >
                                 <XCircle className="w-5 h-5 text-gray-500 hover:text-gray-700" strokeWidth={2.5} />
@@ -631,35 +743,224 @@ export default function DashboardRFID() {
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                                     Work Order (WO)
                                 </label>
-                                <input
-                                    type="text"
-                                    value={filterWo}
-                                    onChange={(e) => setFilterWo(e.target.value)}
-                                    placeholder="Masukkan nomor WO"
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-                                />
+                                {loadingWOList ? (
+                                    <div className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 flex items-center justify-center">
+                                        <span className="text-sm text-gray-500">Memuat daftar WO...</span>
+                                    </div>
+                                ) : (
+                                    <select
+                                        value={filterWo}
+                                        onChange={(e) => {
+                                            setFilterWo(e.target.value);
+                                            setWiraData(null);
+                                            setShowPreview(false);
+                                        }}
+                                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 bg-white"
+                                    >
+                                        <option value="">Pilih Work Order</option>
+                                        {availableWOList.map((wo) => (
+                                            <option key={wo} value={wo}>{wo}</option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
+
+                            {/* Info Filter Aktif */}
+                            {appliedFilterWo && (
+                                <div className="w-full p-3 border border-purple-300 rounded-lg bg-purple-50 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle className="w-5 h-5 text-purple-600" />
+                                        <span className="text-sm font-medium text-purple-800">
+                                            Filter WO aktif: <strong>{appliedFilterWo}</strong>
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setAppliedFilterWo('');
+                                            setDashboardFilterWo('');
+                                            setFilterWo('');
+                                            setWiraData(null);
+                                        }}
+                                        className="px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 rounded transition-colors"
+                                    >
+                                        Hapus Filter
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Tombol Tampilkan Langsung */}
+                            {filterWo && !wiraData && !loadingWira && (
+                                <div className="flex justify-center">
+                                    <button
+                                        onClick={async () => {
+                                            if (filterWo && lineId) {
+                                                await fetchWiraData(filterWo, lineId);
+                                                setShowPreview(true);
+                                            }
+                                        }}
+                                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+                                    >
+                                        <Filter className="w-4 h-4" />
+                                        Tampilkan Langsung
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Data WIRA Preview */}
+                            {loadingWira && (
+                                <div className="w-full p-6 border border-gray-200 rounded-lg bg-gray-50 flex items-center justify-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span className="text-sm text-gray-600">Memuat data WIRA...</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!loadingWira && wiraData && showPreview && (
+                                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                    {/* Header */}
+                                    <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-4">
+                                        <h4 className="text-xl font-bold text-white">Data WIRA</h4>
+                                        <p className="text-sm text-purple-100 mt-1">WO: {wiraData.WO} | Line: {wiraData.line}</p>
+                                    </div>
+
+                                    {/* Info Produk */}
+                                    <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Buyer</div>
+                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Buyer}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Style</div>
+                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Style}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Item</div>
+                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Item}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Data Metrics - Urutan sesuai alur dashboard */}
+                                    <div className="p-6 space-y-6">
+                                        {/* Output Sewing - Paling Awal */}
+                                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border-2 border-purple-200 shadow-sm">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="text-sm font-semibold text-purple-700 uppercase tracking-wide">Output Sewing</div>
+                                                <div className="text-3xl font-bold text-purple-900">{wiraData['Output Sewing']}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* QC Section */}
+                                        <div className="space-y-4">
+                                            <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b border-gray-200 pb-2">QC</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-red-600 uppercase mb-1">Reject QC</div>
+                                                    <div className="text-2xl font-bold text-red-900">{wiraData.Reject}</div>
+                                                </div>
+                                                <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-yellow-600 uppercase mb-1">Rework QC</div>
+                                                    <div className="text-2xl font-bold text-yellow-900">{wiraData.Rework}</div>
+                                                </div>
+                                                <div className="bg-indigo-50 p-4 rounded-lg border-2 border-indigo-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-indigo-600 uppercase mb-1">WIRA QC</div>
+                                                    <div className="text-2xl font-bold text-indigo-900">{wiraData.WIRA}</div>
+                                                </div>
+                                                <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-green-600 uppercase mb-1">Good QC</div>
+                                                    <div className="text-2xl font-bold text-green-900">{wiraData.Good}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* PQC Section */}
+                                        <div className="space-y-4">
+                                            <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b border-gray-200 pb-2">PQC</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                <div className="bg-rose-50 p-4 rounded-lg border-2 border-rose-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-rose-600 uppercase mb-1">PQC Reject</div>
+                                                    <div className="text-2xl font-bold text-rose-900">{wiraData['PQC Reject']}</div>
+                                                </div>
+                                                <div className="bg-amber-50 p-4 rounded-lg border-2 border-amber-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-amber-600 uppercase mb-1">PQC Rework</div>
+                                                    <div className="text-2xl font-bold text-amber-900">{wiraData['PQC Rework']}</div>
+                                                </div>
+                                                <div className="bg-cyan-50 p-4 rounded-lg border-2 border-cyan-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-cyan-600 uppercase mb-1">PQC WIRA</div>
+                                                    <div className="text-2xl font-bold text-cyan-900">{wiraData['PQC WIRA']}</div>
+                                                </div>
+                                                <div className="bg-emerald-50 p-4 rounded-lg border-2 border-emerald-200 shadow-sm">
+                                                    <div className="text-xs font-semibold text-emerald-600 uppercase mb-1">PQC Good</div>
+                                                    <div className="text-2xl font-bold text-emerald-900">{wiraData['PQC Good']}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Balance - Paling Akhir */}
+                                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-200 shadow-sm">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Balance</div>
+                                                <div className={`text-3xl font-bold ${parseInt(wiraData.Balance) < 0 ? 'text-red-600' : 'text-blue-900'}`}>
+                                                    {wiraData.Balance}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!loadingWira && !wiraData && filterWo && !showPreview && (
+                                <div className="w-full p-6 border border-gray-200 rounded-lg bg-yellow-50 flex items-center justify-center">
+                                    <div className="flex items-center gap-3">
+                                        <AlertCircle className="w-5 h-5 text-yellow-600" />
+                                        <span className="text-sm text-yellow-800">Pilih WO dan klik "Tampilkan Langsung" untuk melihat data</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Footer */}
-                        <div className="flex items-center justify-end gap-3 p-4 sm:p-6 border-t border-gray-200">
+                        <div className="flex items-center justify-between p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
                             <button
                                 onClick={() => {
                                     setFilterWo('');
+                                    setWiraData(null);
+                                    setShowPreview(false);
+                                    setAppliedFilterWo('');
+                                    setDashboardFilterWo('');
                                 }}
-                                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 font-medium"
+                                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors duration-200 font-medium"
                             >
                                 Reset
                             </button>
-                            <button
-                                onClick={() => {
-                                    setShowWoFilterModal(false);
-                                    // TODO: Implement WO filter logic
-                                }}
-                                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
-                            >
-                                Terapkan
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {wiraData && (
+                                    <button
+                                        onClick={() => {
+                                            setAppliedFilterWo(filterWo);
+                                            setDashboardFilterWo(filterWo);
+                                            setShowWoFilterModal(false);
+                                        }}
+                                        className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+                                    >
+                                        <CheckCircle className="w-4 h-4" />
+                                        Terapkan ke Dashboard
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        setShowWoFilterModal(false);
+                                        setFilterWo('');
+                                        setWiraData(null);
+                                        setShowPreview(false);
+                                    }}
+                                    className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
+                                >
+                                    Tutup
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

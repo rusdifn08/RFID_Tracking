@@ -37,9 +37,11 @@ interface UseDashboardRFIDReturn {
     setFilterDateFrom: (date: string) => void;
     filterDateTo: string;
     setFilterDateTo: (date: string) => void;
+    filterWo: string;
+    setFilterWo: (wo: string) => void;
 }
 
-export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
+export const useDashboardRFID = (lineId: string, filterWo?: string): UseDashboardRFIDReturn => {
     // Default values
     const [good, setGood] = useState<number>(0);
     const [rework, setRework] = useState<number>(0);
@@ -64,6 +66,7 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
     const [showDateFilterModal, setShowDateFilterModal] = useState(false);
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
     const [filterDateTo, setFilterDateTo] = useState<string>('');
+    const [filterWoState, setFilterWoState] = useState<string>(filterWo || '');
 
     // Fungsi helper untuk format tanggal dari YYYY-MM-DD ke YYYY-M-D
     const formatDateForAPI = (dateString: string): string => {
@@ -86,6 +89,11 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
         const fetchTrackingData = async () => {
             try {
                 let url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}`;
+                
+                // Tambahkan filter WO jika ada
+                if (filterWoState) {
+                    url += `&wo=${encodeURIComponent(filterWoState)}`;
+                }
                 
                 if (filterDateFrom) {
                     const formattedFrom = formatDateForAPI(filterDateFrom);
@@ -211,7 +219,7 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
                 clearInterval(intervalId);
             }
         };
-    }, [lineId, filterDateFrom, filterDateTo]);
+    }, [lineId, filterDateFrom, filterDateTo, filterWoState]);
 
     // Fetch data WO/Production dari API monitoring/line
     useEffect(() => {
@@ -220,7 +228,13 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
 
         const fetchWoData = async () => {
             try {
-                const url = `${API_BASE_URL}/monitoring/line?line=${encodeURIComponent(lineId)}`;
+                let url = `${API_BASE_URL}/monitoring/line?line=${encodeURIComponent(lineId)}`;
+                
+                // Jika ada filter WO, gunakan API /wira untuk mendapatkan data WO spesifik
+                if (filterWoState) {
+                    // API /wira bisa dipanggil dengan atau tanpa parameter line
+                    url = `${API_BASE_URL}/wira?wo=${encodeURIComponent(filterWoState)}`;
+                }
 
                 const response = await fetch(url, {
                     method: 'GET',
@@ -238,7 +252,32 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
 
                 if (!isMounted) return;
 
-                if (data && data.success && data.data) {
+                if (filterWoState && data && data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                    // Jika filter WO aktif, gunakan data dari /wira dan mapping ke format yang diharapkan
+                    const wiraData = data.data[0];
+                    const mappedData = {
+                        wo: wiraData.WO || wiraData.wo || '-',
+                        style: wiraData.Style || wiraData.style || '-',
+                        buyer: wiraData.Buyer || wiraData.buyer || '-',
+                        item: wiraData.Item || wiraData.item || '-',
+                        color: '-', // Color tidak ada di API /wira, isi dengan "-"
+                        size: '-',  // Size tidak ada di API /wira, isi dengan "-"
+                        // Simpan data lengkap dari API untuk keperluan lain jika diperlukan
+                        balance: wiraData.Balance,
+                        good: wiraData.Good,
+                        reject: wiraData.Reject,
+                        rework: wiraData.Rework,
+                        wira: wiraData.WIRA,
+                        outputSewing: wiraData['Output Sewing'],
+                        pqcGood: wiraData['PQC Good'],
+                        pqcReject: wiraData['PQC Reject'],
+                        pqcRework: wiraData['PQC Rework'],
+                        pqcWira: wiraData['PQC WIRA'],
+                        line: wiraData.line || lineId
+                    };
+                    setWoData(mappedData);
+                } else if (!filterWoState && data && data.success && data.data) {
+                    // Jika tidak ada filter WO, gunakan data dari /monitoring/line
                     setWoData(data.data);
                 } else {
                     setWoData(null);
@@ -264,7 +303,7 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
                 clearInterval(intervalId);
             }
         };
-    }, [lineId]);
+    }, [lineId, filterWoState]);
 
     return {
         good,
@@ -285,6 +324,8 @@ export const useDashboardRFID = (lineId: string): UseDashboardRFIDReturn => {
         setFilterDateFrom,
         filterDateTo,
         setFilterDateTo,
+        filterWo: filterWoState,
+        setFilterWo: setFilterWoState,
     };
 };
 

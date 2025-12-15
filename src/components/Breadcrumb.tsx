@@ -118,14 +118,14 @@ export default function Breadcrumb() {
     }
 
     return (
-        <div className="mx-1 xs:mx-2 sm:mx-3 md:mx-4" style={{ marginTop: 'clamp(3.5rem, 8vh, 4.5rem)', marginBottom: 'clamp(0.125rem, 0.5vh, 0.25rem)' }}>
+        <div className="mx-2 xs:mx-3 sm:mx-4" style={{ marginTop: '4.5rem', marginBottom: '0.25rem' }}>
             <div 
-                className="bg-white rounded-lg xs:rounded-xl border border-gray-200 shadow-sm px-1.5 xs:px-2 sm:px-3 md:px-4 lg:px-5 xl:px-6 py-1 xs:py-1.5 sm:py-2 flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 sticky z-20 overflow-x-auto"
+                className="bg-white rounded-lg xs:rounded-xl border border-gray-200 shadow-sm px-2 xs:px-3 sm:px-4 md:px-5 lg:px-6 py-0 flex items-center gap-2 xs:gap-2.5 sm:gap-3 sticky z-20 overflow-x-auto"
                 style={{ 
                     left: 'inherit',
                     width: '100%',
-                    top: 'clamp(3.5rem, 8vh, 4.5rem)',
-                    minHeight: 'clamp(2rem, 5vh, 3.5rem)'
+                    top: '4.5rem',
+                    minHeight: '2.5rem xs:3rem sm:3.5rem'
                 }}
             >
             {breadcrumbs.map((item, index) => (
