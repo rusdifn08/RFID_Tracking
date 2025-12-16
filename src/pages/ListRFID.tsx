@@ -20,7 +20,7 @@ import {
     Calendar,
     Download
 } from 'lucide-react';
-import { useListRFID } from '../hooks/useListRFID';
+import { useListRFIDQuery as useListRFID } from '../hooks/useListRFIDQuery';
 
 const ListRFID: React.FC = () => {
     const { isOpen } = useSidebar();

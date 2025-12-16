@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { login } from '../config/api';
+import { login, API_BASE_URL } from '../config/api';
 import type { LoginRequest } from '../config/api';
 
 /**
@@ -62,6 +62,59 @@ export const useLogout = () => {
         localStorage.removeItem('rememberMe');
         queryClient.clear();
     };
+};
+
+/**
+ * Hook untuk registrasi user baru
+ */
+export const useRegister = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (userData: {
+            rfid_user: string;
+            password: string;
+            nama: string;
+            nik: string;
+            bagian: string;
+            line: string;
+            telegram?: string;
+            no_hp?: string;
+        }) => {
+            const response = await fetch(`${API_BASE_URL}/inputUser`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    rfid_user: userData.rfid_user.trim(),
+                    password: userData.password,
+                    nama: userData.nama.trim(),
+                    nik: userData.nik.trim(),
+                    bagian: userData.bagian.trim(),
+                    line: userData.line.trim(),
+                    telegram: userData.telegram?.trim() || '',
+                    no_hp: userData.no_hp?.trim() || ''
+                })
+            });
+
+            const responseData = await response.json();
+
+            if (!response.ok || !responseData.success) {
+                throw new Error(responseData.message || responseData.error || 'Registrasi gagal. Silakan coba lagi.');
+            }
+
+            return responseData;
+        },
+        onSuccess: () => {
+            // Invalidate queries jika diperlukan
+            queryClient.invalidateQueries({ queryKey: ['user'] });
+        },
+        onError: (error: Error) => {
+            console.error('Register error:', error);
+        },
+    });
 };
 
 /**

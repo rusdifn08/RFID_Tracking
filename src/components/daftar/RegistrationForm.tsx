@@ -1,4 +1,7 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { QrCode, Calendar, ListChecks, XCircle, Edit } from 'lucide-react';
 
 interface WorkOrderData {
@@ -9,6 +12,18 @@ interface WorkOrderData {
     colors: string[];
     sizes: string[];
 }
+
+// Schema validasi dengan ZOD
+const registrationSchema = z.object({
+    workOrder: z.string().min(1, 'Work Order harus dipilih'),
+    style: z.string().min(1, 'Style harus dipilih'),
+    buyer: z.string().min(1, 'Buyer harus dipilih'),
+    item: z.string().min(1, 'Item harus dipilih'),
+    color: z.string().min(1, 'Color harus dipilih'),
+    size: z.string().min(1, 'Size harus dipilih'),
+});
+
+type RegistrationFormData = z.infer<typeof registrationSchema>;
 
 interface RegistrationFormProps {
     formData: {
@@ -56,9 +71,28 @@ const RegistrationForm = memo(({
     onUpdateClick,
     onSubmit,
 }: RegistrationFormProps) => {
+    const {
+        register,
+        handleSubmit,
+        watch,
+        setValue,
+        formState: { errors },
+    } = useForm<RegistrationFormData>({
+        resolver: zodResolver(registrationSchema),
+        defaultValues: {
+            workOrder: formData.workOrder,
+            style: formData.style,
+            buyer: formData.buyer,
+            item: formData.item,
+            color: formData.color,
+            size: formData.size,
+        },
+    });
+
+    const selectedWorkOrder = watch('workOrder');
     const selectedWOData = useMemo(() => 
-        formData.workOrder ? workOrderData[formData.workOrder] : null,
-        [formData.workOrder, workOrderData]
+        selectedWorkOrder ? workOrderData[selectedWorkOrder] : null,
+        [selectedWorkOrder, workOrderData]
     );
 
     const availableStyles = selectedWOData?.styles || [];
@@ -66,6 +100,48 @@ const RegistrationForm = memo(({
     const availableItems = selectedWOData?.items || [];
     const availableColors = selectedWOData?.colors || [];
     const availableSizes = selectedWOData?.sizes || [];
+
+    // Sync form values dengan props formData
+    useEffect(() => {
+        setValue('workOrder', formData.workOrder);
+        setValue('style', formData.style);
+        setValue('buyer', formData.buyer);
+        setValue('item', formData.item);
+        setValue('color', formData.color);
+        setValue('size', formData.size);
+    }, [formData, setValue]);
+
+    // Handle workOrder change untuk auto-fill
+    useEffect(() => {
+        if (selectedWorkOrder && selectedWOData) {
+            const woData = selectedWOData;
+            const autoStyle = woData.styles?.length === 1 ? woData.styles[0] : '';
+            const autoBuyer = woData.buyers?.length === 1 ? woData.buyers[0] : '';
+            const autoItem = woData.items?.length === 1 ? woData.items[0] : '';
+            
+            if (autoStyle) setValue('style', autoStyle);
+            if (autoBuyer) setValue('buyer', autoBuyer);
+            if (autoItem) setValue('item', autoItem);
+            
+            // Reset color dan size saat workOrder berubah
+            if (formData.workOrder !== selectedWorkOrder) {
+                setValue('color', '');
+                setValue('size', '');
+            }
+        }
+    }, [selectedWorkOrder, selectedWOData, setValue, formData.workOrder]);
+
+    const onFormSubmit = (data: RegistrationFormData) => {
+        // Update formData parent melalui onInputChange untuk kompatibilitas
+        const syntheticEvent = {
+            target: { name: 'workOrder', value: data.workOrder }
+        } as React.ChangeEvent<HTMLSelectElement>;
+        onInputChange(syntheticEvent);
+        
+        // Trigger submit handler parent
+        const formEvent = new Event('submit') as unknown as React.FormEvent;
+        onSubmit(formEvent);
+    };
 
     const dateDisplay = useMemo(() => {
         if (dateFrom === dateTo) {
@@ -166,41 +242,56 @@ const RegistrationForm = memo(({
 
                 {/* Form */}
                 <form 
-                    onSubmit={onSubmit} 
+                    onSubmit={handleSubmit(onFormSubmit)} 
                     className="flex flex-col flex-1 min-h-0 overflow-y-auto"
                     noValidate
                 >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 mb-2 xs:mb-2.5 sm:mb-3 md:mb-4">
-                        {formFields.map((field) => (
-                            <div key={field.name} className="transition-all duration-300 flex flex-col">
-                                <label
-                                    htmlFor={field.name}
-                                    className={`block text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-700 mb-0.5 xs:mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === field.name ? 'text-blue-600' : ''}`}
-                                >
-                                    {field.label}
-                                </label>
-                                <select
-                                    id={field.name}
-                                    name={field.name}
-                                    value={formData[field.name as keyof typeof formData]}
-                                    onChange={onInputChange}
-                                    onFocus={() => onFocus(field.name)}
-                                    onBlur={onBlur}
-                                    disabled={field.disabled}
-                                    className="w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                >
-                                    <option value="">
-                                        {field.name === 'workOrder' 
-                                            ? (loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')
-                                            : (formData.workOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu')
-                                        }
-                                    </option>
-                                    {field.options.map(option => (
-                                        <option key={option} value={option}>{option}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        ))}
+                        {formFields.map((field) => {
+                            const fieldName = field.name as keyof RegistrationFormData;
+                            const fieldError = errors[fieldName];
+                            
+                            return (
+                                <div key={field.name} className="transition-all duration-300 flex flex-col">
+                                    <label
+                                        htmlFor={field.name}
+                                        className={`block text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-700 mb-0.5 xs:mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === field.name ? 'text-blue-600' : ''} ${fieldError ? 'text-red-600' : ''}`}
+                                    >
+                                        {field.label}
+                                    </label>
+                                    <select
+                                        id={field.name}
+                                        {...register(fieldName)}
+                                        onFocus={() => onFocus(field.name)}
+                                        onBlur={onBlur}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setValue(fieldName, value as any);
+                                            onInputChange(e);
+                                        }}
+                                        disabled={field.disabled}
+                                        className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 ${
+                                            fieldError 
+                                                ? 'border-red-500 focus:ring-red-200 focus:border-red-500' 
+                                                : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
+                                        }`}
+                                    >
+                                        <option value="">
+                                            {field.name === 'workOrder' 
+                                                ? (loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')
+                                                : (selectedWorkOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu')
+                                            }
+                                        </option>
+                                        {field.options.map(option => (
+                                            <option key={option} value={option}>{option}</option>
+                                        ))}
+                                    </select>
+                                    {fieldError && (
+                                        <p className="mt-0.5 text-[9px] xs:text-[10px] text-red-600">{fieldError.message}</p>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     {/* Submit Button */}

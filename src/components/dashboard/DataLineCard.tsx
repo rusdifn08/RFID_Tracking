@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Table as TableIcon, Calendar, Filter, Bell } from 'lucide-react';
+import { Table as TableIcon, Calendar, Filter } from 'lucide-react';
 import ChartCard from './ChartCard';
 import exportExcelIcon from '../../assets/export_excel.svg';
 
@@ -9,11 +9,9 @@ interface DataLineCardProps {
     onDateFilterClick: () => void;
     onExportClick: () => void;
     onWoFilterClick: () => void;
-    enableReworkPopup: boolean;
-    onEnableReworkPopupChange: (enabled: boolean) => void;
 }
 
-const DataLineCard = memo(({ lineTitle, woData, onDateFilterClick, onExportClick, onWoFilterClick, enableReworkPopup, onEnableReworkPopupChange }: DataLineCardProps) => {
+const DataLineCard = memo(({ lineTitle, woData, onDateFilterClick, onExportClick, onWoFilterClick }: DataLineCardProps) => {
     // Data untuk desktop: 3 kolom x 2 baris
     const dataRowsDesktop = [
         [

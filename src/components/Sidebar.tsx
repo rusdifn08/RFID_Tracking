@@ -9,7 +9,8 @@ export default function Sidebar() {
     const { isOpen, closeSidebar } = useSidebar();
 
     // Deteksi halaman aktif untuk breadcrumb navigation
-    const isRFIDPage = location.pathname.startsWith('/monitoring-rfid') ||
+    const isRFIDPage = location.pathname.startsWith('/rfid-tracking') ||
+        location.pathname.startsWith('/monitoring-rfid') ||
         location.pathname.startsWith('/line/') ||
         location.pathname.startsWith('/dashboard-rfid/') ||
         location.pathname.startsWith('/daftar-rfid') ||
@@ -47,6 +48,7 @@ export default function Sidebar() {
 
     const currentLineId = getLineId();
     const isLinePage = currentLineId !== null;
+    const isRFIDTrackingPage = location.pathname === '/rfid-tracking';
     const isProductionLinesPage = location.pathname === '/monitoring-rfid';
 
     // Dapatkan data line berdasarkan ID
@@ -167,7 +169,7 @@ export default function Sidebar() {
                     <div className="space-y-1">
                         {/* RFID Parent Menu - Link biasa */}
                         <Link
-                            to="/monitoring-rfid"
+                            to="/rfid-tracking"
                             className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${isRFIDPage
                                 ? 'bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
                                 : 'hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
@@ -212,12 +214,32 @@ export default function Sidebar() {
                         {/* Breadcrumb Navigation - Muncul berdasarkan halaman aktif */}
                         {isOpen && isRFIDPage && (
                             <div className="ml-3 space-y-0.5">
-                                {/* Production Lines - Muncul jika di halaman monitoring-rfid atau lebih dalam */}
-                                {isProductionLinesPage && (
+                                {/* RFID Tracking - Muncul jika di halaman rfid-tracking */}
+                                {isRFIDTrackingPage && (
                                     <div className="px-3 py-1.5 font-medium text-xs border-l-2 border-white/30"
                                         style={{ color: '#e6f2ff' }}
                                     >
-                                        Production Lines
+                                        RFID Tracking
+                                    </div>
+                                )}
+
+                                {/* Production Lines - Muncul jika di halaman monitoring-rfid atau lebih dalam */}
+                                {isProductionLinesPage && (
+                                    <div className="ml-3 space-y-0.5">
+                                        <Link
+                                            to="/rfid-tracking"
+                                            className="group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full hover:bg-white/8 border-l-2 border-transparent hover:border-yellow-400/40"
+                                            style={{ color: '#e6f2ff' }}
+                                            onMouseEnter={(e) => e.currentTarget.style.color = '#f7f9fa'}
+                                            onMouseLeave={(e) => e.currentTarget.style.color = '#e6f2ff'}
+                                        >
+                                            <span className="font-medium tracking-wide text-left">RFID Tracking</span>
+                                        </Link>
+                                        <div className="px-3 py-1.5 font-medium text-xs border-l-2 border-white/30"
+                                            style={{ color: '#e6f2ff' }}
+                                        >
+                                            Production Lines
+                                        </div>
                                     </div>
                                 )}
 
@@ -226,6 +248,16 @@ export default function Sidebar() {
                                     <div className="ml-3 space-y-0.5"
                                         
                                     >
+                                        {/* Link ke RFID Tracking */}
+                                        <Link
+                                            to="/rfid-tracking"
+                                            className="group relative flex items-center justify-start gap-2 px-3 py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] w-full hover:bg-white/8 border-l-2 border-transparent hover:border-yellow-400/40"
+                                            style={{ color: '#e6f2ff' }}
+                                            onMouseEnter={(e) => e.currentTarget.style.color = '#f7f9fa'}
+                                            onMouseLeave={(e) => e.currentTarget.style.color = '#e6f2ff'}
+                                        >
+                                            <span className="font-medium tracking-wide text-left">RFID Tracking</span>
+                                        </Link>
                                         {/* Link ke Production Lines jika belum di halaman tersebut */}
                                         {!isProductionLinesPage && (
                                             <Link

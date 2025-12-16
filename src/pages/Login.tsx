@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useLogin, useAuth } from '../hooks/useAuth';
 // Import background - jika background.png tersedia, ganti import ini
 import backgroundImage from '../assets/aksen.svg';
@@ -8,16 +11,38 @@ import loginSvg from '../assets/login.svg';
 // Catatan: Jika Anda memiliki file background.png di folder assets,
 // ganti baris di atas dengan: import backgroundImage from '../assets/background.png';
 
+// Schema validasi dengan ZOD
+const loginSchema = z.object({
+    nik: z.string().min(1, 'NIK harus diisi'),
+    password: z.string().min(1, 'Password harus diisi'),
+    rememberMe: z.boolean(),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+
 export default function Login() {
-    const [nik, setNik] = useState('');
-    const [password, setPassword] = useState('');
-    const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const loginMutation = useLogin();
     const { isAuthenticated } = useAuth();
+
+    const {
+        register,
+        handleSubmit,
+        watch,
+        formState: { errors, isSubmitting },
+    } = useForm<LoginFormData>({
+        resolver: zodResolver(loginSchema),
+        defaultValues: {
+            nik: '',
+            password: '',
+            rememberMe: false,
+        },
+    });
+
+    const rememberMe = watch('rememberMe');
 
     // Redirect jika sudah login
     useEffect(() => {
@@ -65,18 +90,10 @@ export default function Login() {
         }
     }, [loginMutation.isError, loginMutation.error]);
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const onSubmit = (data: LoginFormData) => {
         setError('');
-
-        // Validasi input
-        if (!nik || !password) {
-            setError('NIK dan Password harus diisi!');
-            return;
-        }
-
         // Panggil API login menggunakan React Query (dengan NIK dan Password)
-        loginMutation.mutate({ nik, password });
+        loginMutation.mutate({ nik: data.nik, password: data.password });
     };
 
     return (
@@ -144,8 +161,8 @@ export default function Login() {
                             {/* Hidden Input for dev_id */}
                             <input type="hidden" className="form-control borderInput" name="dev_id" id="dev_id" />
 
-                            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
-                                {/* Error Message */}
+                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
+                                {/* Error Message dari API */}
                                 {error && (
                                     <div className="w-full p-3 sm:p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-lg text-xs sm:text-sm md:text-base animate-fade-in">
                                         <div className="flex items-center">
@@ -172,14 +189,16 @@ export default function Login() {
                                     </label>
                                     <input
                                         type="text"
-                                        className="form-control borderInput w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
-                                        name="nik"
+                                        {...register('nik')}
+                                        className={`form-control borderInput w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                            errors.nik ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                        }`}
                                         id="nik"
-                                        value={nik}
-                                        onChange={(e) => setNik(e.target.value)}
                                         placeholder="Enter Your NIK"
-                                        required
                                     />
+                                    {errors.nik && (
+                                        <p className="mt-1 text-xs text-red-600">{errors.nik.message}</p>
+                                    )}
                                 </div>
 
                                 {/* Password Block */}
@@ -190,13 +209,12 @@ export default function Login() {
                                     <div className="relative">
                                         <input
                                             type={showPassword ? "text" : "password"}
-                                            className="form-control borderInput w-full px-3 py-2.5 pr-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
-                                            name="password"
+                                            {...register('password')}
+                                            className={`form-control borderInput w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                                errors.password ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                             id="password"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
                                             placeholder="Password"
-                                            required
                                         />
                                         <button
                                             type="button"
@@ -216,17 +234,18 @@ export default function Login() {
                                             )}
                                         </button>
                                     </div>
+                                    {errors.password && (
+                                        <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+                                    )}
                                 </div>
 
                                 {/* Remember Me Checkbox */}
                                 <div className="flex items-center justify-center sm:justify-start mb-2">
                                     <input
                                         type="checkbox"
-                                        name="remember"
+                                        {...register('rememberMe')}
                                         id="checkAll2"
                                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                                        checked={rememberMe}
-                                        onChange={(e) => setRememberMe(e.target.checked)}
                                     />
                                     <label htmlFor="checkAll2" className="ml-2 text-xs sm:text-sm text-gray-700 cursor-pointer">
                                         Remember Me
@@ -237,10 +256,10 @@ export default function Login() {
                                 <div className="w-full pt-2 flex flex-col items-center gap-3">
                                     <button
                                         type="submit"
-                                        disabled={loginMutation.isPending}
+                                        disabled={loginMutation.isPending || isSubmitting}
                                         className="w-1/2 py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm sm:text-base focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        {loginMutation.isPending ? 'Loading...' : 'Sign In'}
+                                        {loginMutation.isPending || isSubmitting ? 'Loading...' : 'Sign In'}
                                     </button>
                                     
                                     <button

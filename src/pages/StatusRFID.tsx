@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
-import { Radio, Search, CheckCircle2, XCircle, AlertCircle, Activity, Filter, Download, RefreshCw, TrendingUp, TrendingDown, BarChart3, Clock, Package } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, AlertCircle, Activity, Filter, Download, RefreshCw, TrendingUp, TrendingDown, BarChart3, Clock, Package } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 import backgroundImage from '../assets/background.jpg';
 
@@ -36,6 +37,71 @@ export default function StatusRFID() {
     const [rfidInput, setRfidInput] = useState('');
     const [statusItems, setStatusItems] = useState<RFIDStatusItem[]>([]);
     const [isChecking, setIsChecking] = useState(false);
+    const checkRFIDMutation = useMutation({
+        mutationFn: async (rfid: string) => {
+            const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(rfid.trim())}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'RFID tidak ditemukan di database');
+            }
+
+            return await response.json();
+        },
+        onSuccess: (data, rfid) => {
+            const timestamp = new Date();
+            let newItem: RFIDStatusItem;
+
+            if (data.success && data.garment) {
+                newItem = {
+                    rfid: rfid.trim(),
+                    timestamp,
+                    status: 'found',
+                    details: data.message || 'Data ditemukan',
+                    garment: data.garment,
+                    message: data.message,
+                };
+            } else {
+                newItem = {
+                    rfid: rfid.trim(),
+                    timestamp,
+                    status: 'not_found',
+                    details: data.message || 'RFID tidak ditemukan di database',
+                    message: data.message,
+                };
+            }
+
+            setStatusItems(prev => [newItem, ...prev]);
+            setRfidInput('');
+            setIsChecking(false);
+
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 100);
+        },
+        onError: (error: Error, rfid) => {
+            const timestamp = new Date();
+            const newItem: RFIDStatusItem = {
+                rfid: rfid.trim(),
+                timestamp,
+                status: 'not_found',
+                details: error.message || 'Error saat checking RFID',
+            };
+            setStatusItems(prev => [newItem, ...prev]);
+            setRfidInput('');
+            setIsChecking(false);
+
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 100);
+        },
+    });
     const [filterStatus, setFilterStatus] = useState<'all' | 'found' | 'not_found'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +115,7 @@ export default function StatusRFID() {
         }
     }, []);
 
-    // Handle RFID check dengan API
+    // Handle RFID check dengan mutation
     const handleRfidCheck = async (rfid: string) => {
         if (!rfid.trim()) return;
 
@@ -57,79 +123,17 @@ export default function StatusRFID() {
         setIsChecking(true);
 
         // Simulasi checking dengan delay
-        setTimeout(async () => {
-            try {
-                // Panggil API tracking/check
-                const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                });
-
-                const timestamp = new Date();
-                let newItem: RFIDStatusItem;
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.garment) {
-                        // RFID ditemukan
-                        newItem = {
-                            rfid: trimmedRfid,
-                            timestamp,
-                            status: 'found',
-                            details: data.message || 'Data ditemukan',
-                            garment: data.garment,
-                            message: data.message,
-                        };
-                    } else {
-                        // RFID tidak ditemukan
-                        newItem = {
-                            rfid: trimmedRfid,
-                            timestamp,
-                            status: 'not_found',
-                            details: data.message || 'RFID tidak ditemukan di database',
-                            message: data.message,
-                        };
-                    }
-                } else {
-                    // Error atau tidak ditemukan
-                    const errorData = await response.json().catch(() => ({}));
-                    newItem = {
-                        rfid: trimmedRfid,
-                        timestamp,
-                        status: 'not_found',
-                        details: errorData.message || 'RFID tidak ditemukan di database',
-                        message: errorData.message,
-                    };
-                }
-
-                setStatusItems(prev => [newItem, ...prev]);
-                setRfidInput('');
-                setIsChecking(false);
-
-                setTimeout(() => {
-                    inputRef.current?.focus();
-                }, 100);
-            } catch (error) {
-                const timestamp = new Date();
-                const newItem: RFIDStatusItem = {
-                    rfid: trimmedRfid,
-                    timestamp,
-                    status: 'not_found',
-                    details: 'Error saat checking RFID',
-                };
-                setStatusItems(prev => [newItem, ...prev]);
-                setRfidInput('');
-                setIsChecking(false);
-
-                setTimeout(() => {
-                    inputRef.current?.focus();
-                }, 100);
-            }
+        setTimeout(() => {
+            checkRFIDMutation.mutate(trimmedRfid);
         }, 500);
     };
+
+    // Update isChecking state berdasarkan mutation
+    useEffect(() => {
+        if (checkRFIDMutation.isPending) {
+            setIsChecking(true);
+        }
+    }, [checkRFIDMutation.isPending]);
 
     // Handle Enter key
     const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -258,10 +262,10 @@ export default function StatusRFID() {
                                     </div>
                                     <button
                                         onClick={() => handleRfidCheck(rfidInput)}
-                                        disabled={isChecking || !rfidInput.trim()}
+                                        disabled={(isChecking || checkRFIDMutation.isPending) || !rfidInput.trim()}
                                         className="px-4 xs:px-5 sm:px-6 py-2 xs:py-2.5 sm:py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all duration-200 flex items-center gap-1.5 xs:gap-2 justify-center text-sm xs:text-base whitespace-nowrap"
                                     >
-                                        {isChecking ? (
+                                        {(isChecking || checkRFIDMutation.isPending) ? (
                                             <>
                                                 <Activity className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 animate-spin" />
                                                 <span className="hidden xs:inline">Checking...</span>

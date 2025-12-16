@@ -1,108 +1,84 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import backgroundImage from '../assets/aksen.svg';
 import loginSvg from '../assets/login.svg';
-import { API_BASE_URL } from '../config/api';
 import { Eye, EyeOff, UserPlus, ArrowLeft } from 'lucide-react';
+import { useRegister } from '../hooks/useAuth';
+
+// Schema validasi dengan ZOD
+const registerSchema = z.object({
+    rfid_user: z.string().min(1, 'RFID User harus diisi'),
+    password: z.string().min(6, 'Password minimal 6 karakter'),
+    nama: z.string().min(1, 'Nama harus diisi'),
+    nik: z.string().min(1, 'NIK harus diisi'),
+    bagian: z.string().min(1, 'Bagian harus dipilih'),
+    line: z.string().min(1, 'Line harus dipilih'),
+    telegram: z.string().optional(),
+    no_hp: z.string().optional(),
+});
+
+type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function Register() {
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        rfid_user: '',
-        password: '',
-        nama: '',
-        nik: '',
-        bagian: '',
-        line: '',
-        telegram: '',
-        no_hp: ''
-    });
     const [showPassword, setShowPassword] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const registerMutation = useRegister();
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-        // Clear error saat user mulai mengetik
-        if (error) setError('');
-    };
+    const {
+        register,
+        handleSubmit,
+        reset,
+        formState: { errors },
+    } = useForm<RegisterFormData>({
+        resolver: zodResolver(registerSchema),
+        defaultValues: {
+            rfid_user: '',
+            password: '',
+            nama: '',
+            nik: '',
+            bagian: '',
+            line: '',
+            telegram: '',
+            no_hp: '',
+        },
+    });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setSuccess('');
-
-        // Validasi required fields
-        if (!formData.rfid_user || !formData.password || !formData.nama || !formData.nik || !formData.bagian || !formData.line) {
-            setError('Mohon lengkapi semua field yang wajib diisi (RFID User, Password, Nama, NIK, Bagian, Line)');
-            return;
-        }
-
-        setIsSubmitting(true);
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/inputUser`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                    rfid_user: formData.rfid_user.trim(),
-                    password: formData.password,
-                    nama: formData.nama.trim(),
-                    nik: formData.nik.trim(),
-                    bagian: formData.bagian.trim(),
-                    line: formData.line.trim(),
-                    telegram: formData.telegram.trim() || '',
-                    no_hp: formData.no_hp.trim() || ''
-                })
-            });
-
-            const responseData = await response.json();
-
-            if (response.ok && responseData.success) {
-                setSuccess('Registrasi berhasil! Silakan login dengan NIK dan Password Anda.');
-                // Reset form setelah 2 detik
-                setTimeout(() => {
-                    setFormData({
-                        rfid_user: '',
-                        password: '',
-                        nama: '',
-                        nik: '',
-                        bagian: '',
-                        line: '',
-                        telegram: '',
-                        no_hp: ''
-                    });
-                    // Redirect ke login setelah 3 detik
+    const onSubmit = async (data: RegisterFormData) => {
+        registerMutation.mutate(
+            {
+                rfid_user: data.rfid_user,
+                password: data.password,
+                nama: data.nama,
+                nik: data.nik,
+                bagian: data.bagian,
+                line: data.line,
+                telegram: data.telegram,
+                no_hp: data.no_hp,
+            },
+            {
+                onSuccess: () => {
+                    // Reset form setelah 2 detik
                     setTimeout(() => {
-                        navigate('/login');
-                    }, 3000);
-                }, 2000);
-            } else {
-                setError(responseData.message || responseData.error || 'Registrasi gagal. Silakan coba lagi.');
+                        reset();
+                        // Redirect ke login setelah 3 detik
+                        setTimeout(() => {
+                            navigate('/login');
+                        }, 3000);
+                    }, 2000);
+                },
+                onError: (error: Error) => {
+                    console.error('❌ [Register] Error:', error);
+                },
             }
-        } catch (error) {
-            console.error('❌ [Register] Error:', error);
-            let errorMessage = 'Gagal melakukan registrasi';
-            if (error instanceof Error) {
-                if (error.message.includes('Failed to fetch')) {
-                    errorMessage = `Tidak dapat terhubung ke proxy server. Pastikan server.js berjalan di http://${window.location.hostname}:8000`;
-                } else {
-                    errorMessage = error.message;
-                }
-            }
-            setError(errorMessage);
-        } finally {
-            setIsSubmitting(false);
-        }
+        );
     };
+
+    const error = registerMutation.error?.message || '';
+    const success = registerMutation.isSuccess ? 'Registrasi berhasil! Silakan login dengan NIK dan Password Anda.' : '';
+    const isSubmitting = registerMutation.isPending;
 
     // Options untuk bagian dan line
     const bagianOptions = ['SEWING', 'CUTTING', 'QC', 'ROBOTIC', 'IT', 'HR', 'FINANCE', 'WAREHOUSE'];
@@ -194,7 +170,7 @@ export default function Register() {
                                 </div>
                             )}
 
-                            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
                                 {/* Grid 2 Kolom untuk Field Utama */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                                     {/* RFID User */}
@@ -205,13 +181,15 @@ export default function Register() {
                                         <input
                                             type="text"
                                             id="rfid_user"
-                                            name="rfid_user"
-                                            value={formData.rfid_user}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
+                                            {...register('rfid_user')}
+                                            className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                                errors.rfid_user ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                             placeholder="Masukkan RFID User"
-                                            required
                                         />
+                                        {errors.rfid_user && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.rfid_user.message}</p>
+                                        )}
                                     </div>
 
                                     {/* Password */}
@@ -223,12 +201,11 @@ export default function Register() {
                                             <input
                                                 type={showPassword ? "text" : "password"}
                                                 id="password"
-                                                name="password"
-                                                value={formData.password}
-                                                onChange={handleInputChange}
-                                                className="w-full px-3 py-2.5 pr-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
+                                                {...register('password')}
+                                                className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                                    errors.password ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                                }`}
                                                 placeholder="Masukkan Password"
-                                                required
                                             />
                                             <button
                                                 type="button"
@@ -238,6 +215,9 @@ export default function Register() {
                                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                             </button>
                                         </div>
+                                        {errors.password && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+                                        )}
                                     </div>
 
                                     {/* Nama */}
@@ -248,13 +228,15 @@ export default function Register() {
                                         <input
                                             type="text"
                                             id="nama"
-                                            name="nama"
-                                            value={formData.nama}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
+                                            {...register('nama')}
+                                            className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                                errors.nama ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                             placeholder="Masukkan Nama Lengkap"
-                                            required
                                         />
+                                        {errors.nama && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.nama.message}</p>
+                                        )}
                                     </div>
 
                                     {/* NIK */}
@@ -265,13 +247,15 @@ export default function Register() {
                                         <input
                                             type="text"
                                             id="nik"
-                                            name="nik"
-                                            value={formData.nik}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
+                                            {...register('nik')}
+                                            className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all placeholder-gray-400 text-gray-900 bg-white ${
+                                                errors.nik ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                             placeholder="Masukkan NIK"
-                                            required
                                         />
+                                        {errors.nik && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.nik.message}</p>
+                                        )}
                                     </div>
 
                                     {/* Bagian */}
@@ -281,17 +265,19 @@ export default function Register() {
                                         </label>
                                         <select
                                             id="bagian"
-                                            name="bagian"
-                                            value={formData.bagian}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 bg-white cursor-pointer"
-                                            required
+                                            {...register('bagian')}
+                                            className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-gray-900 bg-white cursor-pointer ${
+                                                errors.bagian ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                         >
                                             <option value="">Pilih Bagian</option>
                                             {bagianOptions.map(bagian => (
                                                 <option key={bagian} value={bagian}>{bagian}</option>
                                             ))}
                                         </select>
+                                        {errors.bagian && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.bagian.message}</p>
+                                        )}
                                     </div>
 
                                     {/* Line */}
@@ -301,17 +287,19 @@ export default function Register() {
                                         </label>
                                         <select
                                             id="line"
-                                            name="line"
-                                            value={formData.line}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 bg-white cursor-pointer"
-                                            required
+                                            {...register('line')}
+                                            className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-gray-900 bg-white cursor-pointer ${
+                                                errors.line ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                                            }`}
                                         >
                                             <option value="">Pilih Line</option>
                                             {lineOptions.map(line => (
                                                 <option key={line} value={line}>{line}</option>
                                             ))}
                                         </select>
+                                        {errors.line && (
+                                            <p className="mt-1 text-xs text-red-600">{errors.line.message}</p>
+                                        )}
                                     </div>
 
                                     {/* Telegram */}
@@ -322,9 +310,7 @@ export default function Register() {
                                         <input
                                             type="text"
                                             id="telegram"
-                                            name="telegram"
-                                            value={formData.telegram}
-                                            onChange={handleInputChange}
+                                            {...register('telegram')}
                                             className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
                                             placeholder="Masukkan Telegram (Opsional)"
                                         />
@@ -338,9 +324,7 @@ export default function Register() {
                                         <input
                                             type="text"
                                             id="no_hp"
-                                            name="no_hp"
-                                            value={formData.no_hp}
-                                            onChange={handleInputChange}
+                                            {...register('no_hp')}
                                             className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder-gray-400 text-gray-900 bg-white"
                                             placeholder="Masukkan No. HP (Opsional)"
                                         />
