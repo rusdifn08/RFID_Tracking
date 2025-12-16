@@ -14,7 +14,7 @@ import OverviewChart from '../components/dashboard/OverviewChart';
 import DataLineCard from '../components/dashboard/DataLineCard';
 import StatusCardsGrid from '../components/dashboard/StatusCardsGrid';
 import { COLORS, DEFAULT_REWORK_POPUP_ENABLED } from '../components/dashboard/constants';
-import { Filter, XCircle, CheckCircle, RefreshCcw, AlertCircle } from 'lucide-react';
+import { Filter, XCircle, CheckCircle, RefreshCcw, AlertCircle, Search } from 'lucide-react';
 import backgroundImage from '../assets/background.jpg';
 
 // --- HALAMAN UTAMA ---
@@ -64,6 +64,7 @@ export default function DashboardRFID() {
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailTitle, setDetailTitle] = useState('');
     const [detailType, setDetailType] = useState<'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // State untuk tracking perubahan rework dan popup notifikasi
     const previousReworkRef = useRef<number>(0);
@@ -640,6 +641,34 @@ export default function DashboardRFID() {
         { name: 'WIRA', value: wiraPqc, color: COLORS.blue },
         { name: 'Reject', value: pqcReject, color: COLORS.red },
     ].filter(d => d.value > 0), [pqcGood, wiraPqc, pqcReject]);
+
+    // Filter data berdasarkan search query
+    const filteredDetailData = useMemo(() => {
+        if (!searchQuery.trim()) {
+            return detailData;
+        }
+        
+        const query = searchQuery.toLowerCase().trim();
+        return detailData.filter((item) => {
+            const rfid = (item.rfid_garment || '').toLowerCase();
+            const wo = (item.wo || '').toLowerCase();
+            const style = (item.style || '').toLowerCase();
+            const buyer = (item.buyer || '').toLowerCase();
+            const itemName = (item.item || '').toLowerCase();
+            const color = (item.color || '').toLowerCase();
+            const size = (item.size || '').toLowerCase();
+            const line = (item.line || '').toLowerCase();
+            
+            return rfid.includes(query) ||
+                   wo.includes(query) ||
+                   style.includes(query) ||
+                   buyer.includes(query) ||
+                   itemName.includes(query) ||
+                   color.includes(query) ||
+                   size.includes(query) ||
+                   line.includes(query);
+        });
+    }, [detailData, searchQuery]);
 
     // Fungsi untuk fetch data per hari
     const fetchDailyData = async (): Promise<any[]> => {
@@ -1419,7 +1448,10 @@ export default function DashboardRFID() {
 
             {/* Detail Modal */}
             {showDetailModal && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDetailModal(false)}>
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => {
+                    setShowDetailModal(false);
+                    setSearchQuery('');
+                }}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] sm:h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
                         {/* Header */}
                         <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 p-4 sm:p-6 flex-shrink-0">
@@ -1436,19 +1468,41 @@ export default function DashboardRFID() {
                                     </h2>
                                 </div>
                                 <button
-                                    onClick={() => setShowDetailModal(false)}
+                                    onClick={() => {
+                                        setShowDetailModal(false);
+                                        setSearchQuery('');
+                                    }}
                                     className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white hover:bg-white/30"
                                 >
                                     <XCircle size={20} />
                                 </button>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl px-4 py-2.5 shadow-lg">
-                                    <div className="text-xs font-semibold text-white/90 mb-0.5">Total Data</div>
-                                    <div className="text-2xl font-bold text-white">{detailData.length}</div>
+                            <div className="flex items-center justify-between gap-4">
+                                {/* Search Form - Sebelah Kiri */}
+                                <div className="flex-1 max-w-md">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70" size={18} />
+                                        <input
+                                            type="text"
+                                            placeholder="Cari RFID ID, WO, Style, Buyer, Item..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all"
+                                            style={{ fontFamily: 'Poppins, sans-serif' }}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="text-sm text-white/90" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                                    Data hari ini ({new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })})
+                                {/* Total Data dan Tanggal - Sebelah Kanan */}
+                                <div className="flex items-center gap-4">
+                                    <div className="text-sm text-white/90 hidden sm:block" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                        Data hari ini ({new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })})
+                                    </div>
+                                    <div className="bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl px-4 py-2.5 shadow-lg">
+                                        <div className="text-xs font-semibold text-white/90 mb-0.5">Total Data</div>
+                                        <div className="text-2xl font-bold text-white">
+                                            {searchQuery.trim() ? filteredDetailData.length : detailData.length}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1468,6 +1522,14 @@ export default function DashboardRFID() {
                                     <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada data</p>
                                     <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle} untuk hari ini</p>
                                 </div>
+                            ) : filteredDetailData.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center text-slate-400 h-full min-h-[400px]">
+                                    <div className="p-4 bg-blue-100 rounded-full mb-4">
+                                        <Search size={48} className="text-blue-500 opacity-50" />
+                                    </div>
+                                    <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada hasil pencarian</p>
+                                    <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data yang cocok dengan "{searchQuery}"</p>
+                                </div>
                             ) : (
                                 <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden h-full flex flex-col">
                                     <div className="overflow-y-auto flex-1 min-h-0">
@@ -1486,7 +1548,7 @@ export default function DashboardRFID() {
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-slate-100">
-                                                {detailData.map((item, index) => (
+                                                {filteredDetailData.map((item, index) => (
                                                     <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-blue-50/50 transition-colors`}>
                                                         <td className="px-4 py-3 text-sm font-mono font-bold text-blue-600" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.rfid_garment || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.wo || '-'}</td>
