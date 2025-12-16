@@ -23,9 +23,18 @@ export default function Breadcrumb() {
         });
 
         // Mapping untuk berbagai route
-        if (path.startsWith('/monitoring-rfid')) {
+        if (path.startsWith('/rfid-tracking')) {
             breadcrumbs.push({
                 label: 'RFID Tracking',
+                isActive: true,
+            });
+        } else if (path.startsWith('/monitoring-rfid')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Production Lines',
                 isActive: true,
             });
         } else if (path.startsWith('/line/')) {
@@ -43,6 +52,10 @@ export default function Breadcrumb() {
             };
             breadcrumbs.push({
                 label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Production Lines',
                 path: '/monitoring-rfid',
             });
             breadcrumbs.push({
@@ -64,6 +77,10 @@ export default function Breadcrumb() {
             };
             breadcrumbs.push({
                 label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Production Lines',
                 path: '/monitoring-rfid',
             });
             breadcrumbs.push({

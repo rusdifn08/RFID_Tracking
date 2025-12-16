@@ -3,9 +3,8 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
-import { API_BASE_URL } from '../config/api';
 import backgroundImage from '../assets/background.jpg';
-import { useCheckingRFID } from '../hooks/useCheckingRFID';
+import { useCheckingRFIDQuery as useCheckingRFID } from '../hooks/useCheckingRFIDQuery';
 import PageHeader from '../components/checking/PageHeader';
 import RFIDInputSection from '../components/checking/RFIDInputSection';
 import FiltersAndActions from '../components/checking/FiltersAndActions';
@@ -32,7 +31,6 @@ export default function CheckingRFID() {
         trackingData,
         setTrackingData,
         loadingTracking,
-        setLoadingTracking,
         selectedRfid,
         setSelectedRfid,
         handleRfidCheck,
@@ -41,44 +39,14 @@ export default function CheckingRFID() {
     } = useCheckingRFID();
 
     // Handle click pada item untuk menampilkan tracking data
-    const handleItemClick = useCallback(async (rfid: string) => {
+    // Menggunakan query yang sudah ada di useCheckingRFIDQuery
+    const handleItemClick = useCallback((rfid: string) => {
         if (!rfid) return;
         
         setSelectedRfid(rfid);
         setShowTrackingModal(true);
-        setLoadingTracking(true);
-        setTrackingData([]);
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.data && Array.isArray(data.data)) {
-                    const sortedData = [...data.data].sort((a, b) => {
-                        const dateA = new Date(a.timestamp || 0).getTime();
-                        const dateB = new Date(b.timestamp || 0).getTime();
-                        return dateA - dateB;
-                    });
-                    setTrackingData(sortedData);
-                } else {
-                    setTrackingData([]);
-                }
-            } else {
-                setTrackingData([]);
-            }
-        } catch (error) {
-            setTrackingData([]);
-        } finally {
-            setLoadingTracking(false);
-        }
-    }, [setSelectedRfid, setShowTrackingModal, setLoadingTracking, setTrackingData]);
+        // Data akan otomatis di-fetch oleh useQuery di useCheckingRFIDQuery
+    }, [setSelectedRfid, setShowTrackingModal]);
 
     const handleCloseTrackingModal = useCallback(() => {
         setShowTrackingModal(false);

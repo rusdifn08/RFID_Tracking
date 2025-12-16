@@ -12,3 +12,8 @@ export const COLORS = {
 // false = nonaktif (popup tidak akan muncul)
 export const DEFAULT_REWORK_POPUP_ENABLED = false;
 
+// Default state untuk Room Status Card di Dashboard RFID
+// true = aktif (Room Status Card akan tampil di sebelah kanan)
+// false = nonaktif (Room Status Card tidak tampil, row 1 dan 2 kembali ke ukuran semula)
+export const DEFAULT_ROOM_STATUS_ENABLED = true;
+

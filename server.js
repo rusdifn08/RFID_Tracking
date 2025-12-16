@@ -1546,6 +1546,13 @@ app.get('/wira', async (req, res) => {
 });
 
 /**
+ * GET /wira/detail?line=1&wo=185759&tipe=qc&kategori=wira - Detail WIRA/REWORK data
+ */
+app.get('/wira/detail', async (req, res) => {
+    return await proxyRequest('/wira/detail', req, res);
+});
+
+/**
  * GET /report/wira?line=1&wo=185759&tanggalfrom=2025-11-27&tanggalto=2025-11-28 - Report wira
  */
 app.get('/report/wira', async (req, res) => {

@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -8,7 +9,8 @@ import { API_BASE_URL } from '../config/api';
 import ExportModal from '../components/ExportModal';
 import type { ExportType } from '../components/ExportModal';
 import { exportToExcel } from '../utils/exportToExcel';
-import { useDashboardRFID } from '../hooks/useDashboardRFID';
+import { useDashboardRFIDQuery } from '../hooks/useDashboardRFIDQuery';
+import { useDashboardStore } from '../stores/dashboardStore';
 import { formatDateForAPI } from '../utils/dateUtils';
 import OverviewChart from '../components/dashboard/OverviewChart';
 import DataLineCard from '../components/dashboard/DataLineCard';
@@ -26,16 +28,15 @@ export default function DashboardRFID() {
     const lineTitle = `LINE ${lineId}`;
 
     // State untuk WO filter - harus dideklarasikan sebelum hook
-    const [appliedFilterWo, setAppliedFilterWo] = useState<string>(''); // Filter WO yang diterapkan ke dashboard
     const [showWoFilterModal, setShowWoFilterModal] = useState(false);
-    const [filterWo, setFilterWo] = useState('');
+    const [filterWo, setFilterWo] = useState(''); // Local state untuk modal input
     const [availableWOList, setAvailableWOList] = useState<string[]>([]);
     const [loadingWOList, setLoadingWOList] = useState(false);
     const [wiraData, setWiraData] = useState<any>(null);
     const [loadingWira, setLoadingWira] = useState(false);
     const [showPreview, setShowPreview] = useState(false); // Untuk menampilkan preview data
 
-    // Custom hook untuk semua state dan logic
+    // Custom hook dengan TanStack Query dan Zustand
     const {
         good,
         rework,
@@ -48,15 +49,18 @@ export default function DashboardRFID() {
         outputLine,
         woData,
         showExportModal,
-        setShowExportModal,
         showDateFilterModal,
-        setShowDateFilterModal,
         filterDateFrom,
-        setFilterDateFrom,
         filterDateTo,
-        setFilterDateTo,
-        setFilterWo: setDashboardFilterWo,
-    } = useDashboardRFID(lineId, appliedFilterWo);
+        filterWo: appliedFilterWo,
+    } = useDashboardRFIDQuery(lineId);
+
+    // Zustand store actions
+    const setShowExportModal = useDashboardStore((state) => state.setShowExportModal);
+    const setShowDateFilterModal = useDashboardStore((state) => state.setShowDateFilterModal);
+    const setFilterDateFrom = useDashboardStore((state) => state.setFilterDateFrom);
+    const setFilterDateTo = useDashboardStore((state) => state.setFilterDateTo);
+    const setDashboardFilterWo = useDashboardStore((state) => state.setFilterWo);
 
     // State untuk detail modal
     const [showDetailModal, setShowDetailModal] = useState(false);
@@ -77,7 +81,7 @@ export default function DashboardRFID() {
     const [selectedOperator, setSelectedOperator] = useState<string>('');
     const [showOperators, setShowOperators] = useState(false);
     const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-    const [enableReworkPopup, setEnableReworkPopup] = useState<boolean>(DEFAULT_REWORK_POPUP_ENABLED); // Menggunakan variable global
+    const enableReworkPopup = DEFAULT_REWORK_POPUP_ENABLED; // Menggunakan variable global
 
     // Daftar jenis rework
     const reworkTypes = [
@@ -116,26 +120,122 @@ export default function DashboardRFID() {
         'Putri Maharani'
     ];
 
-    // Fungsi untuk fetch detail data berdasarkan status
-    const fetchDetailData = useCallback(async (type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA', section: 'QC' | 'PQC') => {
-        try {
-            setDetailLoading(true);
-            setDetailTitle(`${type} ${section}`);
-            setDetailType(type);
+    // State untuk detail modal query
+    const [detailQueryParams, setDetailQueryParams] = useState<{
+        type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | null;
+        section: 'QC' | 'PQC' | null;
+    }>({ type: null, section: null });
 
+    // Query untuk fetch detail data berdasarkan status
+    // Gunakan woData?.wo juga dalam query key untuk memastikan query ter-trigger saat WO berubah
+    const currentWo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
+    
+    // Log untuk debugging
+    useEffect(() => {
+        if (showDetailModal && (detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA')) {
+            console.log('🔵 [Detail Modal] WO Status Check:', {
+                appliedFilterWo,
+                woDataWo: woData?.wo,
+                currentWo,
+                hasWo: !!currentWo,
+                enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section && !!currentWo
+            });
+        }
+    }, [showDetailModal, detailQueryParams.type, detailQueryParams.section, currentWo, appliedFilterWo, woData]);
+    
+    const detailDataQuery = useQuery({
+        queryKey: ['detail-data', lineId, detailQueryParams.type, detailQueryParams.section, currentWo],
+        queryFn: async () => {
+            if (!detailQueryParams.type || !detailQueryParams.section) {
+                return [];
+            }
+
+            const { type, section } = detailQueryParams;
+            
+            // Untuk REWORK dan WIRA, gunakan API baru /wira/detail
+            if (type === 'REWORK' || type === 'WIRA') {
+                // Perlu WO untuk API baru
+                const wo = currentWo;
+                
+                if (!wo) {
+                    console.warn('⚠️ [Detail Modal] WO tidak tersedia untuk fetch REWORK/WIRA data');
+                    console.warn('⚠️ [Detail Modal] appliedFilterWo:', appliedFilterWo);
+                    console.warn('⚠️ [Detail Modal] woData?.wo:', woData?.wo);
+                    return [];
+                }
+
+                // Mapping tipe dan kategori
+                const tipe = section.toLowerCase(); // 'qc' atau 'pqc'
+                const kategori = type.toLowerCase(); // 'rework' atau 'wira'
+
+                const url = `${API_BASE_URL}/wira/detail?line=${encodeURIComponent(lineId)}&wo=${encodeURIComponent(wo)}&tipe=${encodeURIComponent(tipe)}&kategori=${encodeURIComponent(kategori)}`;
+                
+                console.log('🔵 [Detail Modal] Fetching REWORK/WIRA data dari API baru:', url);
+                console.log('🔵 [Detail Modal] Parameters:', { line: lineId, wo, tipe, kategori });
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('❌ [Detail Modal] API Error:', response.status, response.statusText, errorText);
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    console.log('🔵 [Detail Modal] API Response:', result);
+                    console.log('🔵 [Detail Modal] API Response keys:', Object.keys(result));
+                    console.log('🔵 [Detail Modal] result.success:', result.success);
+                    console.log('🔵 [Detail Modal] result.data:', result.data);
+                    console.log('🔵 [Detail Modal] result.data isArray:', Array.isArray(result.data));
+                    console.log('🔵 [Detail Modal] result.data length:', result.data?.length);
+                    
+                    if (result.success && result.data && Array.isArray(result.data)) {
+                        // Sort berdasarkan timestamp terbaru
+                        const sortedData = [...result.data].sort((a: any, b: any) => {
+                            const dateA = new Date(a.timestamp || 0).getTime();
+                            const dateB = new Date(b.timestamp || 0).getTime();
+                            return dateB - dateA; // Terbaru di atas
+                        });
+                        
+                        console.log(`✅ [Detail Modal] Data dari API baru: ${sortedData.length} items`);
+                        console.log('✅ [Detail Modal] First item sample:', sortedData[0]);
+                        return sortedData;
+                    }
+                    
+                    console.warn('⚠️ [Detail Modal] API response tidak valid atau data kosong:', result);
+                    console.warn('⚠️ [Detail Modal] Response structure:', {
+                        hasSuccess: 'success' in result,
+                        successValue: result.success,
+                        hasData: 'data' in result,
+                        dataType: typeof result.data,
+                        isArray: Array.isArray(result.data),
+                        dataValue: result.data
+                    });
+                    return [];
+                } catch (error) {
+                    console.error('❌ [Detail Modal] Error fetching REWORK/WIRA data:', error);
+                    throw error;
+                }
+            }
+
+            // Untuk GOOD dan REJECT, gunakan API lama dengan filtering manual
             // Get today's date (UTC untuk konsistensi dengan API)
-            // Gunakan UTC untuk menghindari masalah timezone
             const now = new Date();
             const todayYear = now.getUTCFullYear();
             const todayMonth = now.getUTCMonth();
             const todayDay = now.getUTCDate();
-            
-            // Buat string tanggal untuk perbandingan: YYYY-MM-DD
             const todayDateStr = `${todayYear}-${String(todayMonth + 1).padStart(2, '0')}-${String(todayDay).padStart(2, '0')}`;
             
             console.log('🔵 [Detail Modal] Filter tanggal hari ini (UTC):', todayDateStr);
 
-            // Fetch data dari API
+            // Fetch data dari API lama
             const url = `${API_BASE_URL}/tracking/rfid_garment?line=${encodeURIComponent(lineId)}`;
             const response = await fetch(url, {
                 method: 'GET',
@@ -159,36 +259,18 @@ export default function DashboardRFID() {
                 }
                 
                 try {
-                    // Parse timestamp dari format API: "Fri, 12 Dec 2025 13:59:05 GMT"
                     const itemDate = new Date(item.timestamp);
-                    
-                    // Validasi bahwa parsing berhasil
                     if (isNaN(itemDate.getTime())) {
                         console.warn('Invalid timestamp:', item.timestamp);
                         return false;
                     }
                     
-                    // Bandingkan tahun, bulan, dan hari dalam UTC
                     const itemYear = itemDate.getUTCFullYear();
                     const itemMonth = itemDate.getUTCMonth();
                     const itemDay = itemDate.getUTCDate();
-                    
-                    // Buat string tanggal untuk perbandingan: YYYY-MM-DD
                     const itemDateStr = `${itemYear}-${String(itemMonth + 1).padStart(2, '0')}-${String(itemDay).padStart(2, '0')}`;
                     
-                    // Hanya ambil data yang tanggalnya sama dengan hari ini
-                    const isToday = itemDateStr === todayDateStr;
-                    
-                    if (!isToday) {
-                        console.log('🔵 [Detail Modal] Data di-filter (bukan hari ini):', {
-                            rfid: item.rfid_garment,
-                            timestamp: item.timestamp,
-                            itemDate: itemDateStr,
-                            today: todayDateStr
-                        });
-                    }
-                    
-                    return isToday;
+                    return itemDateStr === todayDateStr;
                 } catch (e) {
                     console.error('Error parsing timestamp:', item.timestamp, e);
                     return false;
@@ -198,25 +280,19 @@ export default function DashboardRFID() {
             console.log('🔵 [Detail Modal] Total data hari ini:', todayData.length, 'dari', allData.length, 'total data');
 
             let filteredData: any[] = [];
+            // type dan section sudah dideklarasikan di awal queryFn
 
+            // Hanya GOOD dan REJECT yang menggunakan API lama dengan filtering manual
+            // REWORK dan WIRA sudah di-handle di atas dengan API baru
             if (section === 'QC') {
                 switch (type) {
                     case 'GOOD':
-                        // GOOD QC: bagian = 'QC' dan last_status = 'GOOD'
                         filteredData = todayData.filter((item: any) => {
                             const bagian = (item.bagian || '').trim().toUpperCase();
                             return bagian === 'QC' && item.last_status === 'GOOD';
                         });
                         break;
-                    case 'REWORK':
-                        // REWORK QC: bagian = 'QC' dan last_status = 'REWORK'
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'QC' && item.last_status === 'REWORK';
-                        });
-                        break;
                     case 'REJECT':
-                        // REJECT QC: bagian = 'QC' dan last_status = 'REJECT' DAN ada data WO dan lainnya (bukan kosong)
                         filteredData = todayData.filter((item: any) => {
                             const bagian = (item.bagian || '').trim().toUpperCase();
                             const hasData = item.wo && item.wo.trim() !== '' && 
@@ -225,34 +301,9 @@ export default function DashboardRFID() {
                             return bagian === 'QC' && item.last_status === 'REJECT' && hasData;
                         });
                         break;
-                    case 'WIRA':
-                        // WIRA QC: rework yang ada di QC, TAPI belum pernah GOOD QC
-                        // Ambil semua data untuk cek history
-                        const reworkQcData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'QC' && item.last_status === 'REWORK';
-                        });
-
-                        // Cek untuk setiap RFID, apakah pernah GOOD QC
-                        const rfidSet = new Set(reworkQcData.map((item: any) => item.rfid_garment));
-                        const rfidWithGoodHistory = new Set<string>();
-
-                        // Cek history semua data (tidak hanya hari ini) untuk melihat apakah pernah GOOD
-                        allData.forEach((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            if (bagian === 'QC' && item.last_status === 'GOOD' && rfidSet.has(item.rfid_garment)) {
-                                rfidWithGoodHistory.add(item.rfid_garment);
-                            }
-                        });
-
-                        // Filter: REWORK QC yang belum pernah GOOD
-                        filteredData = reworkQcData.filter((item: any) => {
-                            return !rfidWithGoodHistory.has(item.rfid_garment);
-                        });
-                        break;
+                    // REWORK dan WIRA sudah di-handle dengan API baru di atas
                 }
-            } else {
-                // PQC Section
+            } else if (section === 'PQC') {
                 switch (type) {
                     case 'GOOD':
                         filteredData = todayData.filter((item: any) => {
@@ -260,14 +311,7 @@ export default function DashboardRFID() {
                             return bagian === 'PQC' && item.last_status === 'PQC_GOOD';
                         });
                         break;
-                    case 'REWORK':
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'PQC' && item.last_status === 'PQC_REWORK';
-                        });
-                        break;
                     case 'REJECT':
-                        // REJECT PQC: bagian = 'PQC' dan last_status = 'PQC_REJECT' DAN ada data WO dan lainnya
                         filteredData = todayData.filter((item: any) => {
                             const bagian = (item.bagian || '').trim().toUpperCase();
                             const hasData = item.wo && item.wo.trim() !== '' && 
@@ -276,27 +320,7 @@ export default function DashboardRFID() {
                             return bagian === 'PQC' && item.last_status === 'PQC_REJECT' && hasData;
                         });
                         break;
-                    case 'WIRA':
-                        // WIRA PQC: rework yang ada di PQC, TAPI belum pernah PQC_GOOD
-                        const reworkPqcData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'PQC' && item.last_status === 'PQC_REWORK';
-                        });
-
-                        const rfidPqcSet = new Set(reworkPqcData.map((item: any) => item.rfid_garment));
-                        const rfidPqcWithGoodHistory = new Set<string>();
-
-                        allData.forEach((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            if (bagian === 'PQC' && item.last_status === 'PQC_GOOD' && rfidPqcSet.has(item.rfid_garment)) {
-                                rfidPqcWithGoodHistory.add(item.rfid_garment);
-                            }
-                        });
-
-                        filteredData = reworkPqcData.filter((item: any) => {
-                            return !rfidPqcWithGoodHistory.has(item.rfid_garment);
-                        });
-                        break;
+                    // REWORK dan WIRA sudah di-handle dengan API baru di atas
                 }
             }
 
@@ -307,21 +331,101 @@ export default function DashboardRFID() {
                 return dateB - dateA; // Terbaru di atas
             });
 
-            setDetailData(filteredData);
-            setShowDetailModal(true);
-        } catch (error) {
-            console.error('Error fetching detail data:', error);
-            setDetailData([]);
-            setShowDetailModal(true);
-        } finally {
-            setDetailLoading(false);
-        }
-    }, [lineId]);
+            return filteredData;
+        },
+        enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section && 
+                 // Untuk REWORK dan WIRA, pastikan WO tersedia
+                 ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
+                    ? !!currentWo
+                    : true),
+        staleTime: 30000, // 30 detik
+        retry: 1,
+    });
 
-    // Fetch WO List dari API tracking/rfid_garment
-    const fetchWOList = useCallback(async () => {
-        try {
-            setLoadingWOList(true);
+    // Update detail data dan state saat query berhasil
+    useEffect(() => {
+        console.log('🔵 [Detail Modal] Query state update:', {
+            hasData: !!detailDataQuery.data,
+            dataLength: detailDataQuery.data?.length || 0,
+            isError: detailDataQuery.isError,
+            isLoading: detailDataQuery.isLoading,
+            type: detailQueryParams.type,
+            section: detailQueryParams.section,
+            currentWo,
+            enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section && 
+                     ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
+                        ? !!currentWo
+                        : true)
+        });
+        
+        if (detailDataQuery.data) {
+            console.log('✅ [Detail Modal] Setting detail data:', detailDataQuery.data.length, 'items');
+            setDetailData(detailDataQuery.data);
+        } else if (detailDataQuery.isError) {
+            console.error('❌ [Detail Modal] Query error:', detailDataQuery.error);
+            setDetailData([]);
+            // Jika error karena WO tidak tersedia untuk REWORK/WIRA
+            if ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') && !currentWo) {
+                console.warn('⚠️ [Detail Modal] WO tidak tersedia untuk fetch REWORK/WIRA data');
+            }
+        } else if (!detailDataQuery.isLoading && !detailDataQuery.data && showDetailModal) {
+            // Jika query tidak loading dan tidak ada data, reset detail data
+            console.log('⚠️ [Detail Modal] No data and not loading, resetting detail data');
+            setDetailData([]);
+        }
+    }, [detailDataQuery.data, detailDataQuery.isError, detailDataQuery.isLoading, detailDataQuery.error, detailQueryParams.type, detailQueryParams.section, currentWo, showDetailModal]);
+
+    useEffect(() => {
+        setDetailLoading(detailDataQuery.isLoading);
+    }, [detailDataQuery.isLoading]);
+
+    // Update title dan type saat query params berubah
+    useEffect(() => {
+        if (detailQueryParams.type && detailQueryParams.section) {
+            setDetailTitle(`${detailQueryParams.type} ${detailQueryParams.section}`);
+            setDetailType(detailQueryParams.type);
+        }
+    }, [detailQueryParams]);
+
+    // Fungsi untuk trigger fetch detail data
+    const fetchDetailData = useCallback((type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA', section: 'QC' | 'PQC') => {
+        const wo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
+        console.log('🔵 [Detail Modal] Opening detail modal:', { 
+            type, 
+            section, 
+            currentWo, 
+            appliedFilterWo, 
+            woDataWo: woData?.wo,
+            calculatedWo: wo
+        });
+        setDetailQueryParams({ type, section });
+        setShowDetailModal(true);
+        // Reset detail data saat membuka modal baru
+        setDetailData([]);
+    }, [currentWo, appliedFilterWo, woData]);
+    
+    // Refetch query saat modal dibuka dan WO tersedia untuk REWORK/WIRA
+    useEffect(() => {
+        if (showDetailModal && detailQueryParams.type && detailQueryParams.section) {
+            const wo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
+            const needsWo = detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA';
+            
+            if (needsWo && wo) {
+                console.log('🔵 [Detail Modal] Triggering refetch for REWORK/WIRA with WO:', wo);
+                // Query akan otomatis refetch karena enabled condition terpenuhi
+            } else if (!needsWo) {
+                console.log('🔵 [Detail Modal] Triggering refetch for GOOD/REJECT');
+                // Query akan otomatis refetch karena enabled condition terpenuhi
+            } else {
+                console.warn('⚠️ [Detail Modal] Cannot refetch - WO not available for REWORK/WIRA');
+            }
+        }
+    }, [showDetailModal, detailQueryParams.type, detailQueryParams.section, appliedFilterWo, woData]);
+
+    // Query untuk fetch WO List dari API tracking/rfid_garment
+    const woListQuery = useQuery({
+        queryKey: ['wo-list'],
+        queryFn: async () => {
             const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment`, {
                 method: 'GET',
                 headers: {
@@ -352,28 +456,35 @@ export default function DashboardRFID() {
                 });
             }
 
-            const woList = Array.from(woSet).sort();
-            setAvailableWOList(woList);
-        } catch (error) {
-            console.error('Error fetching WO list:', error);
+            return Array.from(woSet).sort();
+        },
+        enabled: showWoFilterModal,
+        staleTime: 60000, // 1 menit
+        retry: 1,
+    });
+
+    // Update availableWOList dan loading state
+    useEffect(() => {
+        if (woListQuery.data) {
+            setAvailableWOList(woListQuery.data);
+        } else if (woListQuery.isError) {
             setAvailableWOList([]);
-        } finally {
-            setLoadingWOList(false);
         }
-    }, []);
+    }, [woListQuery.data, woListQuery.isError]);
 
-    // Fetch WIRA data berdasarkan WO dan Line
-    const fetchWiraData = useCallback(async (wo: string, line: string) => {
-        if (!wo || !line) {
-            setWiraData(null);
-            return;
-        }
+    useEffect(() => {
+        setLoadingWOList(woListQuery.isLoading);
+    }, [woListQuery.isLoading]);
 
-        try {
-            setLoadingWira(true);
-            setWiraData(null);
+    // Query untuk fetch WIRA data berdasarkan WO dan Line
+    const wiraDataQuery = useQuery({
+        queryKey: ['wira-data', filterWo, lineId],
+        queryFn: async () => {
+            if (!filterWo || !lineId) {
+                return null;
+            }
 
-            const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(line)}&wo=${encodeURIComponent(wo)}`;
+            const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}&wo=${encodeURIComponent(filterWo)}`;
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -390,33 +501,34 @@ export default function DashboardRFID() {
             const data = await response.json();
 
             if (data.success && data.data && data.data.length > 0) {
-                setWiraData(data.data[0]);
-            } else {
-                setWiraData(null);
+                return data.data[0];
             }
-        } catch (error) {
-            console.error('Error fetching WIRA data:', error);
-            setWiraData(null);
-        } finally {
-            setLoadingWira(false);
-        }
-    }, []);
+            return null;
+        },
+        enabled: showWoFilterModal && !!filterWo && !!lineId,
+        staleTime: 30000, // 30 detik
+        retry: 1,
+    });
 
-    // Fetch WO List saat modal dibuka
+    // Update wiraData dan loading state
     useEffect(() => {
-        if (showWoFilterModal) {
-            fetchWOList();
-        }
-    }, [showWoFilterModal, fetchWOList]);
-
-    // Fetch WIRA data saat WO dipilih
-    useEffect(() => {
-        if (showWoFilterModal && filterWo && lineId) {
-            fetchWiraData(filterWo, lineId);
-        } else if (showWoFilterModal && !filterWo) {
+        if (wiraDataQuery.data !== undefined) {
+            setWiraData(wiraDataQuery.data);
+        } else if (wiraDataQuery.isError) {
             setWiraData(null);
         }
-    }, [filterWo, lineId, showWoFilterModal, fetchWiraData]);
+    }, [wiraDataQuery.data, wiraDataQuery.isError]);
+
+    useEffect(() => {
+        setLoadingWira(wiraDataQuery.isLoading);
+    }, [wiraDataQuery.isLoading]);
+
+    // Reset wiraData saat filterWo kosong
+    useEffect(() => {
+        if (showWoFilterModal && !filterWo) {
+            setWiraData(null);
+        }
+    }, [filterWo, showWoFilterModal]);
 
     // Fungsi untuk fetch data rework terbaru dari List RFID API
     const fetchLatestReworkData = useCallback(async (type: 'QC' | 'PQC', maxWaitSeconds: number = 10): Promise<any | null> => {
@@ -932,8 +1044,6 @@ export default function DashboardRFID() {
                                     onDateFilterClick={() => setShowDateFilterModal(true)}
                                     onExportClick={() => setShowExportModal(true)}
                                     onWoFilterClick={() => setShowWoFilterModal(true)}
-                                    enableReworkPopup={enableReworkPopup}
-                                    onEnableReworkPopupChange={setEnableReworkPopup}
                                 />
                             </div>
                         </div>
@@ -1163,9 +1273,8 @@ export default function DashboardRFID() {
                                     </div>
                                     <button
                                         onClick={() => {
-                                            setAppliedFilterWo('');
                                             setDashboardFilterWo('');
-                                            setFilterWo('');
+                                            setFilterWo(''); // Local state untuk modal
                                             setWiraData(null);
                                         }}
                                         className="px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 rounded transition-colors"
@@ -1181,7 +1290,7 @@ export default function DashboardRFID() {
                                     <button
                                         onClick={async () => {
                                             if (filterWo && lineId) {
-                                                await fetchWiraData(filterWo, lineId);
+                                                // Data sudah di-fetch oleh wiraDataQuery
                                                 setShowPreview(true);
                                             }
                                         }}
@@ -1315,7 +1424,6 @@ export default function DashboardRFID() {
                                     setFilterWo('');
                                     setWiraData(null);
                                     setShowPreview(false);
-                                    setAppliedFilterWo('');
                                     setDashboardFilterWo('');
                                 }}
                                 className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors duration-200 font-medium"
@@ -1326,7 +1434,6 @@ export default function DashboardRFID() {
                                 {wiraData && (
                                     <button
                                         onClick={() => {
-                                            setAppliedFilterWo(filterWo);
                                             setDashboardFilterWo(filterWo);
                                             setShowWoFilterModal(false);
                                         }}
@@ -1520,7 +1627,18 @@ export default function DashboardRFID() {
                                         <XCircle size={48} className="text-blue-500 opacity-50" />
                                     </div>
                                     <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada data</p>
-                                    <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle} untuk hari ini</p>
+                                    {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') && !currentWo ? (
+                                        <div className="text-center">
+                                            <p className="text-sm mb-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                                WO (Work Order) tidak tersedia untuk menampilkan data {detailTitle}
+                                            </p>
+                                            <p className="text-xs text-slate-500" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                                Silakan pilih atau filter WO terlebih dahulu
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle} untuk hari ini</p>
+                                    )}
                                 </div>
                             ) : filteredDetailData.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center text-slate-400 h-full min-h-[400px]">
@@ -1534,17 +1652,19 @@ export default function DashboardRFID() {
                                 <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden h-full flex flex-col">
                                     <div className="overflow-y-auto flex-1 min-h-0">
                                         <table className="w-full">
-                                            <thead className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 border-b-2 border-slate-600 sticky top-0 z-10">
+                                            <thead className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 border-b-2 border-blue-500 sticky top-0 z-10">
                                                 <tr>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>RFID ID</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>WO</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Style</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Buyer</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Item</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Color</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Size</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Line</th>
-                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-500 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Timestamp</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>RFID ID</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>WO</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Style</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Buyer</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Item</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Color</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Size</th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
+                                                        {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') ? 'Count' : 'Line'}
+                                                    </th>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Timestamp</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-slate-100">
@@ -1557,7 +1677,11 @@ export default function DashboardRFID() {
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.item || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.color || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700 font-bold" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.size || '-'}</td>
-                                                        <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.line || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                                            {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
+                                                                ? (item.reworkCount !== undefined && item.reworkCount !== null ? item.reworkCount : '-')
+                                                                : (item.line || '-')}
+                                                        </td>
                                                         <td className="px-4 py-3 text-sm text-slate-600 font-mono" style={{ fontFamily: 'Poppins, sans-serif' }}>
                                                             {item.timestamp ? (() => {
                                                                 try {

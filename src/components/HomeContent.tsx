@@ -23,7 +23,7 @@ export default function HomeContent() {
     ];
 
     const handleModuleClick = (moduleId: number) => {
-        if (moduleId === 1) navigate('/monitoring-rfid');
+        if (moduleId === 1) navigate('/rfid-tracking');
     };
 
     return (
@@ -131,13 +131,7 @@ export default function HomeContent() {
                             </div>
 
                             {/* --- CONTENT BAGIAN BAWAH (FOOTER) --- */}
-                            <div className="-mt-5 w-full flex items-center justify-between pt-1.5 xs:pt-2 sm:pt-2.5 md:pt-3 lg:pt-3.5 border-t border-slate-50 flex-shrink-0"
-                               
-                            >
-                                {/* Location Tag */}
-
-                               
-                            </div>
+                           
                         </div>
                     );
                 })}

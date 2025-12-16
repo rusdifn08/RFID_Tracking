@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
@@ -82,18 +83,15 @@ export default function DaftarRFID() {
         return `${year}-${month}-${day}`;
     }, []);
 
-    // Fungsi untuk fetch data garment berdasarkan RFID
-    const fetchGarmentData = useCallback(async (rfid: string) => {
-        if (!rfid.trim()) {
-            return;
-        }
+    // Query untuk fetch data garment berdasarkan RFID
+    const garmentQuery = useQuery({
+        queryKey: ['garment-data', updateFormData.rfid_garment],
+        queryFn: async () => {
+            if (!updateFormData.rfid_garment.trim()) {
+                return null;
+            }
 
-        setIsLoadingGarmentData(true);
-        setUpdateMessage(null);
-
-        try {
-            // Menggunakan proxy server (sama seperti StatusRFID.tsx)
-            const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(rfid.trim())}`, {
+            const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(updateFormData.rfid_garment.trim())}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -101,32 +99,34 @@ export default function DaftarRFID() {
                 },
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.garment) {
-                    // Auto-fill form dengan data dari API
-                    setUpdateFormData(prev => ({
-                        ...prev,
-                        wo: data.garment.wo || data.garment.wo_no || '',
-                        style: data.garment.style || '',
-                        buyer: data.garment.buyer || '',
-                        item: data.garment.item || '',
-                        color: data.garment.color || '',
-                        size: data.garment.size || ''
-                    }));
-                    setUpdateMessage({ type: 'success', text: 'Data garment berhasil dimuat' });
-                } else {
-                    setUpdateMessage({ type: 'error', text: data.message || 'Data garment tidak ditemukan' });
-                }
-            } else {
+            if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                setUpdateMessage({ type: 'error', text: errorData.message || `Gagal memuat data garment (${response.status})` });
+                throw new Error(errorData.message || `Gagal memuat data garment (${response.status})`);
             }
-        } catch (error: any) {
-            console.error('Error fetching garment data:', error);
-            const errorMessage = error.message || 'Terjadi kesalahan saat memuat data garment';
-            
-            // Tampilkan error yang lebih spesifik
+
+            return await response.json();
+        },
+        enabled: !!updateFormData.rfid_garment.trim() && showUpdateModal,
+        retry: 1,
+        staleTime: 30000,
+    });
+
+    // Update form data saat query berhasil
+    useEffect(() => {
+        if (garmentQuery.data?.success && garmentQuery.data?.garment) {
+            const garment = garmentQuery.data.garment;
+            setUpdateFormData(prev => ({
+                ...prev,
+                wo: garment.wo || garment.wo_no || '',
+                style: garment.style || '',
+                buyer: garment.buyer || '',
+                item: garment.item || '',
+                color: garment.color || '',
+                size: garment.size || ''
+            }));
+            setUpdateMessage({ type: 'success', text: 'Data garment berhasil dimuat' });
+        } else if (garmentQuery.isError) {
+            const errorMessage = garmentQuery.error?.message || 'Data garment tidak ditemukan';
             if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
                 setUpdateMessage({ 
                     type: 'error', 
@@ -135,10 +135,13 @@ export default function DaftarRFID() {
             } else {
                 setUpdateMessage({ type: 'error', text: errorMessage });
             }
-        } finally {
-            setIsLoadingGarmentData(false);
         }
-    }, []);
+    }, [garmentQuery.data, garmentQuery.isError, garmentQuery.error]);
+
+    // Update loading state
+    useEffect(() => {
+        setIsLoadingGarmentData(garmentQuery.isLoading);
+    }, [garmentQuery.isLoading]);
 
     // Reset form ketika modal dibuka
     useEffect(() => {
@@ -161,7 +164,7 @@ export default function DaftarRFID() {
         }
     }, [showUpdateModal]);
 
-    // useEffect untuk auto-fetch data garment ketika RFID di-input (dengan debounce)
+    // useEffect untuk reset form jika RFID kosong
     useEffect(() => {
         if (!showUpdateModal) return;
 
@@ -178,30 +181,16 @@ export default function DaftarRFID() {
                 size: ''
             }));
             setUpdateMessage(null);
-            return;
         }
+    }, [updateFormData.rfid_garment, showUpdateModal]);
 
-        // Debounce: tunggu 500ms setelah user selesai mengetik/scan
-        const timeoutId = setTimeout(() => {
-            fetchGarmentData(trimmedRfid);
-        }, 500);
+    // Mutation untuk update data garment
+    const updateGarmentMutation = useMutation({
+        mutationFn: async (formData: typeof updateFormData) => {
+            if (!formData.rfid_garment.trim()) {
+                throw new Error('RFID Garment wajib diisi');
+            }
 
-        return () => clearTimeout(timeoutId);
-    }, [updateFormData.rfid_garment, showUpdateModal, fetchGarmentData]);
-
-    // Fungsi untuk handle update data garment
-    const handleUpdateSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!updateFormData.rfid_garment.trim()) {
-            setUpdateMessage({ type: 'error', text: 'RFID Garment wajib diisi' });
-            return;
-        }
-
-        setIsUpdating(true);
-        setUpdateMessage(null);
-
-        try {
             // API endpoint langsung sesuai spesifikasi
             const API_UPDATE_URL = 'http://10.8.0.104:7000/garment/update';
             
@@ -212,49 +201,63 @@ export default function DaftarRFID() {
                     'Accept': 'application/json',
                 },
                 body: JSON.stringify({
-                    rfid_garment: updateFormData.rfid_garment.trim(),
-                    wo: updateFormData.wo.trim(),
-                    style: updateFormData.style.trim(),
-                    buyer: updateFormData.buyer.trim(),
-                    item: updateFormData.item.trim(),
-                    color: updateFormData.color.trim(),
-                    size: updateFormData.size.trim()
+                    rfid_garment: formData.rfid_garment.trim(),
+                    wo: formData.wo.trim(),
+                    style: formData.style.trim(),
+                    buyer: formData.buyer.trim(),
+                    item: formData.item.trim(),
+                    color: formData.color.trim(),
+                    size: formData.size.trim()
                 })
             });
 
             const data = await response.json();
 
-            if (response.ok) {
-                setUpdateMessage({ type: 'success', text: data.message || 'Data garment berhasil diperbarui' });
-                // Reset form setelah 2 detik
-                setTimeout(() => {
-                    setUpdateFormData({
-                        rfid_garment: '',
-                        wo: '',
-                        style: '',
-                        buyer: '',
-                        item: '',
-                        color: '',
-                        size: ''
-                    });
-                    setUpdateMessage(null);
-                }, 2000);
-            } else {
-                setUpdateMessage({ 
-                    type: 'error', 
-                    text: data.message || `Error: ${response.status} ${response.statusText}` 
-                });
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Gagal memperbarui data garment');
             }
-        } catch (error) {
+
+            return data;
+        },
+        onSuccess: (data) => {
+            setUpdateMessage({ type: 'success', text: data.message || 'Data garment berhasil diperbarui' });
+            // Reset form setelah 2 detik
+            setTimeout(() => {
+                setUpdateFormData({
+                    rfid_garment: '',
+                    wo: '',
+                    style: '',
+                    buyer: '',
+                    item: '',
+                    color: '',
+                    size: ''
+                });
+                setUpdateMessage(null);
+            }, 2000);
+        },
+        onError: (error: Error) => {
             setUpdateMessage({ 
                 type: 'error', 
-                text: error instanceof Error ? error.message : 'Terjadi kesalahan saat update data' 
+                text: error.message || 'Terjadi kesalahan saat update data' 
             });
-        } finally {
-            setIsUpdating(false);
         }
+    });
+
+
+    // Handler untuk submit update form
+    const handleUpdateSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!updateFormData.rfid_garment.trim()) {
+            setUpdateMessage({ type: 'error', text: 'RFID Garment wajib diisi' });
+            return;
+        }
+        updateGarmentMutation.mutate(updateFormData);
     };
 
+    // Sync isUpdating dengan mutation status
+    useEffect(() => {
+        setIsUpdating(updateGarmentMutation.isPending);
+    }, [updateGarmentMutation.isPending]);
 
     // Fetch data saat component mount dan saat date berubah
     useEffect(() => {
