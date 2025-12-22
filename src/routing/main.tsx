@@ -15,6 +15,9 @@ import AboutUs from '../pages/AboutUs.tsx';
 import RFIDTracking from '../pages/RFIDTracking.tsx';
 import Finishing from '../pages/Finishing.tsx';
 import DashboardRFIDFinishing from '../pages/DashboardRFIDFinishing.tsx';
+import RejectRoom from '../pages/RejectRoom.tsx';
+import DashboardRFIDReject from '../pages/DashboardRFIDReject.tsx';
+import ListRFIDReject from '../pages/ListRFIDReject.tsx';
 import ProtectedRoute from '../components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -147,6 +150,30 @@ const router = createBrowserRouter([
         element: (
             <ProtectedRoute>
                 <DashboardRFIDFinishing />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/reject-room',
+        element: (
+            <ProtectedRoute>
+                <RejectRoom />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-rfid-reject',
+        element: (
+            <ProtectedRoute>
+                <DashboardRFIDReject />
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/list-rfid-reject',
+        element: (
+            <ProtectedRoute>
+                <ListRFIDReject />
             </ProtectedRoute>
         ),
     },
