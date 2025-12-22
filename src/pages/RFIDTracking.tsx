@@ -5,7 +5,7 @@ import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
-import { Factory, Package } from 'lucide-react';
+import { Factory, Package, XCircle } from 'lucide-react';
 
 export default function RFIDTracking() {
     const { isOpen } = useSidebar();
@@ -32,6 +32,16 @@ export default function RFIDTracking() {
             bgEnd: 'to-cyan-600',
             shadow: 'shadow-cyan-200',
             onClick: () => navigate('/finishing')
+        },
+        {
+            id: 'reject-room',
+            title: 'Reject Room',
+            subtitle: 'Dashboard & list data reject finishing',
+            icon: XCircle,
+            bgStart: 'from-blue-500',
+            bgEnd: 'to-red-500',
+            shadow: 'shadow-red-200',
+            onClick: () => navigate('/reject-room')
         }
     ];
 
@@ -120,8 +130,24 @@ export default function RFIDTracking() {
                                                 <svg width="0" height="0" style={{ position: 'absolute' }}>
                                                     <defs>
                                                         <linearGradient id={`iconGradient-${card.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                                                            <stop offset="0%" stopColor={card.id === 'production-line' ? '#38bdf8' : '#22d3ee'} />
-                                                            <stop offset="100%" stopColor={card.id === 'production-line' ? '#1e40af' : '#0284c7'} />
+                                                            {card.id === 'production-line' && (
+                                                                <>
+                                                                    <stop offset="0%" stopColor="#38bdf8" />
+                                                                    <stop offset="100%" stopColor="#1e40af" />
+                                                                </>
+                                                            )}
+                                                            {card.id === 'finishing' && (
+                                                                <>
+                                                                    <stop offset="0%" stopColor="#22d3ee" />
+                                                                    <stop offset="100%" stopColor="#0284c7" />
+                                                                </>
+                                                            )}
+                                                            {card.id === 'reject-room' && (
+                                                                <>
+                                                                    <stop offset="0%" stopColor="#0ea5e9" />
+                                                                    <stop offset="100%" stopColor="#ef4444" />
+                                                                </>
+                                                            )}
                                                         </linearGradient>
                                                     </defs>
                                                 </svg>
