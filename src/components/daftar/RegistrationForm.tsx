@@ -317,8 +317,8 @@ const RegistrationForm = memo(({
                                         }}
                                         disabled={field.disabled}
                                         className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 ${fieldError
-                                                ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
-                                                : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
+                                            ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
+                                            : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
                                             }`}
                                     >
                                         <option value="">

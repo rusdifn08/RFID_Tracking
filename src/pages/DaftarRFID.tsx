@@ -854,8 +854,8 @@ export default function DaftarRFID() {
                             {/* Message Alert */}
                             {updateMessage && (
                                 <div className={`p-3 rounded-lg flex items-center gap-2 ${updateMessage.type === 'success'
-                                        ? 'bg-green-50 border border-green-200 text-green-800'
-                                        : 'bg-red-50 border border-red-200 text-red-800'
+                                    ? 'bg-green-50 border border-green-200 text-green-800'
+                                    : 'bg-red-50 border border-red-200 text-red-800'
                                     }`}>
                                     {updateMessage.type === 'success' ? (
                                         <ListChecks className="w-5 h-5 text-green-600" />
