@@ -37,10 +37,10 @@ npm run dev:all:mjl2   # MJL2 (backend 10.5.0.99, port 8001 & 5174)
 
 **Opsi B – Dua terminal:**
 
-| Terminal 1 – Frontend | Terminal 2 – Proxy server |
-|------------------------|---------------------------|
-| `npm run dev`          | `npm run server` (default CLN) |
-| `npm run dev:mjl2`     | `npm run server:mjl2` (MJL2)   |
+| Terminal 1 – Frontend | Terminal 2 – Proxy server      |
+|-----------------------|--------------------------------|
+| `npm run dev`         | `npm run server` (default CLN) |
+| `npm run dev:mjl2`    | `npm run server:mjl2` (MJL2)   |
 
 - **Frontend:** `http://localhost:5173` (atau `http://localhost:5174` untuk MJL2)
 - **Proxy server:** Mengikuti IP mesin yang menjalankan frontend, port **8000** (CLN/MJL) atau **8001** (MJL2).  
@@ -52,11 +52,11 @@ npm run dev:all:mjl2   # MJL2 (backend 10.5.0.99, port 8001 & 5174)
 
 ## Environment & Backend
 
-| Environment | Backend IP     | Proxy port | Frontend port (opsional) |
-|-------------|-----------------|------------|---------------------------|
-| CLN (default) | 10.8.0.104    | 8000       | 5173                      |
-| MJL        | 10.5.0.106      | 8000       | 5173                      |
-| MJL2       | 10.5.0.99       | 8001       | 5174                      |
+| Environment   | Backend IP | Proxy port | Frontend port (opsional) |
+|---------------|------------|------------|--------------------------|
+| CLN (default) | 10.8.0.104 | 8000       | 5173                     |
+| MJL           | 10.5.0.106 | 8000       | 5173                     |
+| MJL2          | 10.5.0.99  | 8001       | 5174                     |
 
 - **Lokasi konfigurasi backend:** `server.js` (variabel `BACKEND_IP`, `PORT`).
 - **Lokasi konfigurasi frontend:** `src/config/api.ts` (base URL proxy dan WebSocket).
@@ -86,12 +86,12 @@ Dokumentasi rinci route ada di `server.js`.
 
 ## Script npm
 
-| Script | Keterangan |
-|--------|------------|
-| `npm run dev` | Jalankan frontend (Vite) |
-| `npm run build` | Build production |
-| `npm run server` | Jalankan proxy server (CLN) |
-| `npm run server:cln` / `server:mjl` / `server:mjl2` | Proxy per environment |
-| `npm run dev:all` | Frontend + server bersamaan (CLN) |
+| Script                                                 | Keterangan                        |
+|--------------------------------------------------------|-----------------------------------|
+| `npm run dev`                                          | Jalankan frontend (Vite)          |
+| `npm run build`                                        | Build production                  |
+| `npm run server`                                       | Jalankan proxy server (CLN)       |
+| `npm run server:cln` / `server:mjl` / `server:mjl2`    | Proxy per environment             |
+| `npm run dev:all`                                      | Frontend + server bersamaan (CLN) |
 | `npm run dev:all:cln` / `dev:all:mjl` / `dev:all:mjl2` | Frontend + server per environment |
-| `npm run preview` | Preview build production |
+| `npm run preview`                                      | Preview build production          |

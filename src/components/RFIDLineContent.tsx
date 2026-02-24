@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, User, Sun, Moon, Edit } from 'lucide-react';
+import { ArrowRight, User, Sun, Moon, Edit, Target } from 'lucide-react';
 import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
 import type { ProductionLine } from '../data/production_line';
 import {
@@ -71,9 +71,10 @@ export default function ProductionLine() {
     const [lineShifts, setLineShifts] = useState<Record<number, 'day' | 'night'>>({});
     const [isLoadingShifts, setIsLoadingShifts] = useState(true);
 
-    // State untuk supervisor data dan startTimes dari API
+    // State untuk supervisor data, startTimes, dan target dari API
     const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
     const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
+    const [targetsData, setTargetsData] = useState<Record<string, number>>({});
 
     // State untuk active lines dari API wira
     const [activeLines, setActiveLines] = useState<Set<number>>(new Set());
@@ -119,6 +120,14 @@ export default function ProductionLine() {
                 if (data.success && data.data) {
                     setSupervisorData(data.data.supervisors || {});
                     setStartTimesData(data.data.startTimes || {});
+                    const targets: Record<string, number> = {};
+                    if (data.data.targets && typeof data.data.targets === 'object') {
+                        Object.keys(data.data.targets).forEach(key => {
+                            const v = data.data.targets[key];
+                            targets[key] = typeof v === 'number' && v >= 0 ? v : 0;
+                        });
+                    }
+                    setTargetsData(targets);
                 }
             }
         } catch (error) {
@@ -183,6 +192,7 @@ export default function ProductionLine() {
 
         window.addEventListener('supervisorUpdated', handleSupervisorUpdate);
         window.addEventListener('shiftUpdated', handleShiftUpdate);
+        window.addEventListener('targetUpdated', handleSupervisorUpdate);
 
         // Refresh saat window focus (user kembali ke tab)
         const handleFocus = () => {
@@ -194,6 +204,7 @@ export default function ProductionLine() {
         return () => {
             window.removeEventListener('supervisorUpdated', handleSupervisorUpdate);
             window.removeEventListener('shiftUpdated', handleShiftUpdate);
+            window.removeEventListener('targetUpdated', handleSupervisorUpdate);
             window.removeEventListener('focus', handleFocus);
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
@@ -535,9 +546,28 @@ export default function ProductionLine() {
                                 aspect-[2/1]
                             `}
                         >
-                            {/* Status Indicator (Lampu On/Off) di pojok kanan atas */}
-                            <div className="absolute top-1.5 xs:top-2 sm:top-2.5 right-1.5 xs:right-2 sm:right-2.5 z-20">
-                                <div className="relative">
+                            {/* Target (dengan icon) + LED Indicator - jarak jelas, All Production Line tanpa target */}
+                            <div className="absolute top-1.5 xs:top-2 sm:top-2.5 right-1.5 xs:right-2 sm:right-2.5 z-20 flex items-center gap-2 sm:gap-3">
+                                {/* Target badge: icon + nilai, jarak dari LED */}
+                                {(() => {
+                                    const isAllProductionLine = line.id === 0 || line.id === 111 || line.id === 112;
+                                    const lineTarget = targetsData[line.id.toString()];
+                                    const targetNum = typeof lineTarget === 'number' && lineTarget >= 0 ? lineTarget : 0;
+                                    if (isAllProductionLine) return null;
+                                    return (
+                                        <div
+                                            className={`flex items-center gap-1 xs:gap-1.5 px-2 xs:px-2.5 py-1 rounded-lg border shadow-sm transition-all duration-300 ${isHovered ? 'bg-amber-50/95 border-amber-300 text-amber-900' : 'bg-white border-amber-200/80 text-amber-800'}`}
+                                            title="Target produksi line"
+                                        >
+                                            <Target size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 text-amber-600" strokeWidth={2.5} />
+                                            <span className="text-[10px] xs:text-xs sm:text-sm font-bold tabular-nums leading-none">
+                                                {targetNum > 0 ? targetNum : '–'}
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
+                                {/* LED Indicator */}
+                                <div className="relative flex-shrink-0">
                                     {/* Outer glow effect */}
                                     <div
                                         className={`absolute inset-0 rounded-full blur-sm ${isLineActive ? 'bg-green-400' : 'bg-red-400'
@@ -618,62 +648,79 @@ export default function ProductionLine() {
                                     </h3>
                                 </div>
 
-                                {/* Footer Info (Supervisor, Jam Masuk & Arrow) */}
+                                {/* Footer: untuk All Production Line hanya Arrow; untuk line lain: Supervisor + Jam Masuk + Arrow */}
                                 <div className="flex items-center justify-between pt-1.5 xs:pt-2 border-t border-slate-200 gap-2">
-
-                                    {/* Supervisor Info + Edit */}
-                                    <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-1 min-w-0">
-                                        <div className={`p-1 xs:p-1.5 rounded-full bg-slate-50 flex-shrink-0`}>
-                                            <User size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} style={{ color: line.accentColor.replace('text-', '') }} />
-                                        </div>
-                                        <div className="flex flex-col min-w-0 flex-1">
-                                            <span className="text-[7px] xs:text-[8px] sm:text-[9px] text-slate-400 font-bold tracking-wider leading-tight" style={{ textTransform: 'capitalize' }}>
-                                                Supervisor
-                                            </span>
-                                            <span className={`text-[10px] xs:text-xs sm:text-sm font-semibold leading-tight transition-colors duration-300 truncate ${isHovered ? 'text-white' : 'text-slate-800'
-                                                }`} style={{ textTransform: 'capitalize' }}>
-                                                {(() => {
-                                                    // Gunakan data dari API jika ada, jika tidak gunakan dari production_line.ts
-                                                    const supervisorFromAPI = supervisorData[line.id.toString()];
-                                                    const supervisor = supervisorFromAPI || line.supervisor;
-                                                    return supervisor && supervisor.trim() !== '-' && supervisor.trim() !== '' ? supervisor : 'Not Assigned';
-                                                })()}
-                                            </span>
-                                        </div>
-                                        {line.id !== 0 && line.id !== 111 && line.id !== 112 && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => handleEditClick(e, line)}
-                                                className="p-1 rounded-full hover:bg-slate-200 flex-shrink-0 transition-colors"
-                                                title="Edit supervisor & shift"
-                                                aria-label="Edit supervisor & shift"
-                                            >
-                                                <Edit size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 text-slate-500" strokeWidth={2} />
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {/* Start Time dengan design profesional - di sebelah kanan supervisor */}
                                     {(() => {
-                                        const currentStartTime = startTimesData[line.id.toString()] || '07:30';
-                                        const { time, period } = formatTime12Hour(currentStartTime);
+                                        const isAllProductionLine = line.id === 0 || line.id === 111 || line.id === 112;
+                                        if (isAllProductionLine) {
+                                            return (
+                                                <>
+                                                    <div className="flex-1 min-w-0" />
+                                                    <div className={`
+                                                        w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0
+                                                        transition-all duration-300
+                                                        ${isHovered ? 'bg-slate-800 text-white translate-x-1 shadow-md' : 'bg-slate-50 text-slate-400'}
+                                                    `}>
+                                                        <ArrowRight size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} />
+                                                    </div>
+                                                </>
+                                            );
+                                        }
                                         return (
-                                            <div className={`flex items-center bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 border border-blue-300/60 rounded-md px-1.5 xs:px-2 py-0.5 xs:py-1 shadow-sm flex-shrink-0 transition-all duration-300 ${isHovered ? 'border-blue-400/80 shadow-md' : ''}`}>
-                                                <span className="text-[9px] xs:text-[10px] sm:text-[11px] font-semibold text-blue-700 tracking-tight whitespace-nowrap">
-                                                    {time} {period}
-                                                </span>
-                                            </div>
+                                            <>
+                                                {/* Supervisor Info + Edit */}
+                                                <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-1 min-w-0">
+                                                    <div className={`p-1 xs:p-1.5 rounded-full bg-slate-50 flex-shrink-0`}>
+                                                        <User size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} style={{ color: line.accentColor.replace('text-', '') }} />
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0 flex-1">
+                                                        <span className="text-[7px] xs:text-[8px] sm:text-[9px] text-slate-400 font-bold tracking-wider leading-tight" style={{ textTransform: 'capitalize' }}>
+                                                            Supervisor
+                                                        </span>
+                                                        <span className={`text-[10px] xs:text-xs sm:text-sm font-semibold leading-tight transition-colors duration-300 truncate ${isHovered ? 'text-white' : 'text-slate-800'
+                                                            }`} style={{ textTransform: 'capitalize' }}>
+                                                            {(() => {
+                                                                const supervisorFromAPI = supervisorData[line.id.toString()];
+                                                                const supervisor = supervisorFromAPI || line.supervisor;
+                                                                return supervisor && supervisor.trim() !== '-' && supervisor.trim() !== '' ? supervisor : 'Not Assigned';
+                                                            })()}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleEditClick(e, line)}
+                                                        className="p-1 rounded-full hover:bg-slate-200 flex-shrink-0 transition-colors"
+                                                        title="Edit supervisor & shift"
+                                                        aria-label="Edit supervisor & shift"
+                                                    >
+                                                        <Edit size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 text-slate-500" strokeWidth={2} />
+                                                    </button>
+                                                </div>
+
+                                                {/* Start Time */}
+                                                {(() => {
+                                                    const currentStartTime = startTimesData[line.id.toString()] || '07:30';
+                                                    const { time, period } = formatTime12Hour(currentStartTime);
+                                                    return (
+                                                        <div className={`flex items-center bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 border border-blue-300/60 rounded-md px-1.5 xs:px-2 py-0.5 xs:py-1 shadow-sm flex-shrink-0 transition-all duration-300 ${isHovered ? 'border-blue-400/80 shadow-md' : ''}`}>
+                                                            <span className="text-[9px] xs:text-[10px] sm:text-[11px] font-semibold text-blue-700 tracking-tight whitespace-nowrap">
+                                                                {time} {period}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* Arrow Button */}
+                                                <div className={`
+                                                    w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0
+                                                    transition-all duration-300
+                                                    ${isHovered ? 'bg-slate-800 text-white translate-x-1 shadow-md' : 'bg-slate-50 text-slate-400'}
+                                                `}>
+                                                    <ArrowRight size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} />
+                                                </div>
+                                            </>
                                         );
                                     })()}
-
-                                    {/* Arrow Button */}
-                                    <div className={`
-                                        w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0
-                                        transition-all duration-300
-                                        ${isHovered ? 'bg-slate-800 text-white translate-x-1 shadow-md' : 'bg-slate-50 text-slate-400'}
-                                    `}>
-                                        <ArrowRight size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} />
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -697,6 +744,7 @@ export default function ProductionLine() {
                     })()}
                     currentShift={lineShifts[selectedLine.id] || 'day'}
                     currentStartTime={startTimesData[selectedLine.id.toString()] || '07:30'}
+                    currentTarget={typeof targetsData[selectedLine.id.toString()] === 'number' ? targetsData[selectedLine.id.toString()] : 0}
                     environment={environment}
                     onUpdate={handleUpdate}
                 />

@@ -5,8 +5,8 @@
     "3": "day",
     "4": "day",
     "5": "day",
-    "10": "night",
-    "11": "night",
+    "10": "day",
+    "11": "day",
     "12": "day",
     "13": "day",
     "14": "day",
@@ -38,6 +38,6 @@
     "MJL2_8": "night",
     "MJL2_9": "day"
   },
-  "lastUpdated": "2026-02-24T07:42:16.245Z",
+  "lastUpdated": "2026-02-24T15:56:09.672Z",
   "description": "Data shift untuk production lines. 'day' = shift siang, 'night' = shift malam. Key adalah line ID dengan environment prefix untuk line yang shared (CLN_1, MJL_1, MJL2_1, dll)"
 }

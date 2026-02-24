@@ -3585,8 +3585,9 @@ function loadSupervisorData() {
             supervisorData = {
                 supervisors: {},
                 startTimes: {},
+                targets: {},
                 lastUpdated: new Date().toISOString(),
-                description: "Data supervisor dan jam masuk untuk production lines. Key adalah line ID (0 untuk All Production Line CLN, 111 untuk All Production Line MJL, 1-15 untuk Production Line 1-15)"
+                description: "Data supervisor, jam masuk, dan target untuk production lines. Key adalah line ID (0 untuk All Production Line CLN, 111 untuk All Production Line MJL, 1-15 untuk Production Line 1-15)"
             };
             fs.writeFileSync(SUPERVISOR_DATA_FILE, JSON.stringify(supervisorData, null, 2), 'utf-8');
         } else {
@@ -3617,6 +3618,9 @@ function loadSupervisorData() {
         }
         if (!supervisorData.startTimes) {
             supervisorData.startTimes = {};
+        }
+        if (!supervisorData.targets) {
+            supervisorData.targets = {};
         }
 
         let migratedCount = 0;
@@ -3691,6 +3695,29 @@ function loadSupervisorData() {
             if (!supervisorData.startTimes[envKey]) {
                 supervisorData.startTimes[envKey] = defaultStartTimes.MJL2[lineId] || '07:30';
             }
+        }
+
+        // Default targets (0 = belum di-set, acuan di dashboard line)
+        for (let i = 1; i <= 5; i++) {
+            const lineId = i.toString();
+            const envKey = `CLN_${lineId}`;
+            if (supervisorData.targets[envKey] === undefined) supervisorData.targets[envKey] = 0;
+        }
+        for (let i = 1; i <= 9; i++) {
+            const lineId = i.toString();
+            const envKey = `MJL_${lineId}`;
+            if (supervisorData.targets[envKey] === undefined) supervisorData.targets[envKey] = 0;
+        }
+        for (let i = 1; i <= 9; i++) {
+            const lineId = i.toString();
+            const envKey = `MJL2_${lineId}`;
+            if (supervisorData.targets[envKey] === undefined) supervisorData.targets[envKey] = 0;
+        }
+        if (supervisorData.targets['0'] === undefined) supervisorData.targets['0'] = 0;
+        if (supervisorData.targets['111'] === undefined) supervisorData.targets['111'] = 0;
+        if (supervisorData.targets['112'] === undefined) supervisorData.targets['112'] = 0;
+        for (let i = 10; i <= 15; i++) {
+            if (supervisorData.targets[i.toString()] === undefined) supervisorData.targets[i.toString()] = 0;
         }
 
         // Migrate All Production Line untuk setiap environment
@@ -3777,6 +3804,7 @@ app.get('/api/supervisor-data', (req, res) => {
         const supervisorData = loadSupervisorData();
         const allSupervisors = supervisorData.supervisors || {};
         const allStartTimes = supervisorData.startTimes || {};
+        const allTargets = supervisorData.targets || {};
 
         // Filter data berdasarkan environment
         // CLN: line 0, 1-5
@@ -3785,6 +3813,7 @@ app.get('/api/supervisor-data', (req, res) => {
         // Untuk line 1-5 yang ada di CLN, gunakan data default dari production_line.ts jika tidak ada di JSON
         const filteredSupervisors = {};
         const filteredStartTimes = {};
+        const filteredTargets = {};
 
         // Default startTimes untuk fallback
         const defaultStartTimesCLN = {
@@ -3793,7 +3822,7 @@ app.get('/api/supervisor-data', (req, res) => {
         const defaultStartTimesMJL = {
             '111': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '07:30',
             '6': '07:30', '7': '07:30', '8': '07:30', '9': '07:30', '10': '07:30', '11': '07:30',
-            '12': '07:30', '13': '07:30', '14': '07:30', '15': '07:30'
+            '12': '07:30', '13': '07:30', '14': '07:30', '15': '07:30', '16': '07:30'
         };
         const defaultStartTimesMJL2 = {
             '112': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '07:30',
@@ -3810,7 +3839,7 @@ app.get('/api/supervisor-data', (req, res) => {
             '111': 'Rusdi', '1': 'DATI', '2': 'SUSI', '3': 'DEDE', '4': 'DEDE',
             '5': 'HENI', '6': 'IYAH & DEDEH', '7': '-', '8': '-', '9': 'DALENA',
             '10': 'DALENA', '11': 'TATAN', '12': 'SITI', '13': 'DEDE WINDY',
-            '14': 'TINI', '15': 'LINA'
+            '14': 'TINI', '15': 'LINA', '16': '-'
         };
 
         const defaultMJL2 = {
@@ -3833,10 +3862,13 @@ app.get('/api/supervisor-data', (req, res) => {
                     // Hanya gunakan environment-aware key atau default, TIDAK gunakan key lama
                     filteredSupervisors[lineId] = allSupervisors[envKey] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[envKey] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 } else {
-                    // Line 111 dan 10-15: gunakan dari JSON jika ada, jika tidak gunakan default
-                    filteredSupervisors[lineId] = allSupervisors[lineId] || defaultData[lineId];
-                    filteredStartTimes[lineId] = allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
+                    // Line 111 dan 10-16: gunakan dari JSON (key MJL_10..MJL_16 atau 10..16), jika tidak default
+                    const mjlKey = id >= 10 && id <= 16 ? `MJL_${lineId}` : lineId;
+                    filteredSupervisors[lineId] = allSupervisors[mjlKey] || allSupervisors[lineId] || defaultData[lineId];
+                    filteredStartTimes[lineId] = allStartTimes[mjlKey] || allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[mjlKey] === 'number' ? allTargets[mjlKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 }
             });
         } else if (environment === 'MJL2') {
@@ -3852,10 +3884,12 @@ app.get('/api/supervisor-data', (req, res) => {
                     // Hanya gunakan environment-aware key atau default, TIDAK gunakan key lama
                     filteredSupervisors[lineId] = allSupervisors[envKey] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[envKey] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 } else {
                     // Line 112: gunakan dari JSON jika ada, jika tidak gunakan default
                     filteredSupervisors[lineId] = allSupervisors[lineId] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0;
                 }
             });
         } else {
@@ -3872,10 +3906,12 @@ app.get('/api/supervisor-data', (req, res) => {
                     // Hanya gunakan environment-aware key atau default, TIDAK gunakan key lama
                     filteredSupervisors[lineId] = allSupervisors[envKey] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[envKey] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 } else {
                     // Line 0: gunakan dari JSON jika ada, jika tidak gunakan default
                     filteredSupervisors[lineId] = allSupervisors[lineId] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0;
                 }
             });
         }
@@ -3884,7 +3920,8 @@ app.get('/api/supervisor-data', (req, res) => {
             success: true,
             data: {
                 supervisors: filteredSupervisors,
-                startTimes: filteredStartTimes
+                startTimes: filteredStartTimes,
+                targets: filteredTargets
             },
             environment: environment,
             lastUpdated: supervisorData.lastUpdated,
@@ -3902,12 +3939,81 @@ app.get('/api/supervisor-data', (req, res) => {
 });
 
 /**
+ * GET /api/target-data - Get target data untuk semua line (sumber: supervisor_data.json, system sama)
+ * Query: ?environment=CLN|MJL|MJL2 (optional)
+ * Response: { success, data: { targets: { "1": 170, "2": 195, ... } }, environment, lastUpdated, timestamp }
+ */
+app.get('/api/target-data', (req, res) => {
+    try {
+        const referer = req.headers.referer || req.headers.origin || '';
+        const port = referer.match(/:(\d+)/)?.[1];
+        const queryEnv = req.query.environment;
+        let detectedEnv = CURRENT_ENV;
+        if (port === '5174') detectedEnv = 'MJL2';
+        else if (port === '5173' && CURRENT_ENV === 'MJL') detectedEnv = 'MJL';
+        const environment = queryEnv === 'MJL' || queryEnv === 'MJL2' || queryEnv === 'CLN' ? queryEnv : detectedEnv;
+
+        const supervisorData = loadSupervisorData();
+        const allTargets = supervisorData.targets || {};
+
+        const filteredTargets = {};
+        const defaultTargetsCLN = { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+        const defaultTargetsMJL = { '111': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0, '8': 0, '9': 0, '10': 0, '11': 0, '12': 0, '13': 0, '14': 0, '15': 0, '16': 0 };
+        const defaultTargetsMJL2 = { '112': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0, '8': 0, '9': 0 };
+
+        if (environment === 'MJL') {
+            Object.keys(defaultTargetsMJL).forEach(lineId => {
+                const id = parseInt(lineId, 10);
+                const mjlKey = id >= 1 && id <= 16 ? `MJL_${lineId}` : lineId;
+                filteredTargets[lineId] = typeof allTargets[mjlKey] === 'number' ? allTargets[mjlKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
+            });
+        } else if (environment === 'MJL2') {
+            Object.keys(defaultTargetsMJL2).forEach(lineId => {
+                const id = parseInt(lineId, 10);
+                if (id >= 1 && id <= 9) {
+                    const envKey = `MJL2_${lineId}`;
+                    filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
+                } else {
+                    filteredTargets[lineId] = typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0;
+                }
+            });
+        } else {
+            Object.keys(defaultTargetsCLN).forEach(lineId => {
+                const id = parseInt(lineId, 10);
+                if (id >= 1 && id <= 5) {
+                    const envKey = `CLN_${lineId}`;
+                    filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
+                } else {
+                    filteredTargets[lineId] = typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0;
+                }
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: { targets: filteredTargets },
+            environment,
+            lastUpdated: supervisorData.lastUpdated,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ [TARGET DATA] GET Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error fetching target data',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * POST /api/supervisor-data - Update supervisor data untuk line tertentu
  * Body: { lineId: number, supervisor: string }
  */
 app.post('/api/supervisor-data', (req, res) => {
     try {
-        const { lineId, supervisor, startTime, environment: reqEnv } = req.body;
+        const { lineId, supervisor, startTime, target, environment: reqEnv } = req.body;
 
         if (lineId === undefined || lineId === null) {
             console.error(`❌ [SUPERVISOR DATA] Missing lineId in request`);
@@ -3929,6 +4035,9 @@ app.post('/api/supervisor-data', (req, res) => {
         }
         if (!supervisorData.startTimes) {
             supervisorData.startTimes = {};
+        }
+        if (!supervisorData.targets) {
+            supervisorData.targets = {};
         }
 
         const lineIdStr = lineId.toString();
@@ -3991,8 +4100,20 @@ app.post('/api/supervisor-data', (req, res) => {
             }
         }
 
+        // Update target jika ada (number >= 0, untuk acuan distribusi dashboard line)
+        if (target !== undefined && target !== null) {
+            const numTarget = typeof target === 'number' ? target : parseInt(String(target), 10);
+            if (!Number.isNaN(numTarget) && numTarget >= 0) {
+                supervisorData.targets[storageKey] = numTarget;
+                if (storageKey !== lineIdStr && supervisorData.targets[lineIdStr] !== undefined) {
+                    delete supervisorData.targets[lineIdStr];
+                }
+            }
+        }
+
         saveSupervisorData(supervisorData);
 
+        const currentTarget = typeof supervisorData.targets[storageKey] === 'number' ? supervisorData.targets[storageKey] : (typeof supervisorData.targets[lineIdStr] === 'number' ? supervisorData.targets[lineIdStr] : 0);
         return res.json({
             success: true,
             message: `Data updated for line ${lineId}`,
@@ -4000,6 +4121,7 @@ app.post('/api/supervisor-data', (req, res) => {
                 lineId: lineIdStr,
                 supervisor: supervisorData.supervisors[storageKey] || supervisorData.supervisors[lineIdStr] || '-',
                 startTime: supervisorData.startTimes[storageKey] || supervisorData.startTimes[lineIdStr] || '07:30',
+                target: currentTarget,
                 environment: environment
             },
             timestamp: new Date().toISOString()

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Settings, X } from 'lucide-react';
+import { Home, Settings, X, Target } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
@@ -54,9 +54,11 @@ export default function Breadcrumb() {
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
     const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
+    const [targetsData, setTargetsData] = useState<Record<string, number>>({});
     const [editingLine, setEditingLine] = useState<number | null>(null);
     const [editingSupervisor, setEditingSupervisor] = useState<string>('');
     const [editingStartTime, setEditingStartTime] = useState<string>('07:30');
+    const [editingTarget, setEditingTarget] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(false);
     const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>('CLN');
 
@@ -241,6 +243,14 @@ export default function Breadcrumb() {
                 if (data.success && data.data) {
                     setSupervisorData(data.data.supervisors || {});
                     setStartTimesData(data.data.startTimes || {});
+                    const targets: Record<string, number> = {};
+                    if (data.data.targets && typeof data.data.targets === 'object') {
+                        Object.keys(data.data.targets).forEach(key => {
+                            const v = data.data.targets[key];
+                            targets[key] = typeof v === 'number' && v >= 0 ? v : 0;
+                        });
+                    }
+                    setTargetsData(targets);
                 }
             }
         } catch (error) {
@@ -250,8 +260,8 @@ export default function Breadcrumb() {
         }
     };
 
-    // Save supervisor data dan startTime
-    const saveSupervisor = async (lineId: number, supervisor: string, startTime?: string) => {
+    // Save supervisor, startTime, dan target
+    const saveSupervisor = async (lineId: number, supervisor: string, startTime?: string, target?: number) => {
         try {
             setIsLoading(true);
             const response = await fetch(`${API_BASE_URL}/api/supervisor-data`, {
@@ -264,32 +274,33 @@ export default function Breadcrumb() {
                     lineId: lineId,
                     supervisor: supervisor,
                     startTime: startTime,
-                    environment: environment // Pass environment untuk environment-aware storage
+                    target: typeof target === 'number' && target >= 0 ? target : undefined,
+                    environment: environment
                 })
             });
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
-                    // Update local state
-                    setSupervisorData(prev => ({
-                        ...prev,
-                        [lineId.toString()]: supervisor
-                    }));
+                    setSupervisorData(prev => ({ ...prev, [lineId.toString()]: supervisor }));
                     if (startTime) {
-                        setStartTimesData(prev => ({
-                            ...prev,
-                            [lineId.toString()]: startTime
-                        }));
+                        setStartTimesData(prev => ({ ...prev, [lineId.toString()]: startTime }));
+                    }
+                    if (typeof target === 'number' && target >= 0) {
+                        setTargetsData(prev => ({ ...prev, [lineId.toString()]: target }));
                     }
                     setEditingLine(null);
                     setEditingSupervisor('');
                     setEditingStartTime('07:30');
-                    // Reload data
+                    setEditingTarget(0);
+                    // Reload data agar tampilan di modal ini juga fresh
                     await loadSupervisorData();
                     
-                    // Dispatch custom event untuk trigger refresh di RFIDLineContent
+                    // Dispatch custom event agar RFIDLineContent & device lain refetch (real-time)
                     window.dispatchEvent(new CustomEvent('supervisorUpdated', {
                         detail: { lineId, supervisor, environment }
+                    }));
+                    window.dispatchEvent(new CustomEvent('targetUpdated', {
+                        detail: { lineId, target: typeof target === 'number' ? target : 0, environment }
                     }));
                 }
             }
@@ -433,13 +444,15 @@ export default function Breadcrumb() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white mb-1">Pengaturan Supervisor</h2>
-                                    <p className="text-blue-100 text-sm">Kelola data supervisor untuk setiap production line</p>
+                                    <p className="text-blue-100 text-sm">Kelola data supervisor, jam masuk, dan target untuk setiap production line. Perubahan tersimpan di server dan ter-update real-time di semua device.</p>
                                 </div>
                                 <button
                                     onClick={() => {
                                         setIsSettingsModalOpen(false);
                                         setEditingLine(null);
                                         setEditingSupervisor('');
+                                        setEditingStartTime('07:30');
+                                        setEditingTarget(0);
                                     }}
                                     className="p-2 hover:bg-white/20 rounded-full transition-all duration-200 group"
                                 >
@@ -461,6 +474,7 @@ export default function Breadcrumb() {
                                         const lineIdStr = line.id.toString();
                                         const currentSupervisor = supervisorData[lineIdStr] || '-';
                                         const currentStartTime = startTimesData[lineIdStr] || '07:30';
+                                        const currentTarget = typeof targetsData[lineIdStr] === 'number' ? targetsData[lineIdStr] : 0;
                                         const isEditing = editingLine === line.id;
 
                                         return (
@@ -497,9 +511,23 @@ export default function Breadcrumb() {
                                                                         placeholder="07:30"
                                                                     />
                                                                 </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px] flex items-center gap-1"><Target size={14} className="text-blue-600" /> Target:</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        min={0}
+                                                                        value={editingTarget}
+                                                                        onChange={(e) => {
+                                                                            const v = parseInt(e.target.value, 10);
+                                                                            setEditingTarget(Number.isNaN(v) || v < 0 ? 0 : v);
+                                                                        }}
+                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-24"
+                                                                        placeholder="0"
+                                                                    />
+                                                                </div>
                                                                 <div className="flex items-center gap-3 pt-2">
                                                                     <button
-                                                                        onClick={() => saveSupervisor(line.id, editingSupervisor, editingStartTime)}
+                                                                        onClick={() => saveSupervisor(line.id, editingSupervisor, editingStartTime, editingTarget)}
                                                                         disabled={isLoading || !editingSupervisor.trim()}
                                                                         className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
                                                                     >
@@ -510,6 +538,7 @@ export default function Breadcrumb() {
                                                                             setEditingLine(null);
                                                                             setEditingSupervisor('');
                                                                             setEditingStartTime('07:30');
+                                                                            setEditingTarget(0);
                                                                         }}
                                                                         className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-all duration-200"
                                                                     >
@@ -531,6 +560,12 @@ export default function Breadcrumb() {
                                                                         {currentStartTime}
                                                                     </span>
                                                                 </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-gray-500 text-sm flex items-center gap-1"><Target size={12} className="text-amber-600" /> Target:</span>
+                                                                    <span className="font-semibold text-gray-900 text-sm bg-amber-50 px-3 py-1 rounded-md border border-amber-200">
+                                                                        {currentTarget > 0 ? currentTarget : '-'}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -540,8 +575,10 @@ export default function Breadcrumb() {
                                                                 setEditingLine(line.id);
                                                                 const supervisorFromJson = supervisorData[lineIdStr];
                                                                 const startTimeFromJson = startTimesData[lineIdStr];
+                                                                const targetFromJson = targetsData[lineIdStr];
                                                                 setEditingSupervisor(supervisorFromJson && supervisorFromJson !== '-' ? supervisorFromJson : '');
                                                                 setEditingStartTime(startTimeFromJson || '07:30');
+                                                                setEditingTarget(typeof targetFromJson === 'number' && targetFromJson >= 0 ? targetFromJson : 0);
                                                             }}
                                                             className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 border border-blue-200 hover:border-blue-300"
                                                         >
