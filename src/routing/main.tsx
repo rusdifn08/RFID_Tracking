@@ -19,25 +19,31 @@ const AboutUs = lazy(() => import('../pages/AboutUs.tsx'));
 const RFIDTracking = lazy(() => import('../pages/RFIDTracking.tsx'));
 const Finishing = lazy(() => import('../pages/Finishing.tsx'));
 const DashboardRFIDFinishing = lazy(() => import('../pages/DashboardRFIDFinishing.tsx'));
+const DashboardDetailFinishing = lazy(() => import('../pages/DashboardDetailFinishing.tsx'));
+const DashboardDryroom = lazy(() => import('../pages/DashboardDryroom.tsx'));
+const DashboardFolding = lazy(() => import('../pages/DashboardFolding.tsx'));
 const RejectRoom = lazy(() => import('../pages/RejectRoom.tsx'));
 const DashboardRFIDReject = lazy(() => import('../pages/DashboardRFIDReject.tsx'));
 const ListRFIDReject = lazy(() => import('../pages/ListRFIDReject.tsx'));
+const AllProductionLineDashboard = lazy(() => import('../pages/AllProductionLineDashboard.tsx'));
+const ProductionTrackingTime = lazy(() => import('../pages/ProductionTrackingTime.tsx'));
+const FormData = lazy(() => import('../pages/FormData.tsx'));
 
 // Loading component untuk Suspense
 const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div className="text-center">
-      <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-      <p className="text-gray-600 font-medium">Memuat halaman...</p>
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Memuat halaman...</p>
+        </div>
     </div>
-  </div>
 );
 
 // Wrapper untuk lazy loaded components dengan Suspense
 const LazyWrapper = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<PageLoader />}>
-    {children}
-  </Suspense>
+    <Suspense fallback={<PageLoader />}>
+        {children}
+    </Suspense>
 );
 
 const router = createBrowserRouter([
@@ -212,6 +218,36 @@ const router = createBrowserRouter([
         ),
     },
     {
+        path: '/dashboard-detail-finishing',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardDetailFinishing />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-dryroom',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardDryroom />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-folding',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardFolding />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
         path: '/reject-room',
         element: (
             <ProtectedRoute>
@@ -237,6 +273,36 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <ListRFIDReject />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/all-production-line',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <AllProductionLineDashboard />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/production-tracking-time',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <ProductionTrackingTime />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/form-data',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <FormData />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

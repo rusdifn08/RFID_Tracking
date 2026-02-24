@@ -1,8 +1,10 @@
 import { memo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import StatusCard from './StatusCard';
 import ChartCard from './ChartCard';
 import { BarChart3, Droplets, Package, XCircle } from 'lucide-react';
 import { DEFAULT_ROOM_STATUS_ENABLED } from './constants';
+import { getFinishingDataByLine } from '../../config/api';
 
 interface StatusCardsGridProps {
     qcData: {
@@ -18,10 +20,32 @@ interface StatusCardsGridProps {
         good: number;
     };
     onCardClick?: (type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA', section: 'QC' | 'PQC') => void;
+    lineId?: string; // Line ID untuk fetch finishing data
 }
 
-const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridProps) => {
+const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick, lineId }: StatusCardsGridProps) => {
     const showRoomStatus = DEFAULT_ROOM_STATUS_ENABLED;
+
+    // Fetch finishing data per line
+    const { data: finishingResponse, isLoading: isLoadingFinishing } = useQuery({
+        queryKey: ['finishing-data-by-line', lineId],
+        queryFn: async () => {
+            if (!lineId) return null;
+            const response = await getFinishingDataByLine(lineId);
+            if (!response.success || !response.data) {
+                throw new Error(response.error || 'Gagal mengambil data finishing');
+            }
+            return response.data;
+        },
+        enabled: !!lineId && showRoomStatus,
+        refetchInterval: 30000, // Refetch setiap 30 detik
+        retry: 3,
+    });
+
+    // Data dari API atau default values
+    const dryroomData = finishingResponse?.dryroom || { waiting: 0, checkin: 0, checkout: 0 };
+    const foldingData = finishingResponse?.folding || { waiting: 0, checkin: 0, checkout: 0 };
+    const rejectRoomData = finishingResponse?.reject_room || { waiting: 0, checkin: 0, checkout: 0, reject_mati: 0 };
 
     return (
         <div className="flex-1 flex flex-row gap-1 xs:gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-3 min-h-0" style={{ height: '62%', maxHeight: '62%', minHeight: '62%' }}>
@@ -73,7 +97,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Waiting</span>
                                             <span className="font-bold text-blue-900  items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : dryroomData.waiting.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center justify-between px-1">
                                             <span className="font-semibold text-gray-600" style={{
@@ -81,7 +105,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Check In</span>
                                             <span className="font-bold text-blue-900   items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : dryroomData.checkin.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center justify-between px-1">
                                             <span className="font-semibold text-gray-600" style={{
@@ -89,7 +113,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Check Out</span>
                                             <span className="font-bold text-blue-900 items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : dryroomData.checkout.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -109,7 +133,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Waiting</span>
                                             <span className="font-bold text-blue-900  items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : foldingData.waiting.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center content-center justify-between px-1">
                                             <span className="font-semibold text-gray-600" style={{
@@ -117,7 +141,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Check In</span>
                                             <span className="font-bold text-blue-900 items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : foldingData.checkin.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center justify-between px-1">
                                             <span className="font-semibold text-gray-600 " style={{
@@ -125,7 +149,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Shipment</span>
                                             <span className="font-bold text-blue-900 items-center content-center justify-center mr-4" style={{
                                                 fontSize: 'clamp(1.25vw, 2.222vh, 5vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : foldingData.checkout.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -151,7 +175,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Waiting</h4>
                                             <span className="font-bold leading-none text-red-900" style={{
                                                 fontSize: 'clamp(1.25vw, 3.222vh, 3.125vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : rejectRoomData.waiting.toLocaleString()}</span>
                                         </div>
                                         {/* Check In Card */}
                                         <div className="2xl:gap-5 relative flex flex-col items-center justify-center p-0.5 xs:p-1 sm:p-1.5 bg-red-50 rounded-lg xs:rounded-xl border border-red-300 hover:bg-red-100 transition-all duration-300 cursor-pointer">
@@ -161,7 +185,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Check In</h4>
                                             <span className="font-bold leading-none text-red-900" style={{
                                                 fontSize: 'clamp(1.25vw, 3.222vh, 4.125vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : rejectRoomData.checkin.toLocaleString()}</span>
                                         </div>
                                         {/* Check Out Card */}
                                         <div className="2xl:gap-5 relative flex flex-col items-center justify-center p-0.5 xs:p-1 sm:p-1.5 bg-red-50 rounded-lg xs:rounded-xl border border-red-300 hover:bg-red-100 transition-all duration-300 cursor-pointer">
@@ -171,7 +195,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Check Out</h4>
                                             <span className="font-bold leading-none text-red-900" style={{
                                                 fontSize: 'clamp(1.25vw, 3.222vh, 3.125vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : rejectRoomData.checkout.toLocaleString()}</span>
                                         </div>
                                         {/* Reject Mati Card */}
                                         <div className="2xl:gap-5 relative flex flex-col items-center justify-center p-0.5 xs:p-1 sm:p-1.5 bg-red-50 rounded-lg xs:rounded-xl border border-red-300 hover:bg-red-100 transition-all duration-300 cursor-pointer">
@@ -181,7 +205,7 @@ const StatusCardsGrid = memo(({ qcData, pqcData, onCardClick }: StatusCardsGridP
                                             }}>Reject Mati</h4>
                                             <span className="font-bold leading-none text-red-900" style={{
                                                 fontSize: 'clamp(1.25vw, 3.222vh, 3.125vw)'
-                                            }}>0</span>
+                                            }}>{isLoadingFinishing ? '...' : rejectRoomData.reject_mati.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>

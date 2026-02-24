@@ -1,8 +1,11 @@
-import { memo, useMemo, useEffect } from 'react';
+import { memo, useMemo, useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { QrCode, Calendar, ListChecks, XCircle, Edit } from 'lucide-react';
+import { QrCode, Calendar, ListChecks, XCircle, Edit, ChevronDown, Building2 } from 'lucide-react';
+
+// Global variable untuk mengontrol visibility tombol reject
+const REJECT_ENABLED = false;
 
 interface WorkOrderData {
     workOrder: string;
@@ -36,10 +39,13 @@ interface RegistrationFormProps {
     };
     workOrderData: Record<string, WorkOrderData>;
     loading: boolean;
+    manualInputMode?: boolean; // Mode manual input saat error
     focusedInput: string | null;
     hoveredCard: boolean;
     dateFrom: string;
     dateTo: string;
+    branch: string;
+    onBranchChange: (branch: string) => void;
     onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
     onFocus: (name: string) => void;
     onBlur: () => void;
@@ -64,10 +70,13 @@ const RegistrationForm = memo(({
     formData,
     workOrderData,
     loading,
+    manualInputMode = false,
     focusedInput,
     hoveredCard,
     dateFrom,
     dateTo,
+    branch,
+    onBranchChange,
     onInputChange,
     onFocus,
     onBlur,
@@ -109,6 +118,35 @@ const RegistrationForm = memo(({
     const availableItems = selectedWOData?.items || [];
     const availableColors = selectedWOData?.colors || [];
     const availableSizes = selectedWOData?.sizes || [];
+
+    // State untuk dropdown branch
+    const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+    const branchDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Handler untuk menutup dropdown saat klik di luar
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target as Node)) {
+                setIsBranchDropdownOpen(false);
+            }
+        };
+
+        if (isBranchDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isBranchDropdownOpen]);
+
+    // Handler untuk memilih branch
+    const handleBranchSelect = (selectedBranch: string) => {
+        onBranchChange(selectedBranch);
+        setIsBranchDropdownOpen(false);
+    };
+
+    const branchOptions = ['CJL', 'MJ1', 'MJ2'];
 
     // Sync form values dengan props formData
     useEffect(() => {
@@ -190,10 +228,27 @@ const RegistrationForm = memo(({
     };
 
     const dateDisplay = useMemo(() => {
-        if (dateFrom === dateTo) {
-            return new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+        // Jika tidak ada filter tanggal, tampilkan "Filter Date"
+        if (!dateFrom || !dateTo) {
+            return 'Filter Date';
         }
-        return `${new Date(dateFrom).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} - ${new Date(dateTo).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+
+        // Validasi tanggal sebelum format
+        const fromDate = new Date(dateFrom);
+        const toDate = new Date(dateTo);
+
+        // Jika tanggal tidak valid, tampilkan "Filter Date"
+        if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+            return 'Filter Date';
+        }
+
+        // Jika tanggal sama, tampilkan satu tanggal
+        if (dateFrom === dateTo) {
+            return fromDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        // Jika berbeda, tampilkan range
+        return `${fromDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} - ${toDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`;
     }, [dateFrom, dateTo]);
 
     const formFields = [
@@ -235,14 +290,7 @@ const RegistrationForm = memo(({
 
                         {/* QR Code Icon - Tengah (Absolute) */}
                         <div className="absolute left-1/2 transform -translate-x-1/2 flex-shrink-0 z-10">
-                            <div
-                                className={`w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transition-all duration-500 ${hoveredCard ? 'scale-110 rotate-3 shadow-blue-500/50' : 'scale-100 rotate-0'}`}
-                            >
-                                <QrCode
-                                    className={`w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white transition-all duration-500 ${hoveredCard ? 'scale-110' : 'scale-100'}`}
-                                    strokeWidth={2.5}
-                                />
-                            </div>
+                            <h1 className="text-base xs:text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 text-center mb-1 xs:mb-1.5 sm:mb-2 transition-colors duration-300" style={{ textTransform: 'capitalize' }}>Register RFID</h1>
                         </div>
 
                         {/* Registered RFID, Update & Scan Reject Buttons - Kanan (Vertikal) */}
@@ -265,25 +313,67 @@ const RegistrationForm = memo(({
                                 <span className="font-semibold hidden sm:inline">UPDATE RFID</span>
                                 <span className="font-semibold sm:hidden">UPDATE</span>
                             </button>
-                            <button
-                                onClick={onRejectClick}
-                                className="px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 font-medium text-[9px] xs:text-[10px] sm:text-xs"
-                                title="Scan Reject"
-                            >
-                                <XCircle size={12} className="xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0" />
-                                <span className="font-semibold hidden sm:inline">SCAN REJECT</span>
-                                <span className="font-semibold sm:hidden">REJECT</span>
-                            </button>
+                            {REJECT_ENABLED && (
+                                <button
+                                    onClick={onRejectClick}
+                                    className="px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 font-medium text-[9px] xs:text-[10px] sm:text-xs"
+                                    title="Scan Reject"
+                                >
+                                    <XCircle size={12} className="xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0" />
+                                    <span className="font-semibold hidden sm:inline">SCAN REJECT</span>
+                                    <span className="font-semibold sm:hidden">REJECT</span>
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    <h1 className="text-base xs:text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 text-center mb-1 xs:mb-1.5 sm:mb-2 transition-colors duration-300" style={{ textTransform: 'capitalize' }}>
-                        Register RFID
-                    </h1>
+                    {/* Branch Selection Button - Di bawah filter tanggal, sejajar di sebelah kiri */}
+                    <div className="flex items-center gap-2 mb-2 xs:mb-2.5 sm:mb-3 relative" ref={branchDropdownRef}>
+                        <span className="text-[10px] xs:text-[11px] sm:text-xs font-semibold text-gray-700 whitespace-nowrap">
+                            Branch:
+                        </span>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
+                                className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 sm:py-2.5 h-8 xs:h-9 sm:h-10 bg-white border-2 border-gray-300 rounded-lg shadow-sm hover:shadow-md hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition-all flex items-center gap-1.5 xs:gap-2 font-medium text-[9px] xs:text-[10px] sm:text-xs text-gray-700 hover:bg-gray-50 min-w-[80px] xs:min-w-[90px] sm:min-w-[100px]"
+                            >
+                                <Building2 size={12} className="xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0 text-blue-600" />
+                                <span className="flex-1 text-left font-semibold">{branch}</span>
+                                <ChevronDown
+                                    size={12}
+                                    className={`xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0 text-gray-500 transition-transform duration-200 ${isBranchDropdownOpen ? 'rotate-180' : ''}`}
+                                />
+                            </button>
 
-                    <p className="text-gray-600 text-center mb-2 xs:mb-2.5 sm:mb-3 md:mb-4 text-[10px] xs:text-[11px] sm:text-xs md:text-sm leading-tight px-2">
-                        Input informasi Work Order, Style, Buyer, Item, Color, dan Size untuk scanning RFID
-                    </p>
+                            {/* Dropdown Menu */}
+                            {isBranchDropdownOpen && (
+                                <div className="absolute top-full left-0 mt-1 w-full bg-white border-2 border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                                    {branchOptions.map((branchOption) => (
+                                        <button
+                                            key={branchOption}
+                                            type="button"
+                                            onClick={() => handleBranchSelect(branchOption)}
+                                            className={`w-full px-3 xs:px-4 py-2 xs:py-2.5 text-left text-[9px] xs:text-[10px] sm:text-xs font-medium transition-colors flex items-center gap-2 ${branch === branchOption
+                                                ? 'bg-blue-50 text-blue-700 font-semibold'
+                                                : 'text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <Building2
+                                                size={12}
+                                                className={`xs:w-[14px] xs:h-[14px] sm:w-4 sm:h-4 flex-shrink-0 ${branch === branchOption ? 'text-blue-600' : 'text-gray-400'
+                                                    }`}
+                                            />
+                                            <span>{branchOption}</span>
+                                            {branch === branchOption && (
+                                                <span className="ml-auto text-blue-600 font-bold">✓</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Form */}
@@ -292,6 +382,13 @@ const RegistrationForm = memo(({
                     className="flex flex-col flex-1 min-h-0 overflow-y-auto"
                     noValidate
                 >
+                    {manualInputMode && (
+                        <div className="mb-2 xs:mb-2.5 sm:mb-3 p-2 xs:p-2.5 sm:p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p className="text-[10px] xs:text-xs sm:text-sm text-orange-800 font-medium">
+                                ⚠️ Mode Input Manual: Terjadi error saat mengambil data Work Order. Silakan input data secara manual.
+                            </p>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 mb-2 xs:mb-2.5 sm:mb-3 md:mb-4">
                         {formFields.map((field) => {
                             const fieldName = field.name as keyof RegistrationFormData;
@@ -304,33 +401,57 @@ const RegistrationForm = memo(({
                                         className={`block text-[10px] xs:text-xs sm:text-sm font-semibold text-gray-700 mb-0.5 xs:mb-1 sm:mb-1.5 transition-colors duration-300 ${focusedInput === field.name ? 'text-blue-600' : ''} ${fieldError ? 'text-red-600' : ''}`}
                                     >
                                         {field.label}
+                                        {manualInputMode && (
+                                            <span className="ml-1 text-[9px] text-orange-600 font-normal">(Input Manual)</span>
+                                        )}
                                     </label>
-                                    <select
-                                        id={field.name}
-                                        {...register(fieldName)}
-                                        onFocus={() => onFocus(field.name)}
-                                        onBlur={onBlur}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            setValue(fieldName, value as any);
-                                            onInputChange(e);
-                                        }}
-                                        disabled={field.disabled}
-                                        className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 ${fieldError
-                                            ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
-                                            : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
-                                            }`}
-                                    >
-                                        <option value="">
-                                            {field.name === 'workOrder'
-                                                ? (loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')
-                                                : (selectedWorkOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu')
-                                            }
-                                        </option>
-                                        {field.options.map(option => (
-                                            <option key={option} value={option}>{option}</option>
-                                        ))}
-                                    </select>
+                                    {manualInputMode ? (
+                                        <input
+                                            type="text"
+                                            id={field.name}
+                                            {...register(fieldName)}
+                                            onFocus={() => onFocus(field.name)}
+                                            onBlur={onBlur}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                setValue(fieldName, value as any);
+                                                onInputChange(e);
+                                            }}
+                                            value={formData[fieldName as keyof typeof formData] || ''}
+                                            placeholder={`Masukkan ${field.label}`}
+                                            className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white ${fieldError
+                                                ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
+                                                : 'border-orange-300 focus:ring-orange-200 focus:border-orange-500 hover:border-orange-400'
+                                                }`}
+                                        />
+                                    ) : (
+                                        <select
+                                            id={field.name}
+                                            {...register(fieldName)}
+                                            onFocus={() => onFocus(field.name)}
+                                            onBlur={onBlur}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                setValue(fieldName, value as any);
+                                                onInputChange(e);
+                                            }}
+                                            disabled={field.disabled}
+                                            className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 ${fieldError
+                                                ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
+                                                : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
+                                                }`}
+                                        >
+                                            <option value="">
+                                                {field.name === 'workOrder'
+                                                    ? (loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')
+                                                    : (selectedWorkOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu')
+                                                }
+                                            </option>
+                                            {field.options.map(option => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                     {fieldError && (
                                         <p className="mt-0.5 text-[9px] xs:text-[10px] text-red-600">{fieldError.message}</p>
                                     )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { API_BASE_URL, getWOBreakdown } from '../config/api';
+import { API_BASE_URL, getWOBreakdown, getDefaultHeaders, getDefaultBranch } from '../config/api';
 import type { WOBreakdownData } from '../config/api';
 
 interface WorkOrderData {
@@ -19,6 +19,10 @@ interface UseDaftarRFIDReturn {
     setDateTo: (date: string) => void;
     showDateFilterModal: boolean;
     setShowDateFilterModal: (show: boolean) => void;
+
+    // Branch state
+    branch: string;
+    setBranch: (branch: string) => void;
 
     // Modal states
     showRegisteredModal: boolean;
@@ -58,6 +62,7 @@ interface UseDaftarRFIDReturn {
     setWorkOrderData: React.Dispatch<React.SetStateAction<Record<string, WorkOrderData>>>;
     loading: boolean;
     setLoading: (value: boolean) => void;
+    manualInputMode: boolean; // Mode manual input saat error
 
     // Form data
     formData: {
@@ -109,18 +114,11 @@ interface UseDaftarRFIDReturn {
 }
 
 export const useDaftarRFID = (): UseDaftarRFIDReturn => {
-    // Date range state - default hari ini
-    const getTodayDate = () => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-
-    const [dateFrom, setDateFrom] = useState<string>(getTodayDate());
-    const [dateTo, setDateTo] = useState<string>(getTodayDate());
+    // Date range state - default kosong (tanpa filter tanggal)
+    const [dateFrom, setDateFrom] = useState<string>('');
+    const [dateTo, setDateTo] = useState<string>('');
     const [showDateFilterModal, setShowDateFilterModal] = useState<boolean>(false);
+    const [branch, setBranch] = useState<string>(getDefaultBranch());
     const [showRegisteredModal, setShowRegisteredModal] = useState<boolean>(false);
     const [showScanRejectModal, setShowScanRejectModal] = useState<boolean>(false);
     const [rejectRfidInput, setRejectRfidInput] = useState<string>('');
@@ -135,6 +133,7 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
     const [filterSize, setFilterSize] = useState<string>('Semua');
     const [workOrderData, setWorkOrderData] = useState<Record<string, WorkOrderData>>({});
     const [loading, setLoading] = useState<boolean>(false);
+    const [manualInputMode, setManualInputMode] = useState<boolean>(false); // Mode manual input saat error
 
     const [formData, setFormData] = useState({
         workOrder: '',
@@ -169,22 +168,19 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
                 fetch(`${API_BASE_URL}/card/progress`, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                 }),
                 fetch(`${API_BASE_URL}/card/done`, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                 }),
                 fetch(`${API_BASE_URL}/card/waiting`, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                 }),
             ]);
@@ -305,14 +301,13 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
         const timestamp = new Date();
 
         try {
-            // API endpoint langsung sesuai spesifikasi
-            const API_SCRAP_URL = 'http://10.8.0.104:7000/scrap';
+            // API endpoint menggunakan API_BASE_URL untuk support dynamic IP
+            const API_SCRAP_URL = `${API_BASE_URL}/scrap`;
 
             const response = await fetch(API_SCRAP_URL, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
                 body: JSON.stringify({
                     rfid_garment: rfid
@@ -461,7 +456,7 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
         }
 
         // Check if parameters have changed
-        const currentParams = `${dateFrom}-${dateTo}`;
+        const currentParams = `${dateFrom}-${dateTo}-${branch}`;
         if (lastFetchParamsRef.current === currentParams && isFetchingRef.current === false) {
             console.log('⏳ [useDaftarRFID] Parameters unchanged, skipping fetch');
             return;
@@ -482,13 +477,13 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
             const startDateTo = dateTo ? formatDateForAPI(dateTo) : undefined;
 
             console.log('🟡 [useDaftarRFID] Calling getWOBreakdown with:', {
-                branch: 'CJL',
+                branch: branch,
                 startDateFrom,
                 startDateTo
             });
 
             const response = await getWOBreakdown(
-                'CJL',
+                branch,
                 startDateFrom,
                 startDateTo
             );
@@ -544,6 +539,8 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
 
             console.log('✅ [useDaftarRFID] Processed data:', Object.keys(processedData).length, 'work orders');
             setWorkOrderData(processedData);
+            // Reset manual input mode saat data berhasil di-fetch
+            setManualInputMode(false);
 
             // Reset form jika workOrder yang dipilih tidak ada lagi di data
             setFormData(prevFormData => {
@@ -569,9 +566,11 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
             setLoading(false);
             isFetchingRef.current = false;
             lastFetchParamsRef.current = ''; // Reset on error
-            console.log('✅ [useDaftarRFID] Loading state reset after error');
+            // Aktifkan mode manual input saat error
+            setManualInputMode(true);
+            console.log('✅ [useDaftarRFID] Loading state reset after error, manual input mode enabled');
         }
-    }, [dateFrom, dateTo]);
+    }, [dateFrom, dateTo, branch]);
 
     // Fetch data saat component mount dan saat date berubah dengan debouncing yang lebih lama
     useEffect(() => {
@@ -608,7 +607,7 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
                 fetchTimeoutRef.current = null;
             }
         };
-    }, [dateFrom, dateTo, fetchProductionBranchDataMemo]);
+    }, [dateFrom, dateTo, branch, fetchProductionBranchDataMemo]);
 
     // Sync ref dengan state
     useEffect(() => {
@@ -622,6 +621,8 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
         setDateTo,
         showDateFilterModal,
         setShowDateFilterModal,
+        branch,
+        setBranch,
         showRegisteredModal,
         setShowRegisteredModal,
         showScanRejectModal,
@@ -651,6 +652,7 @@ export const useDaftarRFID = (): UseDaftarRFIDReturn => {
         setWorkOrderData,
         loading,
         setLoading,
+        manualInputMode,
         formData,
         setFormData,
         focusedInput,

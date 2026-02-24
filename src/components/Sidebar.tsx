@@ -1,8 +1,10 @@
 import { memo, useMemo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
-import { Home, Rss, LogOut } from 'lucide-react';
-import logo from '../assets/logo.svg';
+import { Home, LogOut } from 'lucide-react';
+import headerIcon from '../assets/header.svg';
+import rfidIcon from '../assets/rfid.webp';
+import { logoutUser } from '../config/api';
 
 const Sidebar = memo(() => {
     const location = useLocation();
@@ -24,14 +26,27 @@ const Sidebar = memo(() => {
 
     // Deteksi line ID dari route - dioptimasi dengan useMemo
     const currentLineId = useMemo(() => {
-        const lineMatch = location.pathname.match(/\/line\/(\d+)/);
+        // Decode URL untuk menangani format "LINE%203" atau "LINE 3"
+        const decodedPath = decodeURIComponent(location.pathname);
+        
+        // Cek format /line/:id (angka saja)
+        const lineMatch = decodedPath.match(/\/line\/(\d+)/);
         if (lineMatch) return lineMatch[1];
 
-        const dashboardMatch = location.pathname.match(/\/dashboard-rfid\/(\d+)/);
+        // Cek format /dashboard-rfid/:id (angka saja)
+        const dashboardMatch = decodedPath.match(/\/dashboard-rfid\/(\d+)/);
         if (dashboardMatch) return dashboardMatch[1];
 
+        // Cek format /dashboard-rfid/LINE X atau /dashboard-rfid/LINE%20X (format lama)
+        const dashboardLineMatch = decodedPath.match(/\/dashboard-rfid\/LINE[% ]*(\d+)/i);
+        if (dashboardLineMatch) return dashboardLineMatch[1];
+
+        // Cek format /list-rfid/:id (angka saja)
+        const listRfidMatch = decodedPath.match(/\/list-rfid\/(\d+)/);
+        if (listRfidMatch) return listRfidMatch[1];
+
         // Default ke line 1 untuk daftar-rfid, data-rfid, dan list-rfid
-        if (location.pathname.startsWith('/daftar-rfid') || location.pathname.startsWith('/data-rfid') || location.pathname.startsWith('/list-rfid')) {
+        if (decodedPath.startsWith('/daftar-rfid') || decodedPath.startsWith('/data-rfid') || decodedPath.startsWith('/list-rfid')) {
             return '1';
         }
 
@@ -60,12 +75,43 @@ const Sidebar = memo(() => {
         [currentLineId, productionLines]
     );
 
-    const handleLogout = useCallback(() => {
-        // Clear semua data login
+    const handleLogout = useCallback(async () => {
+        try {
+            // Ambil data user dari localStorage untuk mendapatkan NIK
+            const userDataStr = localStorage.getItem('user');
+            if (userDataStr) {
+                try {
+                    const userData = JSON.parse(userDataStr);
+                    const nik = userData?.nik;
+                    let line = userData?.line;
+                    
+                    // Jika line tidak ada, coba extract dari nama (contoh: "TABLE 5" -> 5, "MEJA 4" -> 4)
+                    if (!line && userData?.name) {
+                        const match = userData.name.match(/\d+/);
+                        if (match) {
+                            line = match[0];
+                        }
+                    }
+                    
+                    // Panggil API logout untuk menghapus dari active sessions
+                    if (nik || line) {
+                        await logoutUser(nik, line);
+                    }
+                } catch (e) {
+                    // Ignore error parsing user data
+                }
+            }
+        } catch (error) {
+            // Ignore error, tetap lanjutkan logout
+            console.warn('Error calling logout API:', error);
+        }
+
+        // Clear semua data login (termasuk session valid until)
         localStorage.removeItem('isLoggedIn');
         localStorage.removeItem('rememberMe');
         localStorage.removeItem('user');
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('sessionValidUntil');
         navigate('/login', { replace: true });
     }, [navigate]);
 
@@ -92,13 +138,13 @@ const Sidebar = memo(() => {
                     {/* Animated background glow */}
                     <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/5 via-transparent to-blue-400/5 pointer-events-none"></div>
 
-                    {/* Logo SVG - Diperkecil */}
+                    {/* Logo SVG - Header icon dari header */}
                     <div className="relative mb-2 group">
                         {/* Glow effect saat hover */}
                         <div className="absolute inset-0 bg-yellow-400/30 rounded-2xl blur-2xl group-hover:blur-3xl transition-all duration-500 opacity-0 group-hover:opacity-100 -z-10"></div>
                         <div className="relative transform transition-all duration-300 group-hover:scale-110 group-hover:rotate-2 group-hover:drop-shadow-2xl">
                             <img
-                                src={logo}
+                                src={headerIcon}
                                 alt="GISTEX Logo"
                                 className={`${isOpen ? 'w-24 h-18' : 'w-10 h-10'} object-contain drop-shadow-2xl filter brightness-110 transition-all duration-300`}
                             />
@@ -197,14 +243,19 @@ const Sidebar = memo(() => {
                                     ? 'scale-110'
                                     : ''
                                     }`}>
-                                    <Rss
-                                        size={18}
-                                        className={`transition-all duration-500 ease-in-out drop-shadow-lg ${isRFIDPage
-                                            ? 'text-yellow-400 drop-shadow-yellow-400/50'
-                                            : 'group-hover:text-yellow-400 group-hover:drop-shadow-yellow-400/50'
-                                            }`}
-                                        style={{ color: isRFIDPage ? '#f7f9fa' : '#e6f2ff' }}
-                                        strokeWidth={2.5}
+                                    <div 
+                                        className="w-[18px] h-[18px] transition-all duration-500 ease-in-out drop-shadow-lg"
+                                        style={{
+                                            maskImage: `url(${rfidIcon})`,
+                                            WebkitMaskImage: `url(${rfidIcon})`,
+                                            maskSize: 'contain',
+                                            WebkitMaskSize: 'contain',
+                                            maskRepeat: 'no-repeat',
+                                            WebkitMaskRepeat: 'no-repeat',
+                                            maskPosition: 'center',
+                                            WebkitMaskPosition: 'center',
+                                            background: isRFIDPage ? '#f7f9fa' : '#e6f2ff',
+                                        }}
                                     />
                                 </div>
 

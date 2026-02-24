@@ -12,7 +12,7 @@ import DateFilterModal from '../components/daftar/DateFilterModal';
 import RegisteredRFIDModal from '../components/daftar/RegisteredRFIDModal';
 import ScanRejectModal from '../components/daftar/ScanRejectModal';
 import UpdateDataModal from '../components/daftar/UpdateDataModal';
-import { API_BASE_URL, getWOBreakdown } from '../config/api';
+import { API_BASE_URL, getWOBreakdown, getDefaultHeaders } from '../config/api';
 
 const DaftarRFID = memo(() => {
     const { isOpen } = useSidebar();
@@ -43,6 +43,8 @@ const DaftarRFID = memo(() => {
         setDateTo,
         showDateFilterModal,
         setShowDateFilterModal,
+        branch,
+        setBranch,
         showRegisteredModal,
         setShowRegisteredModal,
         showScanRejectModal,
@@ -63,6 +65,7 @@ const DaftarRFID = memo(() => {
         setFilterSize,
         workOrderData,
         loading,
+        manualInputMode,
         formData,
         focusedInput,
         setFocusedInput,
@@ -97,12 +100,15 @@ const DaftarRFID = memo(() => {
                 return null;
             }
 
-            const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(submittedRfid.trim())}`, {
-                method: 'GET',
+            const response = await fetch(`${API_BASE_URL}/garment/update`, {
+                method: 'POST',
                 headers: {
+                    ...getDefaultHeaders(),
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
                 },
+                body: JSON.stringify({
+                    rfid_garment: submittedRfid.trim()
+                }),
             });
 
             if (!response.ok) {
@@ -119,26 +125,23 @@ const DaftarRFID = memo(() => {
 
     // Query untuk fetch WO breakdown - selalu fetch saat modal dibuka
     const woBreakdownQuery = useQuery({
-        queryKey: ['wo-breakdown-update'],
+        queryKey: ['wo-breakdown-update', branch, dateFrom, dateTo],
         queryFn: async () => {
-            const getTodayDate = () => {
-                const today = new Date();
-                const year = today.getFullYear();
-                const month = String(today.getMonth() + 1).padStart(2, '0');
-                const day = String(today.getDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-            };
+            // Gunakan dateFrom dan dateTo dari hook useDaftarRFID, jika kosong maka undefined (tidak kirim parameter)
+            const startDateFrom = dateFrom || undefined;
+            const startDateTo = dateTo || undefined;
 
-            const startDateFrom = getTodayDate();
-            const response = await getWOBreakdown('CJL', startDateFrom);
+            console.log('🔵 [WO BREAKDOWN UPDATE] Fetching WO breakdown:', { branch, startDateFrom, startDateTo });
+            const response = await getWOBreakdown(branch, startDateFrom, startDateTo);
 
             if (!response.success || !response.data) {
                 throw new Error(response.error || 'Gagal mengambil data WO breakdown');
             }
 
+            console.log('✅ [WO BREAKDOWN UPDATE] WO breakdown data received:', response.data?.data?.length || 0, 'items');
             return response.data;
         },
-        enabled: showUpdateModal, // Fetch saat modal dibuka
+        enabled: showUpdateModal && !!branch, // Fetch saat modal dibuka dan branch sudah ada
         retry: 1,
         staleTime: 30000,
     });
@@ -152,129 +155,203 @@ const DaftarRFID = memo(() => {
         return allWOs.sort();
     }, [woBreakdownQuery.data?.data]);
 
-    const getFilteredData = useMemo(() => {
+    // Helper function untuk filter data berdasarkan WO saja (tidak filter berdasarkan field lain)
+    // Strategi: Semua dropdown hanya filter berdasarkan WO, tidak filter berdasarkan field lain
+    // Ini memastikan semua pilihan yang sesuai dengan WO tetap muncul, meskipun field lain sudah terisi
+    const getFilteredDataForField = useCallback(() => {
         if (!woBreakdownQuery.data?.data || !Array.isArray(woBreakdownQuery.data.data)) {
             return [];
         }
         let filtered = woBreakdownQuery.data.data;
 
-        // Filter berdasarkan WO jika dipilih
+        // HANYA filter berdasarkan WO (selalu filter berdasarkan WO untuk semua dropdown)
+        // TIDAK filter berdasarkan field lain (style, buyer, item, color, size)
+        // Ini memastikan semua pilihan yang sesuai dengan WO tetap muncul
         if (updateFormData.wo?.trim()) {
             const targetWO = updateFormData.wo.trim();
             filtered = filtered.filter((item: any) => {
                 const itemWO = String(item.wo_no || '').trim();
+                // Handle multiple WO (comma-separated) - cek apakah targetWO ada di dalam list
+                if (itemWO.includes(',')) {
+                    const woList = itemWO.split(',').map((w: string) => w.trim());
+                    return woList.some((w: string) => w === targetWO || w.toUpperCase() === targetWO.toUpperCase());
+                }
                 return itemWO === targetWO || itemWO.toUpperCase() === targetWO.toUpperCase();
             });
+        } else {
+            // Jika WO belum dipilih, return semua data (untuk dropdown WO)
+            return filtered;
         }
 
-        // Filter berdasarkan Style jika dipilih
-        if (updateFormData.style?.trim()) {
-            filtered = filtered.filter((item: any) => {
-                const itemStyle = String(item.style || '').trim();
-                return itemStyle === updateFormData.style.trim() || itemStyle.toUpperCase() === updateFormData.style.trim().toUpperCase();
-            });
-        }
-
-        // Filter berdasarkan Buyer jika dipilih
-        if (updateFormData.buyer?.trim()) {
-            filtered = filtered.filter((item: any) => {
-                const itemBuyer = String(item.buyer || '').trim();
-                return itemBuyer === updateFormData.buyer.trim() || itemBuyer.toUpperCase() === updateFormData.buyer.trim().toUpperCase();
-            });
-        }
-
-        // Filter berdasarkan Item jika dipilih
-        if (updateFormData.item?.trim()) {
-            filtered = filtered.filter((item: any) => {
-                const itemProduct = String(item.product_name || '').trim();
-                return itemProduct === updateFormData.item.trim() || itemProduct.toUpperCase() === updateFormData.item.trim().toUpperCase();
-            });
-        }
-
-        // Filter berdasarkan Color jika dipilih
-        if (updateFormData.color?.trim()) {
-            filtered = filtered.filter((item: any) => {
-                const itemColor = String(item.color || '').trim();
-                return itemColor === updateFormData.color.trim() || itemColor.toUpperCase() === updateFormData.color.trim().toUpperCase();
-            });
-        }
+        // TIDAK ada filter tambahan berdasarkan style, buyer, item, color, atau size
+        // Semua dropdown hanya filter berdasarkan WO saja
+        // Ini memastikan user bisa melihat dan memilih semua pilihan yang sesuai dengan WO
 
         return filtered;
-    }, [woBreakdownQuery.data?.data, updateFormData]);
+    }, [woBreakdownQuery.data?.data, updateFormData.wo]);
 
+    // Get Styles - filter HANYA berdasarkan WO (tidak filter berdasarkan field lain)
     const getStyles = useMemo(() => {
-        const filtered = getFilteredData;
-        const styles = [...new Set(filtered.map((item: any) => String(item.style || '').trim()).filter(Boolean))];
+        const filtered = getFilteredDataForField();
+        // Handle multiple styles (comma-separated) - split dan ambil semua unique values
+        const allStyles = filtered.flatMap((item: any) => {
+            const itemStyle = String(item.style || '').trim();
+            if (itemStyle.includes(',')) {
+                return itemStyle.split(',').map((s: string) => s.trim()).filter(Boolean);
+            }
+            return itemStyle ? [itemStyle] : [];
+        });
+        const styles = [...new Set(allStyles)];
+        console.log('🔵 [UPDATE DROPDOWN] Styles for WO', updateFormData.wo, ':', styles.length, 'options', styles);
         return styles.sort();
-    }, [getFilteredData]);
+    }, [getFilteredDataForField, updateFormData.wo]);
 
+    // Get Buyers - filter HANYA berdasarkan WO (tidak filter berdasarkan field lain)
     const getBuyers = useMemo(() => {
-        const filtered = getFilteredData;
+        const filtered = getFilteredDataForField();
         const buyers = [...new Set(filtered.map((item: any) => String(item.buyer || '').trim()).filter(Boolean))];
+        console.log('🔵 [UPDATE DROPDOWN] Buyers for WO', updateFormData.wo, ':', buyers.length, 'options', buyers);
         return buyers.sort();
-    }, [getFilteredData]);
+    }, [getFilteredDataForField, updateFormData.wo]);
 
+    // Get Items - filter HANYA berdasarkan WO (tidak filter berdasarkan field lain)
     const getItems = useMemo(() => {
-        const filtered = getFilteredData;
-        const items = [...new Set(filtered.map((item: any) => String(item.product_name || '').trim()).filter(Boolean))];
+        const filtered = getFilteredDataForField();
+        // Handle multiple items (comma-separated) - split dan ambil semua unique values
+        const allItems = filtered.flatMap((item: any) => {
+            const itemProduct = String(item.product_name || '').trim();
+            if (itemProduct.includes(',')) {
+                return itemProduct.split(',').map((i: string) => i.trim()).filter(Boolean);
+            }
+            return itemProduct ? [itemProduct] : [];
+        });
+        const items = [...new Set(allItems)];
+        console.log('🔵 [UPDATE DROPDOWN] Items for WO', updateFormData.wo, ':', items.length, 'options', items);
         return items.sort();
-    }, [getFilteredData]);
+    }, [getFilteredDataForField, updateFormData.wo]);
 
+    // Get Colors - filter HANYA berdasarkan WO (tidak filter berdasarkan field lain)
     const getColors = useMemo(() => {
-        // Untuk Color, hanya filter berdasarkan WO dan Style (jika ada), tidak perlu filter Item
-        if (!woBreakdownQuery.data?.data || !Array.isArray(woBreakdownQuery.data.data)) {
-            return [];
-        }
-        let filtered = woBreakdownQuery.data.data;
-
-        // Filter berdasarkan WO jika dipilih
-        if (updateFormData.wo?.trim()) {
-            const targetWO = updateFormData.wo.trim();
-            filtered = filtered.filter((item: any) => {
-                const itemWO = String(item.wo_no || '').trim();
-                return itemWO === targetWO || itemWO.toUpperCase() === targetWO.toUpperCase();
-            });
-        }
-
-        // Filter berdasarkan Style jika dipilih (opsional, untuk lebih spesifik)
-        if (updateFormData.style?.trim()) {
-            filtered = filtered.filter((item: any) => {
-                const itemStyle = String(item.style || '').trim();
-                return itemStyle === updateFormData.style.trim() || itemStyle.toUpperCase() === updateFormData.style.trim().toUpperCase();
-            });
-        }
-
-        // Jangan filter berdasarkan Buyer, Item, atau Color yang sudah dipilih
-        // Karena Color bisa berbeda-beda untuk WO yang sama
+        const filtered = getFilteredDataForField();
         const colors = [...new Set(filtered.map((item: any) => String(item.color || '').trim()).filter(Boolean))];
+        console.log('🔵 [UPDATE DROPDOWN] Colors for WO', updateFormData.wo, ':', colors.length, 'options', colors);
         return colors.sort();
-    }, [woBreakdownQuery.data?.data, updateFormData.wo, updateFormData.style]);
+    }, [getFilteredDataForField, updateFormData.wo]);
 
+    // Get Sizes - filter HANYA berdasarkan WO (tidak filter berdasarkan field lain)
     const getSizes = useMemo(() => {
-        // Untuk Size, filter berdasarkan WO, Style, Buyer, Item, dan Color (jika sudah dipilih)
-        // Karena Size biasanya spesifik untuk kombinasi tertentu
-        const filtered = getFilteredData;
+        const filtered = getFilteredDataForField();
         const sizes = [...new Set(filtered.map((item: any) => String(item.size || '').trim()).filter(Boolean))];
+        console.log('🔵 [UPDATE DROPDOWN] Sizes for WO', updateFormData.wo, ':', sizes.length, 'options', sizes);
         return sizes.sort();
-    }, [getFilteredData]);
+    }, [getFilteredDataForField, updateFormData.wo]);
 
-    // Update form data saat garment query berhasil - set WO awal
+    // Update form data saat garment query berhasil - auto-fill semua data
     useEffect(() => {
-        if (garmentQuery.data?.success && garmentQuery.data?.garment) {
-            const garment = garmentQuery.data.garment;
-            const wo = garment.wo || garment.wo_no || '';
+        // Hanya proses jika modal terbuka dan ada submittedRfid
+        if (!showUpdateModal || !submittedRfid.trim()) {
+            return;
+        }
 
-            // Set WO terlebih dahulu
-            setUpdateFormData(prev => ({
-                ...prev,
-                rfid_garment: prev.rfid_garment, // Keep RFID
-                wo: wo,
-                style: '', // Akan diisi dari dropdown
-                buyer: '', // Akan diisi dari dropdown
-                item: '', // Akan diisi dari dropdown
-                color: '', // Akan diisi dari dropdown
-                size: '' // Akan diisi dari dropdown
-            }));
+        if (garmentQuery.data?.success && garmentQuery.data?.data) {
+            const garmentData = garmentQuery.data.data;
+
+            console.log('✅ [UPDATE FORM] Auto-filling form data from API:', garmentData);
+            console.log('✅ [UPDATE FORM] Current submittedRfid:', submittedRfid);
+
+            // Helper function untuk mencari buyer lengkap dari WO breakdown jika buyer dari API terpotong
+            const findCompleteBuyer = (apiBuyer: string, wo: string): string => {
+                if (!apiBuyer || !wo || !woBreakdownQuery.data?.data || !Array.isArray(woBreakdownQuery.data.data)) {
+                    return apiBuyer;
+                }
+
+                const targetWO = wo.trim();
+                const apiBuyerTrimmed = apiBuyer.trim();
+
+                // Cari data yang sesuai dengan WO
+                const woDataList = woBreakdownQuery.data.data.filter((item: any) => {
+                    const itemWO = String(item.wo_no || '').trim();
+                    // Handle multiple WO (comma-separated)
+                    if (itemWO.includes(',')) {
+                        const woList = itemWO.split(',').map((w: string) => w.trim());
+                        return woList.some((w: string) => w === targetWO || w.toUpperCase() === targetWO.toUpperCase());
+                    }
+                    return itemWO === targetWO || itemWO.toUpperCase() === targetWO.toUpperCase();
+                });
+
+                // Cari buyer yang lengkap dari WO breakdown
+                // Cek apakah ada buyer yang dimulai dengan buyer dari API (untuk handle truncate)
+                const buyersFromWO = [...new Set(woDataList.map((item: any) => String(item.buyer || '').trim()).filter(Boolean))];
+
+                // Cari buyer yang cocok (exact match atau buyer yang dimulai dengan apiBuyer)
+                const matchedBuyer = buyersFromWO.find((buyer: string) => {
+                    const buyerUpper = buyer.toUpperCase();
+                    const apiBuyerUpper = apiBuyerTrimmed.toUpperCase();
+                    // Exact match atau buyer lengkap yang dimulai dengan buyer terpotong
+                    return buyerUpper === apiBuyerUpper || buyerUpper.startsWith(apiBuyerUpper);
+                });
+
+                if (matchedBuyer) {
+                    console.log('🔍 [UPDATE FORM] Buyer terpotong ditemukan:', {
+                        dariAPI: apiBuyerTrimmed,
+                        dariWO: matchedBuyer,
+                        panjangAPI: apiBuyerTrimmed.length,
+                        panjangWO: matchedBuyer.length
+                    });
+                    return matchedBuyer;
+                }
+
+                return apiBuyerTrimmed;
+            };
+
+            // Auto-fill semua field dari response API
+            // Langsung set tanpa setTimeout untuk immediate update
+            setUpdateFormData(prev => {
+                const apiWO = String(garmentData.wo || garmentData.WO || prev.wo || '').trim();
+                const apiBuyer = String(garmentData.buyer || garmentData.BUYER || prev.buyer || '').trim();
+
+                // Cari buyer lengkap dari WO breakdown jika terpotong
+                const completeBuyer = findCompleteBuyer(apiBuyer, apiWO);
+
+                // Pastikan RFID tetap sama dengan yang di-submit
+                const newData = {
+                    rfid_garment: submittedRfid.trim(), // Gunakan submittedRfid untuk konsistensi
+                    wo: apiWO,
+                    style: String(garmentData.style || garmentData.STYLE || prev.style || '').trim(),
+                    buyer: completeBuyer, // Gunakan buyer lengkap dari WO breakdown jika terpotong
+                    item: String(garmentData.item || garmentData.ITEM || prev.item || '').trim(),
+                    color: String(garmentData.color || garmentData.COLOR || prev.color || '').trim(),
+                    size: String(garmentData.size || garmentData.SIZE || prev.size || '').trim()
+                };
+
+                console.log('✅ [UPDATE FORM] Auto-filling form data from API:', garmentData);
+                console.log('✅ [UPDATE FORM] Buyer correction:', {
+                    dariAPI: apiBuyer,
+                    setelahKoreksi: completeBuyer,
+                    apakahBerbeda: apiBuyer !== completeBuyer
+                });
+                console.log('✅ [UPDATE FORM] Setting form data:', newData);
+                console.log('✅ [UPDATE FORM] Form data will be:', {
+                    wo: newData.wo,
+                    style: newData.style,
+                    buyer: newData.buyer,
+                    item: newData.item,
+                    color: newData.color,
+                    size: newData.size
+                });
+                console.log('🔵 [UPDATE FORM] WO Breakdown query status:', {
+                    isLoading: woBreakdownQuery.isLoading,
+                    hasData: !!woBreakdownQuery.data?.data,
+                    dataCount: woBreakdownQuery.data?.data?.length || 0
+                });
+                return newData;
+            });
+
+            // Set success message
+            setUpdateMessage({
+                type: 'success',
+                text: garmentQuery.data.message || 'Data garment berhasil dimuat'
+            });
         } else if (garmentQuery.isError) {
             const errorMessage = garmentQuery.error?.message || 'Data garment tidak ditemukan';
             if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
@@ -286,10 +363,16 @@ const DaftarRFID = memo(() => {
                 setUpdateMessage({ type: 'error', text: errorMessage });
             }
         }
-    }, [garmentQuery.data, garmentQuery.isError, garmentQuery.error]);
+    }, [garmentQuery.data, garmentQuery.isError, garmentQuery.error, showUpdateModal, submittedRfid, woBreakdownQuery.data]);
 
-    // Auto-fill data pertama saat WO breakdown berhasil dimuat dan WO sudah ada
+    // Auto-fill data dari WO breakdown hanya jika field masih kosong (fallback jika API tidak mengisi)
+    // Data dari API garment/update diutamakan, WO breakdown hanya sebagai fallback
     useEffect(() => {
+        // Skip jika sudah ada data dari garment query (API sudah mengisi)
+        if (garmentQuery.data?.success && garmentQuery.data?.data) {
+            return; // Data dari API sudah lengkap, tidak perlu fallback dari WO breakdown
+        }
+
         if (woBreakdownQuery.data?.data && Array.isArray(woBreakdownQuery.data.data) && updateFormData.wo?.trim()) {
             const woBreakdownList = woBreakdownQuery.data.data;
             const targetWO = updateFormData.wo.trim();
@@ -308,7 +391,7 @@ const DaftarRFID = memo(() => {
                 const uniqueColors = [...new Set(woDataList.map((item: any) => item.color).filter(Boolean))];
                 const uniqueSizes = [...new Set(woDataList.map((item: any) => item.size).filter(Boolean))];
 
-                // Hanya set jika field masih kosong (untuk auto-fill pertama kali)
+                // Hanya set jika field masih kosong (untuk auto-fill fallback)
                 setUpdateFormData(prev => ({
                     ...prev,
                     style: prev.style || (uniqueStyles.length > 0 ? uniqueStyles[0] : ''),
@@ -317,17 +400,18 @@ const DaftarRFID = memo(() => {
                     color: prev.color || (uniqueColors.length > 0 ? uniqueColors[0] : ''),
                     size: prev.size || (uniqueSizes.length > 0 ? uniqueSizes[0] : '')
                 }));
-
-                // Tidak set message untuk WO breakdown, biarkan message dari garment query saja
             }
         } else if (woBreakdownQuery.isError) {
-            const errorMessage = woBreakdownQuery.error?.message || 'Gagal mengambil data WO breakdown';
-            setUpdateMessage({
-                type: 'error',
-                text: `${errorMessage}. Silakan isi data manual.`
-            });
+            // Hanya tampilkan error jika tidak ada data dari garment query
+            if (!garmentQuery.data?.success) {
+                const errorMessage = woBreakdownQuery.error?.message || 'Gagal mengambil data WO breakdown';
+                setUpdateMessage({
+                    type: 'error',
+                    text: `${errorMessage}. Silakan isi data manual.`
+                });
+            }
         }
-    }, [woBreakdownQuery.data, woBreakdownQuery.isError, woBreakdownQuery.error, updateFormData.wo]);
+    }, [woBreakdownQuery.data, woBreakdownQuery.isError, woBreakdownQuery.error, updateFormData.wo, garmentQuery.data]);
 
     // Handler untuk perubahan dropdown - reset field yang dependen
     // Handler functions - dioptimasi dengan useCallback
@@ -387,9 +471,31 @@ const DaftarRFID = memo(() => {
     }, [garmentQuery.isLoading, woBreakdownQuery.isLoading]);
 
 
-    // Reset form ketika modal dibuka
+    // Reset form ketika modal dibuka (hanya reset jika modal baru dibuka, bukan saat data sudah ter-load)
     useEffect(() => {
         if (showUpdateModal) {
+            // Reset hanya jika belum ada submittedRfid (modal baru dibuka)
+            // Jangan reset jika sudah ada data yang ter-load
+            if (!submittedRfid.trim()) {
+                setUpdateFormData({
+                    rfid_garment: '',
+                    wo: '',
+                    style: '',
+                    buyer: '',
+                    item: '',
+                    color: '',
+                    size: ''
+                });
+                setRfidInputValue('');
+                setUpdateMessage(null);
+            }
+            setIsLoadingGarmentData(false);
+            // Auto-focus pada input RFID setelah modal dibuka
+            setTimeout(() => {
+                updateRfidInputRef.current?.focus();
+            }, 100);
+        } else {
+            // Reset semua saat modal ditutup
             setUpdateFormData({
                 rfid_garment: '',
                 wo: '',
@@ -402,11 +508,6 @@ const DaftarRFID = memo(() => {
             setRfidInputValue('');
             setSubmittedRfid('');
             setUpdateMessage(null);
-            setIsLoadingGarmentData(false);
-            // Auto-focus pada input RFID setelah modal dibuka
-            setTimeout(() => {
-                updateRfidInputRef.current?.focus();
-            }, 100);
         }
     }, [showUpdateModal]);
 
@@ -425,11 +526,13 @@ const DaftarRFID = memo(() => {
         }
     }, [rfidInputValue]);
 
-    // Reset form jika submitted RFID kosong
+    // Reset form jika submitted RFID kosong (hanya reset field yang tidak RFID)
     useEffect(() => {
         if (!showUpdateModal) return;
 
-        if (!submittedRfid.trim()) {
+        // Hanya reset jika submittedRfid kosong DAN belum ada data dari garmentQuery
+        // Jangan reset jika garmentQuery sedang loading atau sudah berhasil
+        if (!submittedRfid.trim() && !garmentQuery.isLoading && !garmentQuery.data?.success) {
             // Reset form jika submitted RFID kosong
             setUpdateFormData(prev => ({
                 ...prev,
@@ -442,7 +545,7 @@ const DaftarRFID = memo(() => {
             }));
             setUpdateMessage(null);
         }
-    }, [submittedRfid, showUpdateModal]);
+    }, [submittedRfid, showUpdateModal, garmentQuery.isLoading, garmentQuery.data?.success]);
 
     // Mutation untuk update data garment
     const updateGarmentMutation = useMutation({
@@ -451,14 +554,13 @@ const DaftarRFID = memo(() => {
                 throw new Error('RFID Garment wajib diisi');
             }
 
-            // API endpoint langsung sesuai spesifikasi
-            const API_UPDATE_URL = 'http://10.8.0.104:7000/garment/update';
+            // API endpoint menggunakan API_BASE_URL untuk support dynamic IP
+            const API_UPDATE_URL = `${API_BASE_URL}/garment/update`;
 
             const response = await fetch(API_UPDATE_URL, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
                 body: JSON.stringify({
                     rfid_garment: formData.rfid_garment.trim(),
@@ -538,10 +640,10 @@ const DaftarRFID = memo(() => {
         setIsUpdating(updateGarmentMutation.isPending);
     }, [updateGarmentMutation.isPending]);
 
-    // Fetch data saat component mount dan saat date berubah
+    // Fetch data saat component mount dan saat date atau branch berubah
     useEffect(() => {
         fetchProductionBranchData();
-    }, [dateFrom, dateTo, fetchProductionBranchData]);
+    }, [dateFrom, dateTo, branch, fetchProductionBranchData]);
 
     return (
         <div className="flex min-h-screen w-full h-screen fixed inset-0 m-0 p-0"
@@ -584,10 +686,13 @@ const DaftarRFID = memo(() => {
                         formData={formData}
                         workOrderData={workOrderData}
                         loading={loading}
+                        manualInputMode={manualInputMode}
                         focusedInput={focusedInput}
                         hoveredCard={hoveredCard}
                         dateFrom={dateFrom}
                         dateTo={dateTo}
+                        branch={branch}
+                        onBranchChange={setBranch}
                         onInputChange={handleInputChange}
                         onFocus={setFocusedInput}
                         onBlur={() => setFocusedInput(null)}

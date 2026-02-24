@@ -4,6 +4,7 @@
 
     box-sizing: border-box;
 
+
 }
 
 html,
@@ -13,6 +14,8 @@ html,
     width: 100vw;
     height: 100vh;
     min-height: 100vh;
+    color: #94a3b8;
+
 }
 
 @keyframes fade-in {
@@ -61,7 +64,8 @@ html,
 }
 
 /* Smooth transitions for interactive elements */
-button,
+/* Removed global transitions to improve performance */
+/* button,
 a,
 input,
 select,
@@ -69,7 +73,7 @@ textarea {
     transition-property: color, background-color, border-color, transform, opacity, box-shadow;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 200ms;
-}
+} */
 
 /* Hide scrollbar but keep scrolling functionality */
 /* For Webkit browsers (Chrome, Safari, Edge) */
@@ -81,13 +85,18 @@ textarea {
 }
 
 /* For Firefox */
-html, body, * {
+html,
+body,
+* {
     scrollbar-width: none;
-    -ms-overflow-style: none; /* IE and Edge */
+    -ms-overflow-style: none;
+    /* IE and Edge */
 }
 
 /* Ensure scrolling still works */
-html, body, * {
+html,
+body,
+* {
     -webkit-overflow-scrolling: touch;
 }
 
@@ -97,4 +106,30 @@ html, body, * {
     width: 0;
     height: 0;
     background: transparent;
+}
+
+/* Custom scrollbar untuk dashboard mobile - visible tapi tipis */
+.dashboard-scrollable::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.dashboard-scrollable::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+
+.dashboard-scrollable::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+.dashboard-scrollable::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Untuk Firefox */
+.dashboard-scrollable {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
 }

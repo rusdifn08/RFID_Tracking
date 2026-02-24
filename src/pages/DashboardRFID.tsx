@@ -1,40 +1,66 @@
 import { useParams } from 'react-router-dom';
-import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import { Suspense, lazy, useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 import ExportModal from '../components/ExportModal';
 import type { ExportType } from '../components/ExportModal';
 import { exportToExcel } from '../utils/exportToExcel';
 import { useDashboardRFIDQuery } from '../hooks/useDashboardRFIDQuery';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { formatDateForAPI } from '../utils/dateUtils';
-import OverviewChart from '../components/dashboard/OverviewChart';
-import DataLineCard from '../components/dashboard/DataLineCard';
-import StatusCardsGrid from '../components/dashboard/StatusCardsGrid';
+import { useWiraDashboardWebSocket } from '../hooks/useWiraDashboardWebSocket';
+/* Lazy Load Heavy Components */
+const OverviewChart = lazy(() => import('../components/dashboard/OverviewChart'));
+const OutputSewingCard = lazy(() => import('../components/dashboard/OutputSewingCard'));
+const DataLineCard = lazy(() => import('../components/dashboard/DataLineCard'));
+const RoomStatusCard = lazy(() => import('../components/dashboard/RoomStatusCard'));
+import StatusCard from '../components/dashboard/StatusCard';
+
 import { COLORS, DEFAULT_REWORK_POPUP_ENABLED } from '../components/dashboard/constants';
-import { Filter, XCircle, CheckCircle, RefreshCcw, AlertCircle, Search } from 'lucide-react';
+import { XCircle, CheckCircle, Wrench, Clock, Search, Crosshair, AlertCircle } from 'lucide-react';
 import backgroundImage from '../assets/background.jpg';
 
 // --- HALAMAN UTAMA ---
 
+// Loading Skeleton Component
+const ChartSkeleton = () => (
+    <div className="animate-pulse bg-gray-200 rounded-lg h-full w-full min-h-[200px] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+);
+
 export default function DashboardRFID() {
     const { id } = useParams<{ id: string }>();
     const { isOpen } = useSidebar();
-    const lineId = id || '1';
+
+    // Normalisasi lineId - ekstrak angka dari format "LINE 3" atau "LINE%203"
+    const normalizedLineId = useMemo(() => {
+        if (!id) return '1';
+        // Decode URL untuk menangani format "LINE%203"
+        const decodedId = decodeURIComponent(id);
+        // Cek apakah format "LINE X" atau "LINE%20X"
+        const lineMatch = decodedId.match(/LINE[% ]*(\d+)/i);
+        if (lineMatch) {
+            return lineMatch[1];
+        }
+        // Jika sudah angka, gunakan langsung
+        if (/^\d+$/.test(decodedId)) {
+            return decodedId;
+        }
+        // Default ke 1 jika tidak valid
+        return '1';
+    }, [id]);
+
+    // Gunakan normalizedLineId untuk fetch data (selalu angka)
+    const lineId = normalizedLineId;
     const lineTitle = `LINE ${lineId}`;
 
-    // State untuk WO filter - harus dideklarasikan sebelum hook
-    const [showWoFilterModal, setShowWoFilterModal] = useState(false);
-    const [filterWo, setFilterWo] = useState(''); // Local state untuk modal input
+    // State untuk WO filter
     const [availableWOList, setAvailableWOList] = useState<string[]>([]);
-    const [loadingWOList, setLoadingWOList] = useState(false);
-    const [wiraData, setWiraData] = useState<any>(null);
-    const [loadingWira, setLoadingWira] = useState(false);
-    const [showPreview, setShowPreview] = useState(false); // Untuk menampilkan preview data
 
     // Custom hook dengan TanStack Query dan Zustand
     const {
@@ -49,7 +75,6 @@ export default function DashboardRFID() {
         outputLine,
         woData,
         showExportModal,
-        showDateFilterModal,
         filterDateFrom,
         filterDateTo,
         filterWo: appliedFilterWo,
@@ -57,17 +82,28 @@ export default function DashboardRFID() {
 
     // Zustand store actions
     const setShowExportModal = useDashboardStore((state) => state.setShowExportModal);
-    const setShowDateFilterModal = useDashboardStore((state) => state.setShowDateFilterModal);
-    const setFilterDateFrom = useDashboardStore((state) => state.setFilterDateFrom);
-    const setFilterDateTo = useDashboardStore((state) => state.setFilterDateTo);
+    const setFilterDateFromStore = useDashboardStore((state) => state.setFilterDateFrom);
+    const setFilterDateToStore = useDashboardStore((state) => state.setFilterDateTo);
     const setDashboardFilterWo = useDashboardStore((state) => state.setFilterWo);
+    const setIsDateFilterActive = useDashboardStore((state) => state.setIsDateFilterActive);
+
+    // Reset filter aktif saat tanggal diubah (user harus klik search lagi)
+    const handleDateFromChange = (date: string) => {
+        setFilterDateFromStore(date);
+        setIsDateFilterActive(false); // Reset filter aktif saat tanggal diubah
+    };
+
+    const handleDateToChange = (date: string) => {
+        setFilterDateToStore(date);
+        setIsDateFilterActive(false); // Reset filter aktif saat tanggal diubah
+    };
 
     // State untuk detail modal
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [detailData, setDetailData] = useState<any[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailTitle, setDetailTitle] = useState('');
-    const [detailType, setDetailType] = useState<'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | null>(null);
+    const [detailType, setDetailType] = useState<'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | 'OUTPUT' | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     // State untuk tracking perubahan rework dan popup notifikasi
@@ -122,14 +158,14 @@ export default function DashboardRFID() {
 
     // State untuk detail modal query
     const [detailQueryParams, setDetailQueryParams] = useState<{
-        type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | null;
+        type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | 'OUTPUT' | null;
         section: 'QC' | 'PQC' | null;
     }>({ type: null, section: null });
 
     // Query untuk fetch detail data berdasarkan status
     // Gunakan woData?.wo juga dalam query key untuk memastikan query ter-trigger saat WO berubah
     const currentWo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
-    
+
     // Log untuk debugging
     useEffect(() => {
         if (showDetailModal && (detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA')) {
@@ -142,202 +178,100 @@ export default function DashboardRFID() {
             });
         }
     }, [showDetailModal, detailQueryParams.type, detailQueryParams.section, currentWo, appliedFilterWo, woData]);
-    
+
     const detailDataQuery = useQuery({
-        queryKey: ['detail-data', lineId, detailQueryParams.type, detailQueryParams.section, currentWo],
+        queryKey: ['detail-data', lineId, detailQueryParams.type, detailQueryParams.section],
         queryFn: async () => {
             if (!detailQueryParams.type || !detailQueryParams.section) {
                 return [];
             }
 
             const { type, section } = detailQueryParams;
-            
-            // Untuk REWORK dan WIRA, gunakan API baru /wira/detail
-            if (type === 'REWORK' || type === 'WIRA') {
-                // Perlu WO untuk API baru
-                const wo = currentWo;
-                
-                if (!wo) {
-                    console.warn('⚠️ [Detail Modal] WO tidak tersedia untuk fetch REWORK/WIRA data');
-                    console.warn('⚠️ [Detail Modal] appliedFilterWo:', appliedFilterWo);
-                    console.warn('⚠️ [Detail Modal] woData?.wo:', woData?.wo);
-                    return [];
+
+            // Mapping type dan section ke status parameter (API: /wira/detail?status=xxx&line=xx)
+            let status: string;
+            if (type === 'OUTPUT') {
+                // Output Sewing: API wira/detail?status=output_sewing&line=1
+                status = 'output_sewing';
+            } else if (section === 'QC') {
+                // QC: GOOD, REWORK, REJECT, WIRA
+                status = type; // GOOD, REWORK, REJECT, atau WIRA
+            } else {
+                // PQC: PQC_GOOD, PQC_REWORK, PQC_REJECT, PQC_WIRA
+                status = `PQC_${type}`; // PQC_GOOD, PQC_REWORK, PQC_REJECT, atau PQC_WIRA
+            }
+
+            // API baru menggunakan format: wira/detail?status=xxx&line=xx
+            const url = `${API_BASE_URL}/wira/detail?status=${encodeURIComponent(status)}&line=${encodeURIComponent(lineId)}`;
+
+            console.log('🔵 [Detail Modal] Fetching data dari API baru:', url);
+            console.log('🔵 [Detail Modal] Parameters:', { status, line: lineId, type, section });
+
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        ...getDefaultHeaders(),
+                    },
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ [Detail Modal] API Error:', response.status, response.statusText, errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
-                // Mapping tipe dan kategori
-                const tipe = section.toLowerCase(); // 'qc' atau 'pqc'
-                const kategori = type.toLowerCase(); // 'rework' atau 'wira'
+                const result = await response.json();
+                console.log('🔵 [Detail Modal] API Response:', result);
+                console.log('🔵 [Detail Modal] API Response keys:', Object.keys(result));
+                console.log('🔵 [Detail Modal] result.status:', result.status);
+                console.log('🔵 [Detail Modal] result.data:', result.data);
+                console.log('🔵 [Detail Modal] result.data isArray:', Array.isArray(result.data));
+                console.log('🔵 [Detail Modal] result.data length:', result.data?.length);
 
-                const url = `${API_BASE_URL}/wira/detail?line=${encodeURIComponent(lineId)}&wo=${encodeURIComponent(wo)}&tipe=${encodeURIComponent(tipe)}&kategori=${encodeURIComponent(kategori)}`;
-                
-                console.log('🔵 [Detail Modal] Fetching REWORK/WIRA data dari API baru:', url);
-                console.log('🔵 [Detail Modal] Parameters:', { line: lineId, wo, tipe, kategori });
-
-                try {
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                        },
+                // Handle response format baru (status: "success", data: [...])
+                if (result.status === 'success' && result.data && Array.isArray(result.data)) {
+                    // Sort berdasarkan timestamp terbaru
+                    const sortedData = [...result.data].sort((a: any, b: any) => {
+                        const dateA = new Date(a.timestamp || 0).getTime();
+                        const dateB = new Date(b.timestamp || 0).getTime();
+                        return dateB - dateA; // Terbaru di atas
                     });
 
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('❌ [Detail Modal] API Error:', response.status, response.statusText, errorText);
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
+                    console.log(`✅ [Detail Modal] Data dari API baru: ${sortedData.length} items`);
+                    console.log('✅ [Detail Modal] First item sample:', sortedData[0]);
+                    return sortedData;
+                }
 
-                    const result = await response.json();
-                    console.log('🔵 [Detail Modal] API Response:', result);
-                    console.log('🔵 [Detail Modal] API Response keys:', Object.keys(result));
-                    console.log('🔵 [Detail Modal] result.success:', result.success);
-                    console.log('🔵 [Detail Modal] result.data:', result.data);
-                    console.log('🔵 [Detail Modal] result.data isArray:', Array.isArray(result.data));
-                    console.log('🔵 [Detail Modal] result.data length:', result.data?.length);
-                    
-                    if (result.success && result.data && Array.isArray(result.data)) {
-                        // Sort berdasarkan timestamp terbaru
-                        const sortedData = [...result.data].sort((a: any, b: any) => {
-                            const dateA = new Date(a.timestamp || 0).getTime();
-                            const dateB = new Date(b.timestamp || 0).getTime();
-                            return dateB - dateA; // Terbaru di atas
-                        });
-                        
-                        console.log(`✅ [Detail Modal] Data dari API baru: ${sortedData.length} items`);
-                        console.log('✅ [Detail Modal] First item sample:', sortedData[0]);
-                        return sortedData;
-                    }
-                    
-                    console.warn('⚠️ [Detail Modal] API response tidak valid atau data kosong:', result);
-                    console.warn('⚠️ [Detail Modal] Response structure:', {
-                        hasSuccess: 'success' in result,
-                        successValue: result.success,
-                        hasData: 'data' in result,
-                        dataType: typeof result.data,
-                        isArray: Array.isArray(result.data),
-                        dataValue: result.data
+                // Fallback untuk format lama (success: true, data: [...])
+                if (result.success && result.data && Array.isArray(result.data)) {
+                    const sortedData = [...result.data].sort((a: any, b: any) => {
+                        const dateA = new Date(a.timestamp || 0).getTime();
+                        const dateB = new Date(b.timestamp || 0).getTime();
+                        return dateB - dateA;
                     });
-                    return [];
-                } catch (error) {
-                    console.error('❌ [Detail Modal] Error fetching REWORK/WIRA data:', error);
-                    throw error;
+                    console.log(`✅ [Detail Modal] Data dari API (format lama): ${sortedData.length} items`);
+                    return sortedData;
                 }
+
+                console.warn('⚠️ [Detail Modal] API response tidak valid atau data kosong:', result);
+                console.warn('⚠️ [Detail Modal] Response structure:', {
+                    hasStatus: 'status' in result,
+                    statusValue: result.status,
+                    hasSuccess: 'success' in result,
+                    successValue: result.success,
+                    hasData: 'data' in result,
+                    dataType: typeof result.data,
+                    isArray: Array.isArray(result.data),
+                    dataValue: result.data
+                });
+                return [];
+            } catch (error) {
+                console.error('❌ [Detail Modal] Error fetching data:', error);
+                throw error;
             }
-
-            // Untuk GOOD dan REJECT, gunakan API lama dengan filtering manual
-            // Get today's date (UTC untuk konsistensi dengan API)
-            const now = new Date();
-            const todayYear = now.getUTCFullYear();
-            const todayMonth = now.getUTCMonth();
-            const todayDay = now.getUTCDate();
-            const todayDateStr = `${todayYear}-${String(todayMonth + 1).padStart(2, '0')}-${String(todayDay).padStart(2, '0')}`;
-            
-            console.log('🔵 [Detail Modal] Filter tanggal hari ini (UTC):', todayDateStr);
-
-            // Fetch data dari API lama
-            const url = `${API_BASE_URL}/tracking/rfid_garment?line=${encodeURIComponent(lineId)}`;
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-            let allData = result.data || [];
-
-            // Filter berdasarkan hari ini terlebih dahulu (menggunakan UTC untuk konsistensi)
-            const todayData = allData.filter((item: any) => {
-                if (!item.timestamp) {
-                    return false;
-                }
-                
-                try {
-                    const itemDate = new Date(item.timestamp);
-                    if (isNaN(itemDate.getTime())) {
-                        console.warn('Invalid timestamp:', item.timestamp);
-                        return false;
-                    }
-                    
-                    const itemYear = itemDate.getUTCFullYear();
-                    const itemMonth = itemDate.getUTCMonth();
-                    const itemDay = itemDate.getUTCDate();
-                    const itemDateStr = `${itemYear}-${String(itemMonth + 1).padStart(2, '0')}-${String(itemDay).padStart(2, '0')}`;
-                    
-                    return itemDateStr === todayDateStr;
-                } catch (e) {
-                    console.error('Error parsing timestamp:', item.timestamp, e);
-                    return false;
-                }
-            });
-            
-            console.log('🔵 [Detail Modal] Total data hari ini:', todayData.length, 'dari', allData.length, 'total data');
-
-            let filteredData: any[] = [];
-            // type dan section sudah dideklarasikan di awal queryFn
-
-            // Hanya GOOD dan REJECT yang menggunakan API lama dengan filtering manual
-            // REWORK dan WIRA sudah di-handle di atas dengan API baru
-            if (section === 'QC') {
-                switch (type) {
-                    case 'GOOD':
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'QC' && item.last_status === 'GOOD';
-                        });
-                        break;
-                    case 'REJECT':
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            const hasData = item.wo && item.wo.trim() !== '' && 
-                                          item.style && item.style.trim() !== '' &&
-                                          item.buyer && item.buyer.trim() !== '';
-                            return bagian === 'QC' && item.last_status === 'REJECT' && hasData;
-                        });
-                        break;
-                    // REWORK dan WIRA sudah di-handle dengan API baru di atas
-                }
-            } else if (section === 'PQC') {
-                switch (type) {
-                    case 'GOOD':
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            return bagian === 'PQC' && item.last_status === 'PQC_GOOD';
-                        });
-                        break;
-                    case 'REJECT':
-                        filteredData = todayData.filter((item: any) => {
-                            const bagian = (item.bagian || '').trim().toUpperCase();
-                            const hasData = item.wo && item.wo.trim() !== '' && 
-                                          item.style && item.style.trim() !== '' &&
-                                          item.buyer && item.buyer.trim() !== '';
-                            return bagian === 'PQC' && item.last_status === 'PQC_REJECT' && hasData;
-                        });
-                        break;
-                    // REWORK dan WIRA sudah di-handle dengan API baru di atas
-                }
-            }
-
-            // Sort berdasarkan timestamp terbaru
-            filteredData.sort((a: any, b: any) => {
-                const dateA = new Date(a.timestamp).getTime();
-                const dateB = new Date(b.timestamp).getTime();
-                return dateB - dateA; // Terbaru di atas
-            });
-
-            return filteredData;
         },
-        enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section && 
-                 // Untuk REWORK dan WIRA, pastikan WO tersedia
-                 ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
-                    ? !!currentWo
-                    : true),
+        enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section,
         staleTime: 30000, // 30 detik
         retry: 1,
     });
@@ -352,22 +286,16 @@ export default function DashboardRFID() {
             type: detailQueryParams.type,
             section: detailQueryParams.section,
             currentWo,
-            enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section && 
-                     ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
-                        ? !!currentWo
-                        : true)
+            enabled: showDetailModal && !!detailQueryParams.type && !!detailQueryParams.section
         });
-        
+
         if (detailDataQuery.data) {
             console.log('✅ [Detail Modal] Setting detail data:', detailDataQuery.data.length, 'items');
             setDetailData(detailDataQuery.data);
         } else if (detailDataQuery.isError) {
             console.error('❌ [Detail Modal] Query error:', detailDataQuery.error);
             setDetailData([]);
-            // Jika error karena WO tidak tersedia untuk REWORK/WIRA
-            if ((detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') && !currentWo) {
-                console.warn('⚠️ [Detail Modal] WO tidak tersedia untuk fetch REWORK/WIRA data');
-            }
+            // Error handling untuk detail data
         } else if (!detailDataQuery.isLoading && !detailDataQuery.data && showDetailModal) {
             // Jika query tidak loading dan tidak ada data, reset detail data
             console.log('⚠️ [Detail Modal] No data and not loading, resetting detail data');
@@ -382,19 +310,23 @@ export default function DashboardRFID() {
     // Update title dan type saat query params berubah
     useEffect(() => {
         if (detailQueryParams.type && detailQueryParams.section) {
-            setDetailTitle(`${detailQueryParams.type} ${detailQueryParams.section}`);
+            if (detailQueryParams.type === 'OUTPUT') {
+                setDetailTitle('Output Sewing');
+            } else {
+                setDetailTitle(`${detailQueryParams.type} ${detailQueryParams.section}`);
+            }
             setDetailType(detailQueryParams.type);
         }
     }, [detailQueryParams]);
 
     // Fungsi untuk trigger fetch detail data
-    const fetchDetailData = useCallback((type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA', section: 'QC' | 'PQC') => {
+    const fetchDetailData = useCallback((type: 'GOOD' | 'REWORK' | 'REJECT' | 'WIRA' | 'OUTPUT', section: 'QC' | 'PQC') => {
         const wo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
-        console.log('🔵 [Detail Modal] Opening detail modal:', { 
-            type, 
-            section, 
-            currentWo, 
-            appliedFilterWo, 
+        console.log('🔵 [Detail Modal] Opening detail modal:', {
+            type,
+            section,
+            currentWo,
+            appliedFilterWo,
             woDataWo: woData?.wo,
             calculatedWo: wo
         });
@@ -403,14 +335,26 @@ export default function DashboardRFID() {
         // Reset detail data saat membuka modal baru
         setDetailData([]);
     }, [currentWo, appliedFilterWo, woData]);
-    
+
+    // Fungsi untuk menampilkan detail output (semua data output)
+    const fetchOutputDetail = useCallback(() => {
+        console.log('🔵 [Output Detail] Opening output detail modal');
+        // Gunakan type 'OUTPUT' dan section 'QC' untuk API wira/detail?status=OUTPUT&line=xx
+        setDetailQueryParams({ type: 'OUTPUT', section: 'QC' });
+        setShowDetailModal(true);
+        setDetailData([]);
+    }, []);
+
     // Refetch query saat modal dibuka dan WO tersedia untuk REWORK/WIRA
     useEffect(() => {
         if (showDetailModal && detailQueryParams.type && detailQueryParams.section) {
             const wo = appliedFilterWo || (woData?.wo ? String(woData.wo) : '');
             const needsWo = detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA';
-            
-            if (needsWo && wo) {
+
+            if (detailQueryParams.type === 'OUTPUT') {
+                console.log('🔵 [Detail Modal] Triggering refetch for OUTPUT');
+                // Query akan otomatis refetch karena enabled condition terpenuhi
+            } else if (needsWo && wo) {
                 console.log('🔵 [Detail Modal] Triggering refetch for REWORK/WIRA with WO:', wo);
                 // Query akan otomatis refetch karena enabled condition terpenuhi
             } else if (!needsWo) {
@@ -422,15 +366,14 @@ export default function DashboardRFID() {
         }
     }, [showDetailModal, detailQueryParams.type, detailQueryParams.section, appliedFilterWo, woData]);
 
-    // Query untuk fetch WO List dari API tracking/rfid_garment
+    // Query untuk fetch WO List dari API tracking/rfid_garment - selalu enabled untuk dropdown
     const woListQuery = useQuery({
-        queryKey: ['wo-list'],
+        queryKey: ['wo-list', lineId],
         queryFn: async () => {
-            const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment`, {
+            const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?line=${encodeURIComponent(lineId)}`, {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
             });
 
@@ -439,7 +382,7 @@ export default function DashboardRFID() {
             }
 
             const data = await response.json();
-            
+
             // Extract unique WO numbers from the data
             const woSet = new Set<string>();
             if (data.data && Array.isArray(data.data)) {
@@ -458,7 +401,7 @@ export default function DashboardRFID() {
 
             return Array.from(woSet).sort();
         },
-        enabled: showWoFilterModal,
+        enabled: true, // Selalu enabled untuk dropdown
         staleTime: 60000, // 1 menit
         retry: 1,
     });
@@ -472,63 +415,12 @@ export default function DashboardRFID() {
         }
     }, [woListQuery.data, woListQuery.isError]);
 
-    useEffect(() => {
-        setLoadingWOList(woListQuery.isLoading);
-    }, [woListQuery.isLoading]);
 
-    // Query untuk fetch WIRA data berdasarkan WO dan Line
-    const wiraDataQuery = useQuery({
-        queryKey: ['wira-data', filterWo, lineId],
-        queryFn: async () => {
-            if (!filterWo || !lineId) {
-                return null;
-            }
-
-            const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}&wo=${encodeURIComponent(filterWo)}`;
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.success && data.data && data.data.length > 0) {
-                return data.data[0];
-            }
-            return null;
-        },
-        enabled: showWoFilterModal && !!filterWo && !!lineId,
-        staleTime: 30000, // 30 detik
-        retry: 1,
+    // WebSocket untuk WIRA dashboard data
+    const { data: wiraWebSocketData } = useWiraDashboardWebSocket({
+        enabled: true,
     });
 
-    // Update wiraData dan loading state
-    useEffect(() => {
-        if (wiraDataQuery.data !== undefined) {
-            setWiraData(wiraDataQuery.data);
-        } else if (wiraDataQuery.isError) {
-            setWiraData(null);
-        }
-    }, [wiraDataQuery.data, wiraDataQuery.isError]);
-
-    useEffect(() => {
-        setLoadingWira(wiraDataQuery.isLoading);
-    }, [wiraDataQuery.isLoading]);
-
-    // Reset wiraData saat filterWo kosong
-    useEffect(() => {
-        if (showWoFilterModal && !filterWo) {
-            setWiraData(null);
-        }
-    }, [filterWo, showWoFilterModal]);
 
     // Fungsi untuk fetch data rework terbaru dari List RFID API
     const fetchLatestReworkData = useCallback(async (type: 'QC' | 'PQC', maxWaitSeconds: number = 10): Promise<any | null> => {
@@ -543,8 +435,7 @@ export default function DashboardRFID() {
                     const response = await fetch(url, {
                         method: 'GET',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
+                            ...getDefaultHeaders(),
                         },
                     });
 
@@ -554,7 +445,7 @@ export default function DashboardRFID() {
 
                     const data = await response.json();
                     let allData = data.data || [];
-                    
+
                     if (Array.isArray(data)) {
                         allData = data;
                     }
@@ -562,10 +453,10 @@ export default function DashboardRFID() {
                     // Filter data berdasarkan status rework
                     const reworkData = allData.filter((item: any) => {
                         if (!item.timestamp) return false;
-                        
+
                         const bagian = (item.bagian || '').trim().toUpperCase();
                         const lastStatus = (item.last_status || '').trim().toUpperCase();
-                        
+
                         if (type === 'QC') {
                             return bagian === 'QC' && lastStatus === 'REWORK';
                         } else {
@@ -583,12 +474,12 @@ export default function DashboardRFID() {
                     // Ambil data terbaru
                     if (reworkData.length > 0) {
                         const latestRework = reworkData[0];
-                        
+
                         // Cek apakah timestamp dalam rentang waktu yang wajar (dalam 10 detik terakhir)
                         const itemTime = new Date(latestRework.timestamp).getTime();
                         const now = Date.now();
                         const timeDiff = now - itemTime;
-                        
+
                         // Jika data dalam 10 detik terakhir, anggap valid
                         if (timeDiff <= 10000) {
                             resolve(latestRework);
@@ -607,7 +498,7 @@ export default function DashboardRFID() {
                     setTimeout(poll, pollInterval);
                 } catch (error) {
                     console.error('Error fetching latest rework data:', error);
-                    
+
                     // Cek apakah sudah melewati waktu maksimal
                     const elapsed = Date.now() - startTime;
                     if (elapsed >= maxWaitTime) {
@@ -657,7 +548,7 @@ export default function DashboardRFID() {
                 setReworkNotificationLoading(true);
                 setReworkNotificationType('QC');
                 setShowReworkNotification(true);
-                
+
                 fetchLatestReworkData('QC', 10).then((data) => {
                     setReworkNotificationData(data);
                     setReworkNotificationLoading(false);
@@ -677,7 +568,7 @@ export default function DashboardRFID() {
                 setReworkNotificationLoading(true);
                 setReworkNotificationType('PQC');
                 setShowReworkNotification(true);
-                
+
                 fetchLatestReworkData('PQC', 10).then((data) => {
                     setReworkNotificationData(data);
                     setReworkNotificationLoading(false);
@@ -692,39 +583,131 @@ export default function DashboardRFID() {
 
     // Data fetching sudah ditangani oleh custom hook useDashboardRFID
 
-    // Hitung total untuk pieData dengan menggabungkan data biasa dan PQC
-    // Balance: Output = Good + WIRA + Reject (tidak menghitung rework)
-    const pieData = useMemo(() => {
-        const totalGood = good + pqcGood;
-        const totalWira = wiraQc + wiraPqc;
-        const totalReject = reject + pqcReject;
+    // Cari data dari WebSocket wira-dashboard berdasarkan lineId
+    const wiraDashboardData = useMemo(() => {
+        if (!wiraWebSocketData?.data || !lineId) {
+            console.log('🔴 [wiraDashboardData] No data:', { hasData: !!wiraWebSocketData?.data, lineId });
+            return null;
+        }
 
-        const pieDataRaw = [
+        const normalizedLineId = /^\d+$/.test(lineId) ? lineId : lineId.replace(/[^\d]/g, '') || '1';
+        const targetLineNum = parseInt(normalizedLineId, 10);
+
+        // Cari data yang match dengan lineId
+        const matchedData = wiraWebSocketData.data.find((item: any) => {
+            const itemLine = String(item.line || item.Line || item.LINE || '').trim();
+            const itemLineMatch = itemLine.match(/(\d+)/);
+            const itemLineNum = itemLineMatch ? parseInt(itemLineMatch[1], 10) : parseInt(itemLine, 10);
+
+            return itemLine === normalizedLineId ||
+                (!isNaN(itemLineNum) && !isNaN(targetLineNum) && itemLineNum === targetLineNum);
+        });
+
+        return matchedData || null;
+    }, [wiraWebSocketData?.data, lineId]);
+
+    // Hitung pieData menggunakan data dari WebSocket wira-dashboard (hanya QC)
+    // Wira (Orange), Reject (Merah), Good (Hijau), Sisa Output = Output - (Wira + Reject + Good)
+    const pieData = useMemo(() => {
+        // Jika ada data dari WebSocket, gunakan data tersebut (hanya QC)
+        if (wiraDashboardData) {
+            // Coba berbagai format property name (menggunakan any untuk fleksibilitas)
+            const data = wiraDashboardData as any;
+            const outputSewingValue = data['Output Sewing'] || data['OutputSewing'] || data.Output || outputLine || 0;
+            const goodQcValue = data.Good || data.good || 0;
+            const rejectQcValue = data.Reject || data.reject || 0;
+            const wiraQcValue = data.WIRA || data.Wira || data.wira || 0;
+
+            const outputSewingStr = String(outputSewingValue);
+            const goodQcStr = String(goodQcValue);
+            const rejectQcStr = String(rejectQcValue);
+            const wiraQcStr = String(wiraQcValue);
+
+            const outputSewing = parseInt(outputSewingStr, 10);
+            const goodQc = parseInt(goodQcStr, 10);
+            const rejectQc = parseInt(rejectQcStr, 10);
+            const wiraQc = parseInt(wiraQcStr, 10);
+
+
+            // Hitung Sisa Output
+            const sisaOutput = Math.max(0, outputSewing - (wiraQc + rejectQc + goodQc));
+
+            const pieDataRaw: Array<{ name: string; value: number; display: string; color: string }> = [
+                {
+                    name: 'Good',
+                    value: goodQc,
+                    display: `Good ( ${goodQc} )`,
+                    color: COLORS.greenSoft
+                },
+                {
+                    name: 'WIRA',
+                    value: wiraQc,
+                    display: `WIRA ( ${wiraQc} )`,
+                    color: COLORS.orangeSoft
+                },
+                {
+                    name: 'Reject',
+                    value: rejectQc,
+                    display: `Reject ( ${rejectQc} )`,
+                    color: COLORS.redSoft
+                },
+            ];
+
+            // Tambahkan Sisa Output jika ada
+            if (sisaOutput > 0) {
+                pieDataRaw.push({
+                    name: 'Sisa Output',
+                    value: sisaOutput,
+                    display: `Sisa Output ( ${sisaOutput} )`,
+                    color: COLORS.blueGray // Abu ke biruan untuk Sisa Output
+                });
+            }
+
+            const result = pieDataRaw.filter(item => item.value > 0).length > 0
+                ? pieDataRaw.filter(item => item.value > 0)
+                : pieDataRaw;
+
+            return result;
+        }
+
+        // Fallback: gunakan data dari hook (hanya QC, bukan PQC)
+        const pieDataRaw: Array<{ name: string; value: number; display: string; color: string }> = [
             {
                 name: 'Good',
-                value: totalGood,
-                display: `Good ( ${totalGood} )`,
-                color: COLORS.green
+                value: good,
+                display: `Good ( ${good} )`,
+                color: COLORS.greenSoft
             },
             {
                 name: 'WIRA',
-                value: totalWira,
-                display: `WIRA ( ${totalWira} )`,
-                color: COLORS.blue
+                value: wiraQc,
+                display: `WIRA ( ${wiraQc} )`,
+                color: COLORS.orangeSoft
             },
             {
                 name: 'Reject',
-                value: totalReject,
-                display: `Reject ( ${totalReject} )`,
-                color: COLORS.red
+                value: reject,
+                display: `Reject ( ${reject} )`,
+                color: COLORS.redSoft
             },
         ];
+
+        // Hitung Sisa Output dari outputLine
+        const sisaOutput = Math.max(0, (outputLine || 0) - (wiraQc + reject + good));
+        if (sisaOutput > 0) {
+            pieDataRaw.push({
+                name: 'Sisa Output',
+                value: sisaOutput,
+                display: `Sisa Output ( ${sisaOutput} )`,
+                color: COLORS.blueGray // Abu ke biruan untuk Sisa Output
+            });
+        }
 
         // Filter hanya item yang value > 0, tapi jika semua 0, tetap tampilkan semua
         return pieDataRaw.filter(item => item.value > 0).length > 0
             ? pieDataRaw.filter(item => item.value > 0)
             : pieDataRaw;
-    }, [good, pqcGood, wiraQc, wiraPqc, reject, pqcReject]);
+    }, [wiraDashboardData, good, wiraQc, reject, outputLine]);
 
     // Data untuk status cards
     const qcData = useMemo(() => ({
@@ -759,7 +742,7 @@ export default function DashboardRFID() {
         if (!searchQuery.trim()) {
             return detailData;
         }
-        
+
         const query = searchQuery.toLowerCase().trim();
         return detailData.filter((item) => {
             const rfid = (item.rfid_garment || '').toLowerCase();
@@ -770,15 +753,15 @@ export default function DashboardRFID() {
             const color = (item.color || '').toLowerCase();
             const size = (item.size || '').toLowerCase();
             const line = (item.line || '').toLowerCase();
-            
+
             return rfid.includes(query) ||
-                   wo.includes(query) ||
-                   style.includes(query) ||
-                   buyer.includes(query) ||
-                   itemName.includes(query) ||
-                   color.includes(query) ||
-                   size.includes(query) ||
-                   line.includes(query);
+                wo.includes(query) ||
+                style.includes(query) ||
+                buyer.includes(query) ||
+                itemName.includes(query) ||
+                color.includes(query) ||
+                size.includes(query) ||
+                line.includes(query);
         });
     }, [detailData, searchQuery]);
 
@@ -788,7 +771,7 @@ export default function DashboardRFID() {
             // Tentukan range tanggal
             const startDate = filterDateFrom ? new Date(filterDateFrom) : new Date();
             const endDate = filterDateTo ? new Date(filterDateTo) : new Date();
-            
+
             // Jika tidak ada filter, gunakan hari ini saja
             if (!filterDateFrom && !filterDateTo) {
                 startDate.setHours(0, 0, 0, 0);
@@ -797,21 +780,20 @@ export default function DashboardRFID() {
 
             const dailyData: any[] = [];
             const currentDate = new Date(startDate);
-            
+
             // Loop setiap hari dalam range
             while (currentDate <= endDate) {
                 const dateStr = currentDate.toISOString().split('T')[0];
                 const formattedDate = formatDateForAPI(dateStr);
-                
-                // Fetch data untuk hari ini
-                const url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}&tanggalfrom=${encodeURIComponent(formattedDate)}&tanggalto=${encodeURIComponent(formattedDate)}`;
-                
+
+                // Fetch data untuk hari ini - API backend mengharapkan parameter LINE (kapital) bukan line
+                const url = `${API_BASE_URL}/wira?LINE=${encodeURIComponent(lineId)}&tanggalfrom=${encodeURIComponent(formattedDate)}&tanggalto=${encodeURIComponent(formattedDate)}`;
+
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
+                            ...getDefaultHeaders(),
                         },
                         cache: 'no-cache',
                     });
@@ -826,10 +808,10 @@ export default function DashboardRFID() {
                                 // Match exact atau match sebagai number
                                 const itemLineNum = parseInt(itemLine, 10);
                                 const targetLineNum = parseInt(targetLine, 10);
-                                return itemLine === targetLine || 
-                                       (!isNaN(itemLineNum) && !isNaN(targetLineNum) && itemLineNum === targetLineNum);
+                                return itemLine === targetLine ||
+                                    (!isNaN(itemLineNum) && !isNaN(targetLineNum) && itemLineNum === targetLineNum);
                             });
-                            
+
                             if (lineData) {
                                 const parseNumber = (value: any): number => {
                                     if (value === null || value === undefined || value === '') return 0;
@@ -845,7 +827,7 @@ export default function DashboardRFID() {
                                     item: woData?.item || '-',
                                     buyer: woData?.buyer || '-',
                                     color: woData?.color || '-',
-                                    size: woData?.breakdown_sizes || '-',
+                                    size: woData?.size || '-',
                                     outputSewing: parseNumber(lineData['Output Sewing'] || lineData['output_sewing'] || lineData.outputSewing || 0),
                                     qcRework: parseNumber(lineData.Rework || lineData.rework || 0),
                                     qcWira: parseNumber(lineData.WIRA || lineData.wira || 0),
@@ -868,7 +850,7 @@ export default function DashboardRFID() {
                                     item: woData?.item || '-',
                                     buyer: woData?.buyer || '-',
                                     color: woData?.color || '-',
-                                    size: woData?.breakdown_sizes || '-',
+                                    size: woData?.size || '-',
                                     outputSewing: 0,
                                     qcRework: 0,
                                     qcWira: 0,
@@ -892,7 +874,7 @@ export default function DashboardRFID() {
                                 item: woData?.item || '-',
                                 buyer: woData?.buyer || '-',
                                 color: woData?.color || '-',
-                                size: woData?.breakdown_sizes || '-',
+                                size: woData?.size || '-',
                                 outputSewing: 0,
                                 qcRework: 0,
                                 qcWira: 0,
@@ -918,7 +900,7 @@ export default function DashboardRFID() {
                         item: woData?.item || '-',
                         buyer: woData?.buyer || '-',
                         color: woData?.color || '-',
-                        size: woData?.breakdown_sizes || '-',
+                        size: woData?.size || '-',
                         outputSewing: 0,
                         qcRework: 0,
                         qcWira: 0,
@@ -932,11 +914,11 @@ export default function DashboardRFID() {
                         balance: 0,
                     });
                 }
-                
+
                 // Pindah ke hari berikutnya
                 currentDate.setDate(currentDate.getDate() + 1);
             }
-            
+
             return dailyData;
         } catch (error) {
             console.error('Error fetching daily data:', error);
@@ -964,7 +946,7 @@ export default function DashboardRFID() {
                 item: firstWo?.item || '-',
                 buyer: firstWo?.buyer || '-',
                 color: firstWo?.color || '-',
-                size: firstWo?.breakdown_sizes || '-',
+                size: firstWo?.size || '-',
                 outputSewing: outputLine,
                 qcRework: rework,
                 qcWira: wiraQc,
@@ -988,6 +970,22 @@ export default function DashboardRFID() {
     // 18% = Width Sidebar Expanded
     // 5rem = 80px (Width Sidebar Collapsed default tailwind w-20)
     const sidebarWidth = isOpen ? '18%' : '5rem';
+
+    // State untuk detect mobile device (termasuk tablet portrait)
+    const [isMobile, setIsMobile] = useState(false);
+
+    // Effect untuk detect mobile device dan tablet portrait
+    useEffect(() => {
+        const checkMobile = () => {
+            // Gunakan breakpoint lg (1024px) sebagai batas mobile/tablet portrait vs desktop
+            // Di bawah 1024px = mobile/tablet portrait (layout seperti mobile), di atas = desktop
+            setIsMobile(window.innerWidth < 1024);
+        };
+
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     return (
         <div className="flex h-screen w-full font-sans text-gray-800 overflow-hidden fixed inset-0 m-0 p-0"
@@ -1020,38 +1018,227 @@ export default function DashboardRFID() {
 
                 {/* 4. MAIN CONTENT */}
                 <main
-                    className="flex-1 flex flex-col overflow-hidden pt-2 sm:pt-3 md:pt-4"
+                    className="flex-1 flex flex-col overflow-hidden"
+                    style={{
+                        WebkitOverflowScrolling: 'touch', // Smooth scrolling untuk iOS
+                        paddingTop: 'clamp(0.5rem, 1vw + 0.25rem, 1rem)'
+                    }}
                 >
                     {/* PAGE TITLE */}
-                    <div className="flex-shrink-0 text-center py-1 xs:py-1.5 sm:py-2">
-                        <h1 className="text-base xs:text-lg sm:text-xl md:text-2xl lg:text-3xl font-black text-gray-700 uppercase tracking-wide drop-shadow-sm" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
-                            <span className="text-blue-600">Dashboard</span> Monitoring RFID {lineTitle}
+                    <div
+                        className="flex-shrink-0 text-center"
+                        style={{
+                            paddingTop: 'clamp(0.25rem, 0.5vw + 0.1rem, 0.5rem)',
+                            paddingBottom: 'clamp(0.25rem, 0.5vw + 0.1rem, 0.5rem)'
+                        }}
+                    >
+                        <h1
+                            className="font-black text-gray-700 uppercase tracking-wide drop-shadow-sm"
+                            style={{
+                                fontFamily: 'Poppins, sans-serif',
+                                fontWeight: 700,
+                                fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.875rem)'
+                            }}
+                        >
+                            <span className="text-blue-600 invisible">Dashboard</span>
+                            <span className="invisible"> Monitoring RFID {lineTitle}</span>
                         </h1>
                     </div>
 
-                    {/* GRID CONTAINER */}
-                    <div className="flex-1 flex flex-col gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 min-h-0 overflow-hidden px-1.5 xs:px-2 sm:px-3 md:px-4 pb-2 xs:pb-3 sm:pb-4 md:pb-6">
-
-                        {/* ROW 1: CHARTS - Tetap 1 baris di semua ukuran, proporsi 1/3 dan 2/3 */}
-                        <div className="flex-none flex flex-row gap-1 xs:gap-1.5 sm:gap-2 overflow-hidden" style={{ height: '38%', maxHeight: '38%', minHeight: '38%' }}>
-                            <div className="flex-[1] min-w-0 overflow-hidden" style={{ flex: '1 1 33.333%', maxWidth: '33.333%' }}>
-                                <OverviewChart pieData={pieData} outputLine={outputLine} />
+                    {/* GRID CONTAINER - Conditional: Mobile dengan scrolling, Desktop tetap one page */}
+                    {isMobile ? (
+                        /* MOBILE VERSION: Scrolling dengan layout portrait */
+                        <div className="flex-1 flex flex-col gap-2 sm:gap-3 md:gap-4 min-h-0 overflow-y-auto dashboard-scrollable px-2 sm:px-3 md:px-4 pb-4 sm:pb-6"
+                            style={{
+                                WebkitOverflowScrolling: 'touch' // Smooth scrolling untuk iOS
+                            }}
+                        >
+                            {/* BAGIAN ATAS: Baris 1 - Distribusi Data dan Data Output */}
+                            <div className="flex-none w-full">
+                                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+                                    {/* Grid 1: Overview Data RFID - Chart distribusi data saja */}
+                                    <div className="w-full min-h-[200px] sm:min-h-[250px]">
+                                        <Suspense fallback={<ChartSkeleton />}>
+                                            <OverviewChart pieData={pieData} outputLine={outputLine} />
+                                        </Suspense>
+                                    </div>
+                                    {/* Grid 2: Data Output Sewing - Output sewing saja */}
+                                    <div className="w-full min-h-[200px] sm:min-h-[250px]">
+                                        <Suspense fallback={<ChartSkeleton />}>
+                                            <OutputSewingCard outputLine={outputLine} onClick={fetchOutputDetail} />
+                                        </Suspense>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex-[2] min-w-0 overflow-hidden" style={{ flex: '2 1 66.666%', maxWidth: '66.666%' }}>
-                                <DataLineCard
-                                    lineTitle={lineTitle}
-                                    woData={woData}
-                                    onDateFilterClick={() => setShowDateFilterModal(true)}
-                                    onExportClick={() => setShowExportModal(true)}
-                                    onWoFilterClick={() => setShowWoFilterModal(true)}
-                                />
+                            {/* BAGIAN KEDUA: Baris 2 - Data Line Card */}
+                            <div className="flex-none w-full">
+                                <div className="w-full min-h-[120px] sm:min-h-[150px] md:min-h-[180px]">
+                                    <Suspense fallback={<ChartSkeleton />}>
+                                        <DataLineCard
+                                            lineTitle={lineTitle}
+                                            woData={woData}
+                                            filterDateFrom={filterDateFrom}
+                                            filterDateTo={filterDateTo}
+                                            filterWo={appliedFilterWo}
+                                            availableWOList={availableWOList}
+                                            onDateFromChange={handleDateFromChange}
+                                            onDateToChange={handleDateToChange}
+                                            onWoChange={setDashboardFilterWo}
+                                            onSearchClick={() => setIsDateFilterActive(true)}
+                                            onExportClick={() => setShowExportModal(true)}
+                                        />
+                                    </Suspense>
+                                </div>
+                            </div>
+
+                            {/* BAGIAN TENGAH: QC CARDS - 2x2 Grid */}
+                            <div className="flex-none w-full">
+                                <h2 className="text-sm sm:text-base font-bold text-gray-700 uppercase tracking-wide mb-2 sm:mb-3 px-1">QC Status</h2>
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                    <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} />
+                                    <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} />
+                                    <StatusCard type="WIRA" count={qcData.wira} label="WIRA QC" onClick={() => fetchDetailData('WIRA', 'QC')} />
+                                    <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} />
+                                </div>
+                            </div>
+
+                            {/* BAGIAN TENGAH: PQC CARDS - 2x2 Grid */}
+                            <div className="flex-none w-full">
+                                <h2 className="text-sm sm:text-base font-bold text-gray-700 uppercase tracking-wide mb-2 sm:mb-3 px-1">PQC Status</h2>
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                    <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} />
+                                    <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} />
+                                    <StatusCard type="WIRA" count={pqcData.wira} label="WIRA PQC" onClick={() => fetchDetailData('WIRA', 'PQC')} />
+                                    <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} />
+                                </div>
+                            </div>
+
+                            {/* BAGIAN BAWAH: ROOM STATUS */}
+                            <div className="flex-none w-full" style={{ minHeight: '300px' }}>
+                                <Suspense fallback={<ChartSkeleton />}>
+                                    <RoomStatusCard lineId={lineId} />
+                                </Suspense>
                             </div>
                         </div>
+                    ) : (
+                        /* DESKTOP VERSION: One page, gap seragam (sama kiri-kanan & atas-bawah) */
+                        <div
+                            className="flex-1 flex flex-col min-h-0 overflow-hidden"
+                            style={{
+                                gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)',
+                                paddingLeft: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.75rem)',
+                                paddingRight: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.75rem)',
+                                paddingBottom: 'clamp(0.375rem, 1vw + 0.25rem, 1rem)'
+                            }}
+                        >
+                            {/* ROW 1: 2 square cards kiri + 1 wide card kanan */}
+                            <div
+                                className="flex-none flex flex-row overflow-hidden"
+                                style={{
+                                    height: '38%',
+                                    maxHeight: '38%',
+                                    minHeight: '38%',
+                                    gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                }}
+                            >
+                                {/* Bagian Kiri: 2 square cards */}
+                                <div
+                                    className="flex-[2] min-w-0 flex flex-row overflow-hidden"
+                                    style={{
+                                        flex: '2 1 40%',
+                                        maxWidth: '40%',
+                                        gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                    }}
+                                >
+                                    {/* Grid 1: Overview Data RFID - Chart distribusi data saja */}
+                                    <div className="flex-[1] min-w-0 overflow-hidden" style={{ flex: '1 1 50%', maxWidth: '50%' }}>
+                                        <Suspense fallback={<ChartSkeleton />}>
+                                            <OverviewChart pieData={pieData} outputLine={outputLine} />
+                                        </Suspense>
+                                    </div>
+                                    {/* Grid 2: Data Output Sewing - Output sewing saja */}
+                                    <div className="flex-[1] min-w-0 overflow-hidden" style={{ flex: '1 1 50%', maxWidth: '50%' }}>
+                                        <Suspense fallback={<ChartSkeleton />}>
+                                            <OutputSewingCard outputLine={outputLine} onClick={fetchOutputDetail} />
+                                        </Suspense>
+                                    </div>
+                                </div>
+                                {/* Bagian Kanan: 1 wide card (Data Line) */}
+                                <div className="flex-[3] min-w-0 overflow-hidden" style={{ flex: '3 1 60%', maxWidth: '60%' }}>
+                                    <Suspense fallback={<ChartSkeleton />}>
+                                        <DataLineCard
+                                            lineTitle={lineTitle}
+                                            woData={woData}
+                                            filterDateFrom={filterDateFrom}
+                                            filterDateTo={filterDateTo}
+                                            filterWo={appliedFilterWo}
+                                            availableWOList={availableWOList}
+                                            onDateFromChange={handleDateFromChange}
+                                            onDateToChange={handleDateToChange}
+                                            onWoChange={setDashboardFilterWo}
+                                            onSearchClick={() => setIsDateFilterActive(true)}
+                                            onExportClick={() => setShowExportModal(true)}
+                                        />
+                                    </Suspense>
+                                </div>
+                            </div>
 
-                        {/* ROW 2 & 3: STATUS CARDS */}
-                        <StatusCardsGrid qcData={qcData} pqcData={pqcData} onCardClick={fetchDetailData} />
-
-                    </div>
+                            {/* ROW 2 & 3: QC + PQC (sama tinggi, responsive) + Room Status */}
+                            <div
+                                className="flex-1 flex flex-row min-h-0 overflow-hidden"
+                                style={{
+                                    flex: '1 1 0%',
+                                    minHeight: 'clamp(18rem, 54vh, 38rem)',
+                                    gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                }}
+                            >
+                                {/* Bagian Kiri: QC dan PQC sama tinggi, tiap baris punya min-height agar tidak terpotong */}
+                                <div
+                                    className="flex-[2] min-w-0 flex flex-col overflow-hidden"
+                                    style={{
+                                        flex: '2 1 66.666%',
+                                        maxWidth: '66.666%',
+                                        gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                    }}
+                                >
+                                    {/* ROW 2: QC Cards - min-height responsive per baris */}
+                                    <div
+                                        className="grid grid-cols-4 overflow-hidden"
+                                        style={{
+                                            flex: '1 1 0%',
+                                            minHeight: 'clamp(7rem, 22vh, 14rem)',
+                                            gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                        }}
+                                    >
+                                        <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} />
+                                        <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} />
+                                        <StatusCard type="WIRA" count={qcData.wira} label="WIRA QC" onClick={() => fetchDetailData('WIRA', 'QC')} />
+                                        <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} />
+                                    </div>
+                                    {/* ROW 3: PQC Cards - min-height sama dengan QC */}
+                                    <div
+                                        className="grid grid-cols-4 overflow-hidden"
+                                        style={{
+                                            flex: '1 1 0%',
+                                            minHeight: 'clamp(7rem, 22vh, 14rem)',
+                                            gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
+                                        }}
+                                    >
+                                        <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} />
+                                        <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} />
+                                        <StatusCard type="WIRA" count={pqcData.wira} label="WIRA PQC" onClick={() => fetchDetailData('WIRA', 'PQC')} />
+                                        <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} />
+                                    </div>
+                                </div>
+                                {/* Bagian Kanan: 1 tall card (Room Status) - span 2 rows */}
+                                <div className="flex-[1] min-w-0 h-full overflow-hidden" style={{ flex: '1 1 33.333%', maxWidth: '33.333%' }}>
+                                    <Suspense fallback={<ChartSkeleton />}>
+                                        <RoomStatusCard lineId={lineId} />
+                                    </Suspense>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </main>
             </div>
 
@@ -1071,7 +1258,7 @@ export default function DashboardRFID() {
                         <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 p-4 rounded-t-xl">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                                    <RefreshCcw className="w-5 h-5 text-white" strokeWidth={2.5} />
+                                    <Wrench className="w-5 h-5 text-white" strokeWidth={2.5} />
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-white">
@@ -1153,7 +1340,7 @@ export default function DashboardRFID() {
                                                             // Simulasi POST (belum benar-benar POST)
                                                             setSelectedOperator(operator);
                                                             setShowSuccessMessage(true);
-                                                            
+
                                                             // Auto close setelah 3 detik dengan animasi fade
                                                             setTimeout(() => {
                                                                 setShowReworkNotification(false);
@@ -1209,327 +1396,6 @@ export default function DashboardRFID() {
                 </div>
             )}
 
-            {/* WO Filter Modal */}
-            {showWoFilterModal && (
-                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-4xl my-8 transform transition-all border border-white/20">
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-purple-100 rounded-lg">
-                                    <Filter className="w-5 h-5 text-purple-600" strokeWidth={2.5} />
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-800">Filter WO</h3>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setShowWoFilterModal(false);
-                                    setFilterWo('');
-                                    setWiraData(null);
-                                    setShowPreview(false);
-                                }}
-                                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                            >
-                                <XCircle className="w-5 h-5 text-gray-500 hover:text-gray-700" strokeWidth={2.5} />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-4 sm:p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Work Order (WO)
-                                </label>
-                                {loadingWOList ? (
-                                    <div className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 flex items-center justify-center">
-                                        <span className="text-sm text-gray-500">Memuat daftar WO...</span>
-                                    </div>
-                                ) : (
-                                    <select
-                                        value={filterWo}
-                                        onChange={(e) => {
-                                            setFilterWo(e.target.value);
-                                            setWiraData(null);
-                                            setShowPreview(false);
-                                        }}
-                                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 bg-white"
-                                    >
-                                        <option value="">Pilih Work Order</option>
-                                        {availableWOList.map((wo) => (
-                                            <option key={wo} value={wo}>{wo}</option>
-                                        ))}
-                                    </select>
-                                )}
-                            </div>
-
-                            {/* Info Filter Aktif */}
-                            {appliedFilterWo && (
-                                <div className="w-full p-3 border border-purple-300 rounded-lg bg-purple-50 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle className="w-5 h-5 text-purple-600" />
-                                        <span className="text-sm font-medium text-purple-800">
-                                            Filter WO aktif: <strong>{appliedFilterWo}</strong>
-                                        </span>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            setDashboardFilterWo('');
-                                            setFilterWo(''); // Local state untuk modal
-                                            setWiraData(null);
-                                        }}
-                                        className="px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 rounded transition-colors"
-                                    >
-                                        Hapus Filter
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Tombol Tampilkan Langsung */}
-                            {filterWo && !wiraData && !loadingWira && (
-                                <div className="flex justify-center">
-                                    <button
-                                        onClick={async () => {
-                                            if (filterWo && lineId) {
-                                                // Data sudah di-fetch oleh wiraDataQuery
-                                                setShowPreview(true);
-                                            }
-                                        }}
-                                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
-                                    >
-                                        <Filter className="w-4 h-4" />
-                                        Tampilkan Langsung
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Data WIRA Preview */}
-                            {loadingWira && (
-                                <div className="w-full p-6 border border-gray-200 rounded-lg bg-gray-50 flex items-center justify-center">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                                        <span className="text-sm text-gray-600">Memuat data WIRA...</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {!loadingWira && wiraData && showPreview && (
-                                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                                    {/* Header */}
-                                    <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-4">
-                                        <h4 className="text-xl font-bold text-white">Data WIRA</h4>
-                                        <p className="text-sm text-purple-100 mt-1">WO: {wiraData.WO} | Line: {wiraData.line}</p>
-                                    </div>
-
-                                    {/* Info Produk */}
-                                    <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Buyer</div>
-                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Buyer}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Style</div>
-                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Style}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Item</div>
-                                                <div className="text-sm font-semibold text-gray-800">{wiraData.Item}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Data Metrics - Urutan sesuai alur dashboard */}
-                                    <div className="p-6 space-y-6">
-                                        {/* Output Sewing - Paling Awal */}
-                                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border-2 border-purple-200 shadow-sm">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-semibold text-purple-700 uppercase tracking-wide">Output Sewing</div>
-                                                <div className="text-3xl font-bold text-purple-900">{wiraData['Output Sewing']}</div>
-                                            </div>
-                                        </div>
-
-                                        {/* QC Section */}
-                                        <div className="space-y-4">
-                                            <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b border-gray-200 pb-2">QC</h5>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-red-600 uppercase mb-1">Reject QC</div>
-                                                    <div className="text-2xl font-bold text-red-900">{wiraData.Reject}</div>
-                                                </div>
-                                                <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-yellow-600 uppercase mb-1">Rework QC</div>
-                                                    <div className="text-2xl font-bold text-yellow-900">{wiraData.Rework}</div>
-                                                </div>
-                                                <div className="bg-indigo-50 p-4 rounded-lg border-2 border-indigo-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-indigo-600 uppercase mb-1">WIRA QC</div>
-                                                    <div className="text-2xl font-bold text-indigo-900">{wiraData.WIRA}</div>
-                                                </div>
-                                                <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-green-600 uppercase mb-1">Good QC</div>
-                                                    <div className="text-2xl font-bold text-green-900">{wiraData.Good}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* PQC Section */}
-                                        <div className="space-y-4">
-                                            <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b border-gray-200 pb-2">PQC</h5>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                <div className="bg-rose-50 p-4 rounded-lg border-2 border-rose-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-rose-600 uppercase mb-1">PQC Reject</div>
-                                                    <div className="text-2xl font-bold text-rose-900">{wiraData['PQC Reject']}</div>
-                                                </div>
-                                                <div className="bg-amber-50 p-4 rounded-lg border-2 border-amber-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-amber-600 uppercase mb-1">PQC Rework</div>
-                                                    <div className="text-2xl font-bold text-amber-900">{wiraData['PQC Rework']}</div>
-                                                </div>
-                                                <div className="bg-cyan-50 p-4 rounded-lg border-2 border-cyan-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-cyan-600 uppercase mb-1">PQC WIRA</div>
-                                                    <div className="text-2xl font-bold text-cyan-900">{wiraData['PQC WIRA']}</div>
-                                                </div>
-                                                <div className="bg-emerald-50 p-4 rounded-lg border-2 border-emerald-200 shadow-sm">
-                                                    <div className="text-xs font-semibold text-emerald-600 uppercase mb-1">PQC Good</div>
-                                                    <div className="text-2xl font-bold text-emerald-900">{wiraData['PQC Good']}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Balance - Paling Akhir */}
-                                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-200 shadow-sm">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Balance</div>
-                                                <div className={`text-3xl font-bold ${parseInt(wiraData.Balance) < 0 ? 'text-red-600' : 'text-blue-900'}`}>
-                                                    {wiraData.Balance}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {!loadingWira && !wiraData && filterWo && !showPreview && (
-                                <div className="w-full p-6 border border-gray-200 rounded-lg bg-yellow-50 flex items-center justify-center">
-                                    <div className="flex items-center gap-3">
-                                        <AlertCircle className="w-5 h-5 text-yellow-600" />
-                                        <span className="text-sm text-yellow-800">Pilih WO dan klik "Tampilkan Langsung" untuk melihat data</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
-                            <button
-                                onClick={() => {
-                                    setFilterWo('');
-                                    setWiraData(null);
-                                    setShowPreview(false);
-                                    setDashboardFilterWo('');
-                                }}
-                                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors duration-200 font-medium"
-                            >
-                                Reset
-                            </button>
-                            <div className="flex items-center gap-3">
-                                {wiraData && (
-                                    <button
-                                        onClick={() => {
-                                            setDashboardFilterWo(filterWo);
-                                            setShowWoFilterModal(false);
-                                        }}
-                                        className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
-                                    >
-                                        <CheckCircle className="w-4 h-4" />
-                                        Terapkan ke Dashboard
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => {
-                                        setShowWoFilterModal(false);
-                                        setFilterWo('');
-                                        setWiraData(null);
-                                        setShowPreview(false);
-                                    }}
-                                    className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
-                                >
-                                    Tutup
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Date Filter Modal */}
-            {showDateFilterModal && (
-                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4">
-                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-md transform transition-all border border-white/20">
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 rounded-lg">
-                                    <Filter className="w-5 h-5 text-blue-600" strokeWidth={2.5} />
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-800">Filter Tanggal</h3>
-                            </div>
-                            <button
-                                onClick={() => setShowDateFilterModal(false)}
-                                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                            >
-                                <XCircle className="w-5 h-5 text-gray-500 hover:text-gray-700" strokeWidth={2.5} />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-4 sm:p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Dari Tanggal
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filterDateFrom}
-                                    onChange={(e) => setFilterDateFrom(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Sampai Tanggal
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filterDateTo}
-                                    onChange={(e) => setFilterDateTo(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-end gap-3 p-4 sm:p-6 border-t border-gray-200">
-                            <button
-                                onClick={() => {
-                                    setFilterDateFrom('');
-                                    setFilterDateTo('');
-                                }}
-                                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 font-medium"
-                            >
-                                Reset
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setShowDateFilterModal(false);
-                                    // Data akan otomatis di-fetch ulang karena dependency filterDateFrom dan filterDateTo berubah
-                                }}
-                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md"
-                            >
-                                Terapkan
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* HIDDEN CHARTS FOR EXPORT */}
             <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
@@ -1566,9 +1432,10 @@ export default function DashboardRFID() {
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                                         {detailType === 'GOOD' && <CheckCircle className="text-white" size={24} strokeWidth={2.5} />}
-                                        {detailType === 'REWORK' && <RefreshCcw className="text-white" size={24} strokeWidth={2.5} />}
+                                        {detailType === 'REWORK' && <Wrench className="text-white" size={24} strokeWidth={2.5} />}
                                         {detailType === 'REJECT' && <XCircle className="text-white" size={24} strokeWidth={2.5} />}
-                                        {detailType === 'WIRA' && <AlertCircle className="text-white" size={24} strokeWidth={2.5} />}
+                                        {detailType === 'WIRA' && <Clock className="text-white" size={24} strokeWidth={2.5} />}
+                                        {detailType === 'OUTPUT' && <Crosshair className="text-white" size={24} strokeWidth={2.5} />}
                                     </div>
                                     <h2 className="text-xl sm:text-2xl font-bold text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>
                                         Detail {detailTitle}
@@ -1627,18 +1494,7 @@ export default function DashboardRFID() {
                                         <XCircle size={48} className="text-blue-500 opacity-50" />
                                     </div>
                                     <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada data</p>
-                                    {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') && !currentWo ? (
-                                        <div className="text-center">
-                                            <p className="text-sm mb-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                                                WO (Work Order) tidak tersedia untuk menampilkan data {detailTitle}
-                                            </p>
-                                            <p className="text-xs text-slate-500" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                                                Silakan pilih atau filter WO terlebih dahulu
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle} untuk hari ini</p>
-                                    )}
+                                    <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle}</p>
                                 </div>
                             ) : filteredDetailData.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center text-slate-400 h-full min-h-[400px]">
@@ -1654,6 +1510,7 @@ export default function DashboardRFID() {
                                         <table className="w-full">
                                             <thead className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 border-b-2 border-blue-500 sticky top-0 z-10">
                                                 <tr>
+                                                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>No</th>
                                                     <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>RFID ID</th>
                                                     <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>WO</th>
                                                     <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-wider border-b-2 border-blue-400 text-white" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Style</th>
@@ -1670,6 +1527,7 @@ export default function DashboardRFID() {
                                             <tbody className="bg-white divide-y divide-slate-100">
                                                 {filteredDetailData.map((item, index) => (
                                                     <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-blue-50/50 transition-colors`}>
+                                                        <td className="px-4 py-3 text-sm font-semibold text-slate-600 text-center" style={{ fontFamily: 'Poppins, sans-serif' }}>{index + 1}</td>
                                                         <td className="px-4 py-3 text-sm font-mono font-bold text-blue-600" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.rfid_garment || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.wo || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.style || '-'}</td>
@@ -1678,23 +1536,55 @@ export default function DashboardRFID() {
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.color || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700 font-bold" style={{ fontFamily: 'Poppins, sans-serif' }}>{item.size || '-'}</td>
                                                         <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                                                            {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA') 
+                                                            {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA')
                                                                 ? (item.reworkCount !== undefined && item.reworkCount !== null ? item.reworkCount : '-')
                                                                 : (item.line || '-')}
                                                         </td>
                                                         <td className="px-4 py-3 text-sm text-slate-600 font-mono" style={{ fontFamily: 'Poppins, sans-serif' }}>
                                                             {item.timestamp ? (() => {
                                                                 try {
-                                                                    // Parse timestamp dari format API: "Fri, 12 Dec 2025 13:59:05 GMT"
-                                                                    const date = new Date(item.timestamp);
-                                                                    // Format: DD MMM YYYY, HH.MM.SS
-                                                                    const day = String(date.getUTCDate()).padStart(2, '0');
+                                                                    let date: Date;
+                                                                    const timestamp = item.timestamp;
+
+                                                                    // Cek apakah timestamp memiliki timezone indicator
+                                                                    const hasTimezone = timestamp.includes('Z') || timestamp.match(/[+-]\d{2}:\d{2}$/);
+
+                                                                    if (!hasTimezone) {
+                                                                        // Timestamp tanpa timezone, parse manual untuk menghindari konversi timezone
+                                                                        // Format: "2026-01-14T10:47:25" atau "2026-01-14T10:47:25.123"
+                                                                        const parts = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?/);
+                                                                        if (parts) {
+                                                                            const [, year, month, day, hour, minute, second] = parts;
+                                                                            // Buat Date object dengan waktu lokal (tidak ada konversi timezone)
+                                                                            date = new Date(
+                                                                                parseInt(year),
+                                                                                parseInt(month) - 1, // Month is 0-indexed
+                                                                                parseInt(day),
+                                                                                parseInt(hour),
+                                                                                parseInt(minute),
+                                                                                parseInt(second)
+                                                                            );
+                                                                        } else {
+                                                                            // Fallback ke parsing normal
+                                                                            date = new Date(timestamp);
+                                                                        }
+                                                                    } else {
+                                                                        // Timestamp dengan timezone, parse normal
+                                                                        date = new Date(timestamp);
+                                                                    }
+
+                                                                    if (isNaN(date.getTime())) {
+                                                                        return item.timestamp;
+                                                                    }
+
+                                                                    // Format: DD MMM YYYY, HH.MM.SS (menggunakan waktu lokal, bukan UTC)
+                                                                    const day = String(date.getDate()).padStart(2, '0');
                                                                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                                                                    const month = monthNames[date.getUTCMonth()];
-                                                                    const year = date.getUTCFullYear();
-                                                                    const hours = String(date.getUTCHours()).padStart(2, '0');
-                                                                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-                                                                    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                                                                    const month = monthNames[date.getMonth()];
+                                                                    const year = date.getFullYear();
+                                                                    const hours = String(date.getHours()).padStart(2, '0');
+                                                                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                                                                    const seconds = String(date.getSeconds()).padStart(2, '0');
                                                                     return `${day} ${month} ${year}, ${hours}.${minutes}.${seconds}`;
                                                                 } catch (e) {
                                                                     return item.timestamp;

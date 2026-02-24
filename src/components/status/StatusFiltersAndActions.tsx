@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Filter, Search, RefreshCw, Download } from 'lucide-react';
+import { Filter, Search, RefreshCw } from 'lucide-react';
+import excelIcon from '../../../assets/excel.png';
 
 interface StatusFiltersAndActionsProps {
     filterStatus: 'all' | 'found' | 'not_found';
@@ -59,7 +60,11 @@ const StatusFiltersAndActions = memo(({
                     disabled={!hasItems}
                     className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center gap-2"
                 >
-                    <Download className="w-4 h-4" />
+                    <img 
+                        src={excelIcon} 
+                        alt="Export Excel" 
+                        className="w-4 h-4 object-contain"
+                    />
                     Export
                 </button>
             </div>

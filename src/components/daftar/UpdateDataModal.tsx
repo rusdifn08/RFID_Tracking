@@ -136,7 +136,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.wo}
                                 onChange={(e) => onWOChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih WO...</option>
                                 {allWOs.map((wo) => (
@@ -144,6 +144,12 @@ const UpdateDataModal = memo(({
                                         {wo}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.wo && !allWOs.some(wo => String(wo).trim() === String(updateFormData.wo).trim()) && (
+                                    <option value={updateFormData.wo}>
+                                        {updateFormData.wo}
+                                    </option>
+                                )}
                             </select>
                         </div>
 
@@ -155,7 +161,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.style}
                                 onChange={(e) => onStyleChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || !updateFormData.wo || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih Style...</option>
                                 {styles.map((style) => (
@@ -163,6 +169,12 @@ const UpdateDataModal = memo(({
                                         {style}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.style && !styles.some(style => String(style).trim() === String(updateFormData.style).trim()) && (
+                                    <option value={updateFormData.style}>
+                                        {updateFormData.style}
+                                    </option>
+                                )}
                             </select>
                         </div>
 
@@ -174,7 +186,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.buyer}
                                 onChange={(e) => onBuyerChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || !updateFormData.wo || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih Buyer...</option>
                                 {buyers.map((buyer) => (
@@ -182,6 +194,12 @@ const UpdateDataModal = memo(({
                                         {buyer}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.buyer && !buyers.some(buyer => String(buyer).trim() === String(updateFormData.buyer).trim()) && (
+                                    <option value={updateFormData.buyer}>
+                                        {updateFormData.buyer}
+                                    </option>
+                                )}
                             </select>
                         </div>
 
@@ -193,7 +211,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.item}
                                 onChange={(e) => onItemChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || !updateFormData.wo || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih Item...</option>
                                 {items.map((item) => (
@@ -201,6 +219,12 @@ const UpdateDataModal = memo(({
                                         {item}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.item && !items.some(item => String(item).trim() === String(updateFormData.item).trim()) && (
+                                    <option value={updateFormData.item}>
+                                        {updateFormData.item}
+                                    </option>
+                                )}
                             </select>
                         </div>
 
@@ -212,7 +236,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.color}
                                 onChange={(e) => onColorChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || !updateFormData.wo || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih Color...</option>
                                 {colors.map((color) => (
@@ -220,6 +244,12 @@ const UpdateDataModal = memo(({
                                         {color}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.color && !colors.some(color => String(color).trim() === String(updateFormData.color).trim()) && (
+                                    <option value={updateFormData.color}>
+                                        {updateFormData.color}
+                                    </option>
+                                )}
                             </select>
                         </div>
 
@@ -231,7 +261,7 @@ const UpdateDataModal = memo(({
                                 value={updateFormData.size}
                                 onChange={(e) => onSizeChange(e.target.value)}
                                 className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white"
-                                disabled={isUpdating || isLoadingGarmentData || !updateFormData.wo || woBreakdownLoading}
+                                disabled={isUpdating || woBreakdownLoading}
                             >
                                 <option value="">Pilih Size...</option>
                                 {sizes.map((size) => (
@@ -239,6 +269,12 @@ const UpdateDataModal = memo(({
                                         {size}
                                     </option>
                                 ))}
+                                {/* Tambahkan option jika value tidak ada di list (untuk auto-fill) */}
+                                {updateFormData.size && !sizes.some(size => String(size).trim() === String(updateFormData.size).trim()) && (
+                                    <option value={updateFormData.size}>
+                                        {updateFormData.size}
+                                    </option>
+                                )}
                             </select>
                         </div>
                     </div>

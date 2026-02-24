@@ -11,27 +11,45 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-    // Default: terbuka di desktop (>= 1024px), tertutup di mobile
-    const [isOpen, setIsOpen] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return window.innerWidth >= 728;
-        }
-        return true;
-    });
+    // Default: selalu tertutup (tidak auto terbuka)
+    const [isOpen, setIsOpen] = useState(false);
 
-    // Update state saat window resize
+    // Auto-close sidebar setelah beberapa menit tidak ada aktivitas
     useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth >= 728) {
-                setIsOpen(true);
-            } else {
-                setIsOpen(false);
+        if (!isOpen) return; // Hanya aktif jika sidebar terbuka
+
+        let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+        const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 menit dalam milliseconds
+
+        const resetTimer = () => {
+            if (inactivityTimer) {
+                clearTimeout(inactivityTimer);
             }
+            inactivityTimer = setTimeout(() => {
+                setIsOpen(false);
+            }, INACTIVITY_TIMEOUT);
         };
 
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+        // Event listeners untuk aktivitas user
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        
+        events.forEach(event => {
+            window.addEventListener(event, resetTimer, { passive: true });
+        });
+
+        // Start timer saat sidebar terbuka
+        resetTimer();
+
+        // Cleanup
+        return () => {
+            if (inactivityTimer) {
+                clearTimeout(inactivityTimer);
+            }
+            events.forEach(event => {
+                window.removeEventListener(event, resetTimer);
+            });
+        };
+    }, [isOpen]);
 
     const toggleSidebar = () => {
         setIsOpen(prev => !prev);

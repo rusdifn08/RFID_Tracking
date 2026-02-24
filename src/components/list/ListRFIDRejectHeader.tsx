@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { XCircle, Filter, Download, RefreshCw } from 'lucide-react';
+import { XCircle, Filter, RefreshCw } from 'lucide-react';
+import excelIcon from '../../../assets/excel.png';
 
 interface ListRFIDRejectHeaderProps {
     totalReject: number;
@@ -45,7 +46,11 @@ const ListRFIDRejectHeader = memo(({
                     className="px-4 py-2 bg-gradient-to-r from-blue-500 to-red-500 hover:from-blue-600 hover:to-red-600 text-white rounded-lg shadow-sm transition-all flex items-center gap-2 font-medium text-sm"
                     title="Export Excel Reject"
                 >
-                    <Download className="w-4 h-4" strokeWidth={2.5} />
+                    <img 
+                        src={excelIcon} 
+                        alt="Export Excel" 
+                        className="w-4 h-4 object-contain"
+                    />
                     <span>Export Reject</span>
                 </button>
                 <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">

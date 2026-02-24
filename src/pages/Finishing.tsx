@@ -2,16 +2,15 @@ import { memo, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import Footer from '../components/Footer';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
 
-// Material-UI Imports
-import {
-    Dashboard as DashboardIcon,
-    EventNote as ListRfidIcon,
-} from '@mui/icons-material';
+// Import icons from assets folder
+import allIcon from '../assets/all.webp';
+import dryroomIcon from '../assets/dryroom.webp';
+import foldingIcon from '../assets/folding.webp';
+import listIcon from '../assets/list.webp';
 
 const Finishing = memo(() => {
     const { isOpen } = useSidebar();
@@ -19,16 +18,34 @@ const Finishing = memo(() => {
     const cards = useMemo(() => [
         {
             id: 1,
-            title: 'Dashboard RFID Finishing',
-            subtitle: 'Monitoring Real-time Finishing',
-            icon: DashboardIcon,
+            title: 'Dashboard RFID All',
+            subtitle: 'Monitoring Real-time Finishing All',
+            icon: null,
+            iconImage: allIcon,
             path: '/dashboard-rfid-finishing',
         },
         {
             id: 2,
+            title: 'Dashboard Dryroom',
+            subtitle: 'Monitoring Real-time Dryroom',
+            icon: null,
+            iconImage: dryroomIcon,
+            path: '/dashboard-dryroom',
+        },
+        {
+            id: 3,
+            title: 'Dashboard Folding',
+            subtitle: 'Monitoring Real-time Folding',
+            icon: null,
+            iconImage: foldingIcon,
+            path: '/dashboard-folding',
+        },
+        {
+            id: 4,
             title: 'List RFID Finishing',
             subtitle: 'Database & Log Finishing',
-            icon: ListRfidIcon,
+            icon: null,
+            iconImage: listIcon,
             path: '/list-rfid-finishing',
         },
     ], []);
@@ -98,10 +115,7 @@ const Finishing = memo(() => {
             </div>
 
             <style>{`
-                @keyframes fadeInUp {
-                    from { opacity: 0; transform: translateY(40px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
+                /* Custom Scrollbar */
                 /* Custom Scrollbar */
                 main::-webkit-scrollbar {
                     width: 8px;

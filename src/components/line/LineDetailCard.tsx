@@ -6,7 +6,8 @@ interface LineDetailCardProps {
  id: number;
  title: string;
  subtitle: string;
- icon: SvgIconComponent;
+ icon: SvgIconComponent | null;
+ iconImage?: string;
  path: string;
  isHovered: boolean;
  isOtherHovered: boolean;
@@ -18,6 +19,7 @@ const LineDetailCard = memo(({
  title,
  subtitle,
  icon: Icon,
+ iconImage,
  path,
  isHovered,
  isOtherHovered,
@@ -38,7 +40,7 @@ const LineDetailCard = memo(({
    onMouseLeave={onMouseLeave}
    onClick={() => navigate(path)}
    style={{
-    padding: '1.5rem',
+    padding: 'clamp(0.75rem, 1.5vw, 1rem)',
     aspectRatio: '2 / 1', // Height = 1/2 dari width
     display: 'flex',
     flexDirection: 'column',
@@ -47,16 +49,30 @@ const LineDetailCard = memo(({
    }}
   >
    {/* Icon Container - di atas, kiri */}
-   <div className={`p-3 rounded-lg transition-colors duration-300 flex-shrink-0 mb-3 ${
+   <div className={`p-2 rounded-lg transition-colors duration-300 flex-shrink-0 mb-2 ${
     isGrayedOut ? 'bg-gray-100' : 'bg-blue-50'
    }`}>
-    <Icon
-     sx={{
-      fontSize: '2.5rem',
-      color: isGrayedOut ? '#9ca3af' : '#3b82f6',
-      transition: 'color 0.3s',
-     }}
-    />
+    {iconImage ? (
+     <img
+      src={iconImage}
+      alt={title}
+      className="object-contain"
+      style={{
+       width: 'clamp(3rem, 6vw, 4.5rem)',
+       height: 'clamp(3rem, 6vw, 4.5rem)',
+       filter: isGrayedOut ? 'grayscale(100%) opacity(0.5)' : 'none',
+       transition: 'filter 0.3s',
+      }}
+     />
+    ) : Icon ? (
+     <Icon
+      sx={{
+       fontSize: 'clamp(2.5rem, 5vw, 4rem)',
+       color: isGrayedOut ? '#9ca3af' : '#3b82f6',
+       transition: 'color 0.3s',
+      }}
+     />
+    ) : null}
    </div>
 
    {/* Title and Subtitle - di bawah icon, kiri */}
@@ -67,7 +83,7 @@ const LineDetailCard = memo(({
      {title}
     </h3>
     <p className={`text-base transition-colors duration-300 ${
-     isGrayedOut ? 'text-gray-400' : 'text-blue-500'
+     isGrayedOut ? 'text-gray-400' : 'text-gray-600'
     }`} style={{ fontFamily: 'Poppins, sans-serif' }}>
      {subtitle}
     </p>

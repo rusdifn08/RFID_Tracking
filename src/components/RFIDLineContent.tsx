@@ -1,160 +1,489 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, User } from 'lucide-react';
-import adidasLogo from '../assets/adidas.svg';
-import redWingsLogo from '../assets/red_wings.svg';
-import bergansLogo from '../assets/bergans.svg';
-import montbellLogo from '../assets/montbell.svg';
+import { ArrowRight, User, Sun, Moon, Edit } from 'lucide-react';
+import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
+import type { ProductionLine } from '../data/production_line';
+import {
+    productionLinesCLN,
+    productionLinesMJL,
+    productionLinesMJL2,
+} from '../data/production_line';
+import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 
-// Tipe data
-interface ProductionLine {
-    id: number;
-    title: string;
-    supervisor: string;
-    brand: string;
-    logoColor: string;
-    borderColor: string;
-    accentColor: string;
-    brandTextColor?: string;
-}
+// Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
+const formatTime12Hour = (time24: string): { time: string; period: string } => {
+    if (!time24 || !time24.includes(':')) {
+        return { time: '07:30', period: 'AM' };
+    }
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return {
+        time: `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+        period: period
+    };
+};
+
+// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
+const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
+    // Deteksi environment berdasarkan port sebagai fallback
+    const currentPort = window.location.port;
+    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
+    
+    if (currentPort === '5174') {
+        fallbackEnv = 'MJL2';
+    } else if (currentPort === '5173') {
+        fallbackEnv = 'MJL';
+    } else {
+        fallbackEnv = 'CLN';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
+            headers: getDefaultHeaders()
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
+            // Cache environment untuk digunakan oleh getDefaultHeaders()
+            setBackendEnvironment(env);
+            return env;
+        }
+    } catch (error) {
+        console.error('Error fetching environment config:', error);
+        // Jika error, gunakan fallback berdasarkan port
+        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+        setBackendEnvironment(fallbackEnv);
+        return fallbackEnv;
+    }
+    // Default berdasarkan port jika tidak ada response
+    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+    setBackendEnvironment(fallbackEnv);
+    return fallbackEnv;
+};
 
 export default function ProductionLine() {
     const navigate = useNavigate();
     const [hoveredCard, setHoveredCard] = useState<number | null>(null);
+    const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>('CLN');
 
-    // Mapping warna background untuk setiap brand (solid color, no gradient)
-    const getBrandLogoColor = (brand: string): { backgroundColor: string; svgFilter?: string } => {
-        const brandColors: { [key: string]: { backgroundColor: string; svgFilter?: string } } = {
-            'mont-bell': { backgroundColor: '#00384A', svgFilter: 'brightness(0) invert(1)' }, // Background #00384A, SVG putih
-            'RedWings': { backgroundColor: '#DC2626', svgFilter: 'none' }, // Merah untuk RedWings, SVG asli tanpa perubahan
-            'adidas': { backgroundColor: '#FFBD0B', svgFilter: 'none' }, // Kuning untuk adidas, SVG tetap hitam
-            'Bergans': { backgroundColor: '#059669', svgFilter: 'brightness(0) invert(1)' }, // Hijau untuk Bergans, SVG putih
-        };
-        return brandColors[brand] || { backgroundColor: '#6B7280', svgFilter: 'brightness(0) invert(1)' };
+    // State untuk shift per line (day = siang, night = malam)
+    const [lineShifts, setLineShifts] = useState<Record<number, 'day' | 'night'>>({});
+    const [isLoadingShifts, setIsLoadingShifts] = useState(true);
+
+    // State untuk supervisor data dan startTimes dari API
+    const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
+    const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
+
+    // State untuk active lines dari API wira
+    const [activeLines, setActiveLines] = useState<Set<number>>(new Set());
+
+    // State untuk edit modal
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [selectedLine, setSelectedLine] = useState<ProductionLine | null>(null);
+
+    // Ref untuk polling interval
+    const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Fetch environment saat component mount
+    useEffect(() => {
+        getEnvironment().then(env => {
+            setEnvironment(env);
+        });
+    }, []);
+
+    // Pilih data berdasarkan environment
+    const productionLines = useMemo(() => {
+        if (environment === 'MJL2') {
+            return productionLinesMJL2;
+        } else if (environment === 'MJL') {
+            return productionLinesMJL;
+        } else {
+            return productionLinesCLN;
+        }
+    }, [environment]);
+
+
+    // Load supervisor data dan startTimes dari API (dipanggil untuk polling)
+    const loadSupervisorData = async () => {
+        if (!environment) return;
+
+        try {
+            const url = `${API_BASE_URL}/api/supervisor-data?environment=${environment}`;
+            const response = await fetch(url, {
+                headers: getDefaultHeaders()
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    setSupervisorData(data.data.supervisors || {});
+                    setStartTimesData(data.data.startTimes || {});
+                }
+            }
+        } catch (error) {
+            // Silent error handling
+        }
     };
 
-    const productionLines: ProductionLine[] = [
-        {
-            id: 1,
-            title: 'Production Line 1',
-            supervisor: 'Risman',
-            brand: 'mont-bell',
-            logoColor: '', // Akan diisi dengan inline style
-            borderColor: 'border-purple-500',
-            accentColor: 'text-purple-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 2,
-            title: 'Production Line 2',
-            supervisor: 'Asep Supriadi',
-            brand: 'mont-bell',
-            logoColor: '',
-            borderColor: 'border-pink-500',
-            accentColor: 'text-pink-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 3,
-            title: 'Production Line 3',
-            supervisor: '-',
-            brand: 'RedWings',
-            logoColor: '',
-            borderColor: 'border-yellow-400',
-            accentColor: 'text-yellow-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 4,
-            title: 'Production Line 4',
-            supervisor: 'Agus Bencoy',
-            brand: 'mont-bell',
-            logoColor: '',
-            borderColor: 'border-purple-500',
-            accentColor: 'text-purple-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 5,
-            title: 'Production Line 5',
-            supervisor: 'Euis Sutisna',
-            brand: 'mont-bell',
-            logoColor: '',
-            borderColor: 'border-emerald-500',
-            accentColor: 'text-emerald-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 6,
-            title: 'Production Line 6',
-            supervisor: 'Tatang Beratang',
-            brand: 'RedWings',
-            logoColor: '',
-            borderColor: 'border-teal-400',
-            accentColor: 'text-teal-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 7,
-            title: 'Production Line 7',
-            supervisor: 'Agus Bencoy',
-            brand: 'mont-bell',
-            logoColor: '',
-            borderColor: 'border-purple-500',
-            accentColor: 'text-purple-600',
-            brandTextColor: 'text-white'
-        },
-        {
-            id: 8,
-            title: 'Production Line 8',
-            supervisor: 'Euis Sutisna',
-            brand: 'adidas',
-            logoColor: '',
-            borderColor: 'border-emerald-500',
-            accentColor: 'text-emerald-600',
-            brandTextColor: 'text-black'
-        },
-        {
-            id: 9,
-            title: 'Production Line 9',
-            supervisor: 'Tatang Beratang',
-            brand: 'Bergans',
-            logoColor: '',
-            borderColor: 'border-blue-400',
-            accentColor: 'text-blue-600',
-            brandTextColor: 'text-white'
-        },
-    ];
+    // Load shift data dari API (dipanggil untuk polling)
+    const loadShiftData = async () => {
+        if (!environment) return;
 
-    // Helper Render Logo - Menggunakan file SVG dari assets
-    const renderLogo = (brand: string) => {
-        const logoMap: { [key: string]: string } = {
-            'adidas': adidasLogo,
-            'RedWings': redWingsLogo,
-            'Bergans': bergansLogo,
-            'mont-bell': montbellLogo,
+        try {
+            const url = `${API_BASE_URL}/api/shift-data?environment=${environment}`;
+            const response = await fetch(url, {
+                headers: getDefaultHeaders()
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const shifts: Record<number, 'day' | 'night'> = {};
+                    Object.keys(data.data).forEach(key => {
+                        const lineId = parseInt(key, 10);
+                        if (!isNaN(lineId)) {
+                            shifts[lineId] = data.data[key] as 'day' | 'night';
+                        }
+                    });
+                    setLineShifts(shifts);
+                }
+            }
+        } catch (error) {
+            // Silent error handling
+        } finally {
+            setIsLoadingShifts(false);
+        }
+    };
+
+    // Load supervisor data dari API saat component mount dan saat environment berubah
+    useEffect(() => {
+        if (!environment) return;
+
+        // Load initial data
+        loadSupervisorData();
+        loadShiftData();
+
+        // Setup polling untuk real-time update (setiap 3 detik)
+        pollingIntervalRef.current = setInterval(() => {
+            loadSupervisorData();
+            loadShiftData();
+        }, 3000);
+
+        // Listen untuk custom event ketika supervisor di-update dari modal
+        const handleSupervisorUpdate = () => {
+            loadSupervisorData();
+            loadShiftData();
         };
 
-        const logoPath = logoMap[brand];
-        const brandColorConfig = getBrandLogoColor(brand);
+        const handleShiftUpdate = () => {
+            loadSupervisorData();
+            loadShiftData();
+        };
 
-        if (logoPath) {
-            return (
-                <img
-                    src={logoPath}
-                    alt={brand}
-                    className="w-full h-full object-contain p-2"
-                    style={{ 
-                        maxWidth: '100%', 
-                        maxHeight: '100%',
-                        filter: brandColorConfig.svgFilter || 'none'
-                    }}
-                />
-            );
+        window.addEventListener('supervisorUpdated', handleSupervisorUpdate);
+        window.addEventListener('shiftUpdated', handleShiftUpdate);
+
+        // Refresh saat window focus (user kembali ke tab)
+        const handleFocus = () => {
+            loadSupervisorData();
+            loadShiftData();
+        };
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.removeEventListener('supervisorUpdated', handleSupervisorUpdate);
+            window.removeEventListener('shiftUpdated', handleShiftUpdate);
+            window.removeEventListener('focus', handleFocus);
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, [environment]);
+
+    // Handler untuk membuka modal edit
+    const handleEditClick = (e: React.MouseEvent, line: ProductionLine) => {
+        e.stopPropagation(); // Prevent card click
+        setSelectedLine(line);
+        setEditModalOpen(true);
+    };
+
+    // Handler untuk update setelah edit
+    const handleUpdate = () => {
+        loadSupervisorData();
+        loadShiftData();
+        // Dispatch event untuk update di device lain
+        window.dispatchEvent(new CustomEvent('supervisorUpdated'));
+    };
+
+    // Load active lines dari API wira - refresh saat environment berubah
+    useEffect(() => {
+        if (!environment) return;
+
+        const loadActiveLines = async () => {
+            try {
+                // Fetch melalui proxy server untuk menghindari CORS issue
+                const response = await fetch(`${API_BASE_URL}/wira`, {
+                    method: 'GET',
+                    headers: {
+                        ...getDefaultHeaders(),
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Extract unique line numbers dari response
+                    const lines = new Set<number>();
+
+                    if (data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                        // Dapatkan list line IDs yang valid untuk environment ini
+                        const validLineIds = new Set<number>();
+                        const validLineNumbers = new Set<string>();
+                        productionLines.forEach(line => {
+                            if (line.id !== 0 && line.id !== 111 && line.id !== 112) {
+                                validLineIds.add(line.id);
+                                if (line.line) {
+                                    validLineNumbers.add(line.line.toUpperCase());
+                                }
+                            }
+                        });
+
+                        // Debug: log data yang diterima
+                        console.log(`🔍 [LED INDICATOR] Environment: ${environment}, Valid Line IDs:`, Array.from(validLineIds));
+                        console.log(`🔍 [LED INDICATOR] Valid Line Numbers:`, Array.from(validLineNumbers));
+                        console.log(`🔍 [LED INDICATOR] WIRA API Response - Total items:`, data.data.length);
+
+                        data.data.forEach((item: any, index: number) => {
+                            // Cek berbagai kemungkinan format line
+                            const lineNum = item.line || item.LINE || item.Line;
+
+                            if (lineNum !== null && lineNum !== undefined && lineNum !== '') {
+                                // Convert ke string untuk matching
+                                const lineNumStr = typeof lineNum === 'string' 
+                                    ? lineNum.trim().toUpperCase() 
+                                    : lineNum.toString().trim();
+
+                                // Cari line berdasarkan line number (exact match)
+                                const matchingLine = productionLines.find(line => 
+                                    line.line && line.line.toUpperCase() === lineNumStr
+                                );
+                                
+                                if (matchingLine && validLineIds.has(matchingLine.id)) {
+                                    // Exact match ditemukan, tambahkan line ID
+                                    lines.add(matchingLine.id);
+                                    console.log(`✅ [LED INDICATOR] Line ${lineNumStr} (ID: ${matchingLine.id}) matched and added`);
+                                } else {
+                                    // Fallback: coba parse sebagai number
+                                    const lineId = typeof lineNum === 'string'
+                                        ? parseInt(lineNumStr, 10)
+                                        : Number(lineNum);
+
+                                    if (!isNaN(lineId) && lineId > 0) {
+                                        if (validLineIds.has(lineId)) {
+                                            lines.add(lineId);
+                                            console.log(`✅ [LED INDICATOR] Line ${lineNumStr} (ID: ${lineId}) added via fallback`);
+                                        } else {
+                                            console.log(`⚠️ [LED INDICATOR] Line ${lineNumStr} (ID: ${lineId}) tidak valid untuk environment ${environment}`);
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Item tidak memiliki line number
+                                console.log(`⚠️ [LED INDICATOR] Item ${index} tidak memiliki line number:`, item);
+                            }
+                        });
+
+                        console.log(`🔍 [LED INDICATOR] Final active lines for ${environment}:`, Array.from(lines));
+                    } else {
+                        // Tidak ada data atau data kosong
+                        console.log(`⚠️ [LED INDICATOR] No data from WIRA API for ${environment}`);
+                        setActiveLines(new Set());
+                        return;
+                    }
+
+                    setActiveLines(lines);
+                } else {
+                    console.error(`❌ [LED INDICATOR] WIRA API response not OK:`, response.status);
+                    setActiveLines(new Set());
+                }
+            } catch (error) {
+                console.error(`❌ [LED INDICATOR] Error fetching active lines:`, error);
+                // Jika API tidak tersedia, semua line dianggap mati
+                setActiveLines(new Set());
+            }
+        };
+
+        loadActiveLines();
+
+        // Setup polling untuk refresh active lines setiap 5 detik
+        const intervalId = setInterval(() => {
+            loadActiveLines();
+        }, 5000);
+
+        return () => {
+            clearInterval(intervalId);
+        };
+    }, [environment, productionLines]); // Refresh saat environment atau productionLines berubah
+
+    // Initialize default shifts untuk production lines yang belum ada di data
+    useEffect(() => {
+        if (isLoadingShifts) return;
+
+        setLineShifts(prev => {
+            const newShifts = { ...prev };
+            let hasChanges = false;
+
+            productionLines.forEach(line => {
+                // Hanya initialize jika belum ada di data
+                if (!(line.id in newShifts)) {
+                    newShifts[line.id] = Math.random() > 0.5 ? 'day' : 'night';
+                    hasChanges = true;
+                }
+            });
+
+            // Jika ada line baru, simpan ke server
+            if (hasChanges) {
+                productionLines.forEach(line => {
+                    if (!(line.id in prev)) {
+                        // Save new shift to server
+                        fetch(`${API_BASE_URL}/api/shift-data`, {
+                            method: 'POST',
+                            headers: {
+                                ...getDefaultHeaders(),
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                lineId: line.id,
+                                shift: newShifts[line.id],
+                                environment: environment
+                            })
+                        }).catch(err => console.error('Error saving new shift:', err));
+                    }
+                });
+            }
+
+            return newShifts;
+        });
+    }, [productionLines, isLoadingShifts]);
+
+    // Handler untuk toggle shift
+    const handleShiftToggle = async (e: React.MouseEvent, lineId: number) => {
+        e.preventDefault();
+        e.stopPropagation(); // Prevent card click
+
+        const currentShift = lineShifts[lineId] || 'day';
+        const newShift: 'day' | 'night' = currentShift === 'day' ? 'night' : 'day';
+
+        // Optimistic update - langsung update UI
+        setLineShifts(prev => {
+            const updated: Record<number, 'day' | 'night'> = {
+                ...prev,
+                [lineId]: newShift
+            };
+            return updated;
+        });
+
+        // Save to server
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/shift-data`, {
+                method: 'POST',
+                headers: {
+                    ...getDefaultHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lineId: lineId,
+                    shift: newShift,
+                    environment: environment
+                })
+            });
+
+            if (!response.ok) {
+                const responseData = await response.json();
+                console.error(`❌ [SHIFT TOGGLE] Failed: ${response.status}`, responseData);
+                // Revert on error
+                setLineShifts(prev => ({
+                    ...prev,
+                    [lineId]: currentShift // Revert ke nilai sebelumnya
+                }));
+            }
+        } catch (error) {
+            console.error('❌ [SHIFT TOGGLE] Error:', error);
+            // Revert on error
+            setLineShifts(prev => ({
+                ...prev,
+                [lineId]: currentShift // Revert ke nilai sebelumnya
+            }));
         }
+    };
 
-        // Fallback jika brand tidak ditemukan
-        return <span className="font-semibold text-white text-[10px] uppercase tracking-wider">{brand}</span>;
+    // Helper Render Shift Icon dengan design profesional
+    const renderShiftIcon = (lineId: number) => {
+        const shift = lineShifts[lineId] || 'day';
+        const isDay = shift === 'day';
+
+        return (
+            <div className="w-full h-full flex items-center justify-center relative">
+                {isDay ? (
+                    // Tema Siang - Matahari dengan gradient dan glow
+                    <div className="relative w-full h-full flex items-center justify-center">
+                        {/* Glow effect untuk matahari */}
+                        <div
+                            className="absolute inset-0 rounded-full blur-sm opacity-60"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(255,193,7,0.8) 0%, rgba(255,152,0,0.4) 50%, transparent 100%)'
+                            }}
+                        />
+                        <Sun
+                            className="w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 relative z-10"
+                            style={{
+                                color: '#B45309', // Coklat gelap untuk kontras tinggi dengan background emas
+                                filter: 'drop-shadow(0 2px 6px rgb(253, 255, 241)) drop-shadow(0 0 3px rgb(252, 244, 98))',
+                                strokeWidth: 3
+                            }}
+                            fill="#F59E0B" // Amber untuk fill dengan kontras lebih baik
+                        />
+                    </div>
+                ) : (
+                    // Tema Malam - Bulan dengan bintang dan glow
+                    <div className="relative w-full h-full flex items-center justify-center">
+                        {/* Glow effect untuk bulan */}
+                        <div
+                            className="absolute inset-0 rounded-full blur-sm opacity-50"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(147,197,253,0.6) 0%, rgba(59,130,246,0.3) 50%, transparent 100%)'
+                            }}
+                        />
+                        <Moon
+                            className="w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 relative z-10"
+                            style={{
+                                color: '#FBBF24', // Kuning emas untuk kontras dengan background biru gelap
+                                filter: 'drop-shadow(0 2px 6px rgba(147,197,253,0.5))',
+                                strokeWidth: 2.5
+                            }}
+                            fill="#FCD34D" // Kuning emas untuk fill
+                        />
+                        {/* Bintang kecil untuk efek malam */}
+                        <div
+                            className="absolute top-0 right-1 w-1 h-1 rounded-full opacity-80"
+                            style={{
+                                background: '#FBBF24',
+                                boxShadow: '0 0 4px 2px rgba(251,191,36,0.6)'
+                            }}
+                        />
+                        <div
+                            className="absolute bottom-1 left-0 w-0.5 h-0.5 rounded-full opacity-70"
+                            style={{
+                                background: '#FBBF24',
+                                boxShadow: '0 0 3px 1px rgba(251,191,36,0.5)'
+                            }}
+                        />
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -165,17 +494,32 @@ export default function ProductionLine() {
                 {productionLines.map((line, index) => {
                     const isHovered = hoveredCard === line.id;
 
+                    // Capture current line object untuk menghindari closure issue
+                    const currentLine = line;
+
+                    // Cek apakah line ini aktif berdasarkan data wira
+                    const isLineActive = activeLines.has(line.id);
+
                     return (
                         <div
-                            key={line.id}
-                            onClick={() => navigate(`/line/${line.id}`)}
+                            key={`line-${currentLine.line || currentLine.id}-${index}`}
+                            onClick={() => {
+                                // Gunakan currentLine untuk memastikan data yang benar
+                                if (currentLine.id === 0 || currentLine.id === 111 || currentLine.id === 112) {
+                                    navigate('/all-production-line');
+                                } else {
+                                    // Prioritas: gunakan currentLine.line jika ada, fallback ke currentLine.id
+                                    const targetLine = currentLine.line || currentLine.id.toString();
+                                    navigate(`/line/${targetLine}`);
+                                }
+                            }}
                             onMouseEnter={() => setHoveredCard(line.id)}
                             onMouseLeave={() => setHoveredCard(null)}
-                            style={{ 
-                                animationDelay: `${index * 100}ms`,
+                            style={{
                                 backgroundColor: isHovered ? '#0073ee' : 'white',
                                 transition: 'background-color 0.3s ease-out, transform 0.3s ease-out, box-shadow 0.3s ease-out',
-                                zIndex: 1
+                                zIndex: 1,
+                                position: 'relative'
                             }}
                             className={`
                                 group relative 
@@ -187,17 +531,80 @@ export default function ProductionLine() {
                                 cursor-pointer
                                 flex flex-col
                                 overflow-visible
-                                animate-fade-in-up
                                 p-1.5 xs:p-2 sm:p-2.5 md:p-3
                                 aspect-[2/1]
                             `}
                         >
-                            {/* --- FLOATING BOX (Brand Logo) --- */}
-                            <div 
-                                className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-lg shadow-md flex items-center justify-center z-10 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 border-2 border-white overflow-hidden"
-                                style={{ backgroundColor: getBrandLogoColor(line.brand).backgroundColor }}
+                            {/* Status Indicator (Lampu On/Off) di pojok kanan atas */}
+                            <div className="absolute top-1.5 xs:top-2 sm:top-2.5 right-1.5 xs:right-2 sm:right-2.5 z-20">
+                                <div className="relative">
+                                    {/* Outer glow effect */}
+                                    <div
+                                        className={`absolute inset-0 rounded-full blur-sm ${isLineActive ? 'bg-green-400' : 'bg-red-400'
+                                            }`}
+                                        style={{
+                                            opacity: isLineActive ? 0.5 : 0.3,
+                                            animation: isLineActive ? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none',
+                                            width: '110%',
+                                            height: '110%',
+                                            top: '-20%',
+                                            left: '-20%'
+                                        }}
+                                    />
+                                    {/* Main circle - ukuran lebih kecil */}
+                                    <div
+                                        className={`w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 rounded-full border ${isLineActive
+                                            ? 'bg-green-500 border-green-400'
+                                            : 'bg-red-500 border-red-400'
+                                            }`}
+                                        style={{
+                                            boxShadow: isLineActive
+                                                ? '0 0 6px rgba(34, 197, 94, 0.8), 0 0 8px rgba(34, 197, 94, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3)'
+                                                : '0 0 4px rgba(239, 68, 68, 0.6), inset 0 0 3px rgba(0, 0, 0, 0.2)'
+                                        }}
+                                    >
+                                        {/* Inner highlight untuk efek lampu menyala */}
+                                        {isLineActive && (
+                                            <div
+                                                className="absolute top-0.5 left-0.5 w-0.5 h-0.5 xs:w-0.5 xs:h-0.5 sm:w-0.5 sm:h-0.5 rounded-full"
+                                                style={{
+                                                    opacity: 0.9,
+                                                    boxShadow: '0 0 1px rgb(13, 255, 0)'
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* --- FLOATING BOX (Shift Icon) dengan Design Profesional --- */}
+                            <div
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleShiftToggle(e, line.id);
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onMouseUp={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-50 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 border-2 border-white overflow-hidden cursor-pointer hover:shadow-2xl active:scale-95"
+                                style={{
+                                    background: (lineShifts[line.id] || 'day') === 'day'
+                                        ? 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)' // Gradient emas-orange untuk siang
+                                        : 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 50%, #1E293B 100%)', // Gradient biru gelap untuk malam
+                                    boxShadow: (lineShifts[line.id] || 'day') === 'day'
+                                        ? '0 4px 12px rgba(255,165,0,0.4), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3)'
+                                        : '0 4px 12px rgba(59,130,246,0.4), 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+                                    pointerEvents: 'auto', // Pastikan bisa di-click
+                                    zIndex: 50 // Pastikan di atas card
+                                }}
                             >
-                                {renderLogo(line.brand)}
+                                {renderShiftIcon(line.id)}
                             </div>
 
                             {/* --- CARD CONTENT --- */}
@@ -205,32 +612,59 @@ export default function ProductionLine() {
 
                                 {/* Title Section - Centered, di tengah antara logo brand dan garis putih */}
                                 <div className="flex items-center justify-center flex-1" style={{ minHeight: 0 }}>
-                                    <h3 className={`text-[10px] xs:text-xs sm:text-sm md:text-base lg:text-lg tracking-tight text-center truncate w-full transition-colors duration-300 ${
-                                        isHovered ? 'text-white' : 'text-[#0073ee]'
-                                    }`} style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 550, textTransform: 'capitalize' }}>
+                                    <h3 className={`text-[10px] xs:text-xs sm:text-sm md:text-base lg:text-lg tracking-tight text-center truncate w-full transition-colors duration-300 ${isHovered ? 'text-white' : 'text-[#0073ee]'
+                                        }`} style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 550, textTransform: 'capitalize' }}>
                                         {line.title}
                                     </h3>
                                 </div>
 
-                                {/* Footer Info (Supervisor & Arrow) */}
-                                <div className="flex items-center justify-between pt-1.5 xs:pt-2 border-t border-slate-200">
+                                {/* Footer Info (Supervisor, Jam Masuk & Arrow) */}
+                                <div className="flex items-center justify-between pt-1.5 xs:pt-2 border-t border-slate-200 gap-2">
 
-                                    {/* Supervisor Info */}
+                                    {/* Supervisor Info + Edit */}
                                     <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-1 min-w-0">
                                         <div className={`p-1 xs:p-1.5 rounded-full bg-slate-50 flex-shrink-0`}>
                                             <User size={10} className="xs:w-[12px] xs:h-[12px] sm:w-[14px] sm:h-[14px]" strokeWidth={2.5} style={{ color: line.accentColor.replace('text-', '') }} />
                                         </div>
-                                        <div className="flex flex-col min-w-0">
+                                        <div className="flex flex-col min-w-0 flex-1">
                                             <span className="text-[7px] xs:text-[8px] sm:text-[9px] text-slate-400 font-bold tracking-wider leading-tight" style={{ textTransform: 'capitalize' }}>
                                                 Supervisor
                                             </span>
-                                            <span className={`text-[10px] xs:text-xs sm:text-sm font-semibold leading-tight transition-colors duration-300 truncate ${
-                                                isHovered ? 'text-white' : 'text-slate-800'
-                                            }`} style={{ textTransform: 'capitalize' }}>
-                                                {line.supervisor && line.supervisor.trim() !== '-' && line.supervisor.trim() !== '' ? line.supervisor : 'Not Assigned'}
+                                            <span className={`text-[10px] xs:text-xs sm:text-sm font-semibold leading-tight transition-colors duration-300 truncate ${isHovered ? 'text-white' : 'text-slate-800'
+                                                }`} style={{ textTransform: 'capitalize' }}>
+                                                {(() => {
+                                                    // Gunakan data dari API jika ada, jika tidak gunakan dari production_line.ts
+                                                    const supervisorFromAPI = supervisorData[line.id.toString()];
+                                                    const supervisor = supervisorFromAPI || line.supervisor;
+                                                    return supervisor && supervisor.trim() !== '-' && supervisor.trim() !== '' ? supervisor : 'Not Assigned';
+                                                })()}
                                             </span>
                                         </div>
+                                        {line.id !== 0 && line.id !== 111 && line.id !== 112 && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleEditClick(e, line)}
+                                                className="p-1 rounded-full hover:bg-slate-200 flex-shrink-0 transition-colors"
+                                                title="Edit supervisor & shift"
+                                                aria-label="Edit supervisor & shift"
+                                            >
+                                                <Edit size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 text-slate-500" strokeWidth={2} />
+                                            </button>
+                                        )}
                                     </div>
+
+                                    {/* Start Time dengan design profesional - di sebelah kanan supervisor */}
+                                    {(() => {
+                                        const currentStartTime = startTimesData[line.id.toString()] || '07:30';
+                                        const { time, period } = formatTime12Hour(currentStartTime);
+                                        return (
+                                            <div className={`flex items-center bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 border border-blue-300/60 rounded-md px-1.5 xs:px-2 py-0.5 xs:py-1 shadow-sm flex-shrink-0 transition-all duration-300 ${isHovered ? 'border-blue-400/80 shadow-md' : ''}`}>
+                                                <span className="text-[9px] xs:text-[10px] sm:text-[11px] font-semibold text-blue-700 tracking-tight whitespace-nowrap">
+                                                    {time} {period}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Arrow Button */}
                                     <div className={`
@@ -247,22 +681,26 @@ export default function ProductionLine() {
                 })}
             </div>
 
-            <style>{`
-                @keyframes fade-in-up {
-                    from { opacity: 0; transform: translateY(20px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes fade-in-down {
-                    from { opacity: 0; transform: translateY(-20px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                .animate-fade-in-up {
-                    animation: fade-in-up 0.6s ease-out forwards;
-                }
-                .animate-fade-in-down {
-                    animation: fade-in-down 0.8s ease-out forwards;
-                }
-            `}</style>
+            {/* Edit Supervisor & Shift Modal */}
+            {selectedLine && (
+                <EditSupervisorShiftModal
+                    isOpen={editModalOpen}
+                    onClose={() => {
+                        setEditModalOpen(false);
+                        setSelectedLine(null);
+                    }}
+                    lineId={selectedLine.id}
+                    lineTitle={selectedLine.title}
+                    currentSupervisor={(() => {
+                        const supervisorFromAPI = supervisorData[selectedLine.id.toString()];
+                        return supervisorFromAPI || selectedLine.supervisor;
+                    })()}
+                    currentShift={lineShifts[selectedLine.id] || 'day'}
+                    currentStartTime={startTimesData[selectedLine.id.toString()] || '07:30'}
+                    environment={environment}
+                    onUpdate={handleUpdate}
+                />
+            )}
         </div>
     );
 }

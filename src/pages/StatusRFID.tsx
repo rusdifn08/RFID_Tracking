@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import { useSidebar } from '../context/SidebarContext';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 import backgroundImage from '../assets/background.jpg';
 import StatusPageHeader from '../components/status/StatusPageHeader';
 import StatusInputSection from '../components/status/StatusInputSection';
@@ -46,8 +46,7 @@ const StatusRFID = memo(() => {
             const response = await fetch(`${API_BASE_URL}/tracking/check?rfid_garment=${encodeURIComponent(rfid.trim())}`, {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
             });
 
@@ -227,25 +226,32 @@ const StatusRFID = memo(() => {
                     <StatusPageHeader />
 
                     {/* Input Section with Statistics */}
-                    <div className="bg-white border-2 border-green-500 rounded-lg p-3 xs:p-4 sm:p-5 md:p-6 hover:shadow-lg hover:border-green-600 transition-all duration-300">
-                        <label className="block text-gray-700 font-bold text-[10px] xs:text-xs sm:text-sm mb-3 xs:mb-3.5 sm:mb-4 tracking-wide uppercase">
+                    <div className="bg-white border-2 border-green-500 rounded-lg p-4 sm:p-5 md:p-6 lg:p-7 hover:shadow-lg hover:border-green-600 transition-all duration-300">
+                        <label className="block text-gray-700 font-bold text-xs sm:text-sm md:text-base mb-4 sm:mb-5 tracking-wide uppercase">
                             Scan atau Ketik RFID Garment
                         </label>
 
-                        <div className="flex flex-col lg:flex-row gap-3 xs:gap-4 sm:gap-5">
-                            <StatusInputSection
-                                rfidInput={rfidInput}
-                                onRfidInputChange={setRfidInput}
-                                isChecking={isChecking || checkRFIDMutation.isPending}
-                                onKeyPress={handleKeyPress}
-                                onCheck={handleRfidCheck}
-                                inputRef={inputRef}
-                            />
-                            <StatusStatistics
-                                total={stats.total}
-                                found={stats.found}
-                                notFound={stats.notFound}
-                            />
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 sm:gap-5 lg:gap-6">
+                            {/* Input Section - Full width di kiri, mengambil space maksimal */}
+                            <div className="flex-1 w-full lg:min-w-0 lg:max-w-none">
+                                <StatusInputSection
+                                    rfidInput={rfidInput}
+                                    onRfidInputChange={setRfidInput}
+                                    isChecking={isChecking || checkRFIDMutation.isPending}
+                                    onKeyPress={handleKeyPress}
+                                    onCheck={handleRfidCheck}
+                                    inputRef={inputRef}
+                                />
+                            </div>
+
+                            {/* Statistics - Di pojok kanan, berjajar, tidak shrink */}
+                            <div className="w-full lg:w-auto lg:flex-shrink-0 lg:ml-6">
+                                <StatusStatistics
+                                    total={stats.total}
+                                    found={stats.found}
+                                    notFound={stats.notFound}
+                                />
+                            </div>
                         </div>
                     </div>
 

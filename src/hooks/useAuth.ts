@@ -3,8 +3,9 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { login, API_BASE_URL } from '../config/api';
+import { login, API_BASE_URL, getDefaultHeaders } from '../config/api';
 import type { LoginRequest } from '../config/api';
+import { getSessionValidUntil } from '../utils/sessionAuth';
 
 /**
  * Hook untuk login dengan NIK dan Password (GET request dengan query parameters)
@@ -36,6 +37,7 @@ export const useLogin = () => {
                     };
                     localStorage.setItem('user', JSON.stringify(userData));
                     localStorage.setItem('isLoggedIn', 'true');
+                    localStorage.setItem('sessionValidUntil', getSessionValidUntil()); // Session sampai tengah malam (frontend only)
                 }
 
                 // Invalidate queries jika diperlukan
@@ -55,11 +57,12 @@ export const useLogout = () => {
     const queryClient = useQueryClient();
 
     return () => {
-        // Clear semua data login
+        // Clear semua data login (termasuk session valid until - frontend only)
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user');
         localStorage.removeItem('isLoggedIn');
         localStorage.removeItem('rememberMe');
+        localStorage.removeItem('sessionValidUntil');
         queryClient.clear();
     };
 };
@@ -81,22 +84,55 @@ export const useRegister = () => {
             telegram?: string;
             no_hp?: string;
         }) => {
+            // Pastikan semua field required adalah string (bukan undefined atau null)
+            // Gunakan nullish coalescing dan explicit conversion
+            const payload: Record<string, string> = {
+                rfid_user: (userData.rfid_user ?? '').toString().trim(),
+                password: (userData.password ?? '').toString(),
+                nama: (userData.nama ?? '').toString().trim(),
+                nik: (userData.nik ?? '').toString().trim(),
+                bagian: (userData.bagian ?? '').toString().trim(),
+                line: (userData.line ?? '').toString().trim(),
+                telegram: (userData.telegram ?? '').toString().trim(),
+                no_hp: (userData.no_hp ?? '').toString().trim()
+            };
+
+            // Log payload untuk debugging
+            console.log('🔵 [Register API] Payload:', payload);
+            console.log('🔵 [Register API] Payload JSON:', JSON.stringify(payload));
+
+            // Validasi field required tidak boleh kosong
+            const requiredFields = ['rfid_user', 'password', 'nama', 'nik', 'bagian', 'line'];
+            const missingFields = requiredFields.filter(field => !payload[field] || payload[field] === '');
+            
+            if (missingFields.length > 0) {
+                console.error('❌ [Register API] Missing required fields:', missingFields);
+                console.error('❌ [Register API] Full payload:', payload);
+                throw new Error(`Field wajib harus diisi: ${missingFields.join(', ')}`);
+            }
+
+            // Pastikan payload adalah object dengan semua field sebagai string
+            const finalPayload = {
+                rfid_user: payload.rfid_user,
+                password: payload.password,
+                nama: payload.nama,
+                nik: payload.nik,
+                bagian: payload.bagian,
+                line: payload.line,
+                telegram: payload.telegram || '',
+                no_hp: payload.no_hp || ''
+            };
+
+            console.log('🔵 [Register API] Final payload before JSON:', finalPayload);
+            const jsonPayload = JSON.stringify(finalPayload);
+            console.log('🔵 [Register API] JSON payload:', jsonPayload);
+
             const response = await fetch(`${API_BASE_URL}/inputUser`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
-                body: JSON.stringify({
-                    rfid_user: userData.rfid_user.trim(),
-                    password: userData.password,
-                    nama: userData.nama.trim(),
-                    nik: userData.nik.trim(),
-                    bagian: userData.bagian.trim(),
-                    line: userData.line.trim(),
-                    telegram: userData.telegram?.trim() || '',
-                    no_hp: userData.no_hp?.trim() || ''
-                })
+                body: jsonPayload
             });
 
             const responseData = await response.json();

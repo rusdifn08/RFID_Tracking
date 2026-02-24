@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 
 export interface RFIDCheckItem {
     rfid: string;
@@ -88,8 +88,7 @@ export const useCheckingRFID = (): UseCheckingRFIDReturn => {
                 const trackingResponse = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(trimmedRfid)}`, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                 });
 

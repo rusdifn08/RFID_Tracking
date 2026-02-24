@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
@@ -8,97 +8,148 @@ import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailHeader from '../components/line/LineDetailHeader';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
+import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
+import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
+import daftarRfidIcon from '../assets/daftarrfid.webp';
+import dashboardRfidIcon from '../assets/dashboardrfid.webp';
+import listRfidIcon from '../assets/listrfid.webp';
 
-// Material-UI Imports
-import {
-    Dns as DaftarRfidIcon,
-    Dashboard as DashboardIcon,
-    EventNote as ListRfidIcon,
-} from '@mui/icons-material';
+// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
+const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
+    // Deteksi environment berdasarkan port sebagai fallback
+    const currentPort = window.location.port;
+    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
+    
+    if (currentPort === '5174') {
+        fallbackEnv = 'MJL2';
+    } else if (currentPort === '5173') {
+        fallbackEnv = 'MJL';
+    } else {
+        fallbackEnv = 'CLN';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
+            headers: getDefaultHeaders()
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
+            setBackendEnvironment(env);
+            return env;
+        }
+    } catch (error) {
+        console.error('Error fetching environment config:', error);
+        // Jika error, gunakan fallback berdasarkan port
+        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+        setBackendEnvironment(fallbackEnv);
+        return fallbackEnv;
+    }
+    // Default berdasarkan port jika tidak ada response
+    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+    setBackendEnvironment(fallbackEnv);
+    return fallbackEnv;
+};
 
 const LineDetail = memo(() => {
     const { id } = useParams<{ id: string }>();
     const { isOpen } = useSidebar();
+    const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>('CLN');
 
-    // --- DATA & CONFIG ---
-    // Data lengkap untuk semua production lines - dioptimasi dengan useMemo
-    const productionLines = useMemo(() => [
-        {
-            id: 1,
-            title: 'Production Line 1',
-            supervisor: 'Risman ',
-        },
-        {
-            id: 2,
-            title: 'Production Line 2',
-            supervisor: 'Asep Supriadi',
-        },
-        {
-            id: 3,
-            title: 'Production Line 3',
-            supervisor: '-',
-        },
-        {
-            id: 4,
-            title: 'Production Line 4',
-            supervisor: 'Agus Bencoy',
-        },
-        {
-            id: 5,
-            title: 'Production Line 5',
-            supervisor: 'Euis Sutisna',
-        },
-        {
-            id: 6,
-            title: 'Production Line 6',
-            supervisor: 'Tatang Beratang',
-        },
-        {
-            id: 7,
-            title: 'Cutting Gm1',
-            supervisor: 'Agus Bencoy',
-        },
-        {
-            id: 8,
-            title: 'Production Line 8',
-            supervisor: 'Euis Sutisna',
-        },
-        {
-            id: 9,
-            title: 'Production Line 9',
-            supervisor: 'Tatang Beratang',
-        },
-    ], []);
+    // Fetch environment saat component mount
+    useEffect(() => {
+        getEnvironment().then(env => {
+            setEnvironment(env);
+        });
+    }, []);
 
-    const lineId = Number(id);
-    const currentLine = useMemo(() =>
-        productionLines.find(line => line.id === lineId) || {
-            title: 'Line Production',
-            supervisor: '-'
-        },
-        [productionLines, lineId]
+    // Data Production Lines diambil dari constant file
+    // Filter untuk menghilangkan "All Production Line" (id 0, 111, atau 112)
+    const filteredProductionLinesCLN = useMemo(() =>
+        productionLinesCLN.filter(line => line.id !== 0),
+        []
     );
+
+    const filteredProductionLinesMJL = useMemo(() =>
+        productionLinesMJL.filter(line => line.id !== 111),
+        []
+    );
+
+    const filteredProductionLinesMJL2 = useMemo(() =>
+        productionLinesMJL2.filter(line => line.id !== 112),
+        []
+    );
+
+    // Pilih data berdasarkan environment
+    const productionLines = useMemo(() => {
+        if (environment === 'MJL2') {
+            return filteredProductionLinesMJL2;
+        } else if (environment === 'MJL') {
+            return filteredProductionLinesMJL;
+        } else {
+            return filteredProductionLinesCLN;
+        }
+    }, [environment, filteredProductionLinesCLN, filteredProductionLinesMJL, filteredProductionLinesMJL2]);
+
+    // Cari currentLine berdasarkan line.line atau line.id yang sesuai dengan parameter URL
+    const currentLine = useMemo(() => {
+        if (!id) {
+            return {
+                title: 'Line Production',
+                supervisor: '-'
+            };
+        }
+
+        // Normalisasi id dari URL (bisa "12" atau "LINE 12")
+        const normalizedId = id.trim();
+        const lineNumber = parseInt(normalizedId, 10);
+
+        // Cari berdasarkan line.line (prioritas) atau line.id
+        const found = productionLines.find(line => {
+            // Cek apakah line.line cocok dengan id dari URL
+            if (line.line && line.line === normalizedId) {
+                return true;
+            }
+            // Cek apakah line.line cocok dengan number dari URL
+            if (line.line && parseInt(line.line, 10) === lineNumber) {
+                return true;
+            }
+            // Fallback: cek line.id
+            if (line.id === lineNumber) {
+                return true;
+            }
+            return false;
+        });
+
+        return found || {
+            title: `Production Line ${normalizedId}`,
+            supervisor: '-'
+        };
+    }, [productionLines, id]);
 
     const cards = useMemo(() => [
         {
             id: 1,
             title: 'Daftar RFID',
             subtitle: 'Registrasi Tag Baru',
-            icon: DaftarRfidIcon,
+            icon: null,
+            iconImage: daftarRfidIcon,
             path: '/daftar-rfid',
         },
         {
             id: 2,
             title: 'Dashboard RFID',
             subtitle: 'Monitoring Real-Time',
-            icon: DashboardIcon,
+            icon: null,
+            iconImage: dashboardRfidIcon,
             path: `/dashboard-rfid/${id}`,
         },
         {
             id: 3,
             title: 'List RFID',
             subtitle: 'Database & Log',
-            icon: ListRfidIcon,
+            icon: null,
+            iconImage: listRfidIcon,
             path: `/list-rfid/${id}`,
         },
     ], [id]);
@@ -120,7 +171,7 @@ const LineDetail = memo(() => {
 
             {/* Main Content Area */}
             <div
-                className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out relative"
+                className="flex flex-col w-full h-screen relative"
                 style={{
                     marginLeft: isOpen ? '18%' : '5rem',
                     width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'

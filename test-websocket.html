@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Client - Wira Detail API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .config-panel {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+        }
+
+        .btn-connect {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-connect:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn-disconnect {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-disconnect:hover:not(:disabled) {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+
+        .btn-clear {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-clear:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-panel {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-connected .status-dot {
+            background: #28a745;
+        }
+
+        .status-disconnected .status-dot {
+            background: #dc3545;
+        }
+
+        .status-connecting .status-dot {
+            background: #ffc107;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .messages-panel {
+            padding: 20px;
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .messages-header h3 {
+            font-size: 18px;
+            color: #495057;
+        }
+
+        .message-count {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            background: #1e1e1e;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            word-wrap: break-word;
+        }
+
+        .message-info {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            border-left: 3px solid #28a745;
+        }
+
+        .message-error {
+            background: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border-left: 3px solid #dc3545;
+        }
+
+        .message-warn {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+            border-left: 3px solid #ffc107;
+        }
+
+        .message-data {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border-left: 3px solid #667eea;
+        }
+
+        .message-timestamp {
+            opacity: 0.7;
+            font-size: 11px;
+            margin-right: 8px;
+        }
+
+        .message-type {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .json-data {
+            margin-top: 5px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+
+        .stats-panel {
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #495057;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 WebSocket Test Client</h1>
+            <p>Testing WebSocket Connection untuk Wira Detail API</p>
+        </div>
+
+        <div class="config-panel">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="host">Host / IP Address</label>
+                    <input type="text" id="host" value="10.5.0.106" placeholder="10.5.0.106">
+                </div>
+                <div class="form-group">
+                    <label for="port">Port</label>
+                    <input type="number" id="port" value="7000" placeholder="7000">
+                </div>
+                <div class="form-group">
+                    <label for="line">Line Number (Optional)</label>
+                    <input type="number" id="line" value="" placeholder="Leave empty for all lines">
+                </div>
+                <div class="form-group">
+                    <label for="status">Status (Not used)</label>
+                    <select id="status" disabled>
+                        <option value="GOOD">GOOD</option>
+                        <option value="REWORK">REWORK</option>
+                        <option value="REJECT">REJECT</option>
+                        <option value="WIRA">WIRA</option>
+                    </select>
+                </div>
+            </div>
+            <div class="button-group">
+                <button id="btnConnect" class="btn-connect" onclick="connect()">Connect</button>
+                <button id="btnDisconnect" class="btn-disconnect" onclick="disconnect()" disabled>Disconnect</button>
+                <button id="btnClear" class="btn-clear" onclick="clearMessages()">Clear Messages</button>
+            </div>
+        </div>
+
+        <div class="status-panel">
+            <div id="statusIndicator" class="status-indicator status-disconnected">
+                <span class="status-dot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="messages-panel">
+            <div class="messages-header">
+                <h3>Messages</h3>
+                <span class="message-count" id="messageCount">0 messages</span>
+            </div>
+            <div class="messages-container" id="messagesContainer"></div>
+        </div>
+
+        <div class="stats-panel">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Messages Received</div>
+                    <div class="stat-value" id="statMessages">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bytes Received</div>
+                    <div class="stat-value" id="statBytes">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Connection Time</div>
+                    <div class="stat-value" id="statTime">00:00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Last Message</div>
+                    <div class="stat-value" id="statLast" style="font-size: 14px;">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        let bytesReceived = 0;
+        let connectionStartTime = null;
+        let timeInterval = null;
+
+        function getTimestamp() {
+            return new Date().toLocaleTimeString('id-ID');
+        }
+
+        function addMessage(type, message, data = null) {
+            const container = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${type}`;
+            
+            let content = `<span class="message-timestamp">[${getTimestamp()}]</span>`;
+            content += `<span class="message-type">[${type.toUpperCase()}]</span>`;
+            content += `<span>${message}</span>`;
+            
+            if (data) {
+                content += `<div class="json-data">${JSON.stringify(data, null, 2)}</div>`;
+            }
+            
+            messageDiv.innerHTML = content;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+            
+            messageCount++;
+            document.getElementById('messageCount').textContent = `${messageCount} messages`;
+            document.getElementById('statMessages').textContent = messageCount;
+            
+            if (data) {
+                bytesReceived += JSON.stringify(data).length;
+            } else {
+                bytesReceived += message.length;
+            }
+            
+            document.getElementById('statBytes').textContent = formatBytes(bytesReceived);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function updateStatus(status, text) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = `status-indicator status-${status}`;
+            statusText.textContent = text;
+        }
+
+        function updateConnectionTime() {
+            if (connectionStartTime) {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('statTime').textContent = 
+                    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+        }
+
+        function connect() {
+            const host = document.getElementById('host').value.trim();
+            const port = document.getElementById('port').value.trim();
+            const line = document.getElementById('line').value.trim();
+            const status = document.getElementById('status').value;
+
+            if (!host || !port || !line) {
+                alert('Please fill in all required fields!');
+                return;
+            }
+
+            const wsUrl = `ws://${host}:${port}/ws/wira-dashboard`;
+            
+            addMessage('info', `Connecting to: ${wsUrl}`);
+            updateStatus('connecting', 'Connecting...');
+            
+            document.getElementById('btnConnect').disabled = true;
+            document.getElementById('btnDisconnect').disabled = false;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    addMessage('info', 'WebSocket connection established!');
+                    updateStatus('connected', 'Connected');
+                    connectionStartTime = Date.now();
+                    timeInterval = setInterval(updateConnectionTime, 1000);
+                    
+                    // Send test message
+                    setTimeout(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            const testMessage = {
+                                type: 'ping',
+                                timestamp: Date.now(),
+                                line: line,
+                                status: status
+                            };
+                            addMessage('info', 'Sending test message:', testMessage);
+                            ws.send(JSON.stringify(testMessage));
+                        }
+                    }, 1000);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addMessage('data', 'Received message:', data);
+                        document.getElementById('statLast').textContent = getTimestamp();
+                    } catch (e) {
+                        addMessage('data', 'Received text message:', { raw: event.data });
+                        document.getElementById('statLast').textContent = getTimestamp();
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    addMessage('error', 'WebSocket error occurred:', {
+                        message: error.message || 'Unknown error',
+                        type: error.type
+                    });
+                    updateStatus('disconnected', 'Error');
+                };
+
+                ws.onclose = (event) => {
+                    addMessage('warn', 'WebSocket connection closed:', {
+                        code: event.code,
+                        reason: event.reason || 'No reason provided',
+                        wasClean: event.wasClean
+                    });
+                    updateStatus('disconnected', 'Disconnected');
+                    document.getElementById('btnConnect').disabled = false;
+                    document.getElementById('btnDisconnect').disabled = true;
+                    
+                    if (timeInterval) {
+                        clearInterval(timeInterval);
+                        timeInterval = null;
+                    }
+                    connectionStartTime = null;
+                    document.getElementById('statTime').textContent = '00:00';
+                };
+
+            } catch (error) {
+                addMessage('error', 'Failed to create WebSocket:', {
+                    message: error.message
+                });
+                updateStatus('disconnected', 'Error');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnDisconnect').disabled = true;
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            
+            if (timeInterval) {
+                clearInterval(timeInterval);
+                timeInterval = null;
+            }
+            connectionStartTime = null;
+            document.getElementById('statTime').textContent = '00:00';
+        }
+
+        function clearMessages() {
+            document.getElementById('messagesContainer').innerHTML = '';
+            messageCount = 0;
+            bytesReceived = 0;
+            document.getElementById('messageCount').textContent = '0 messages';
+            document.getElementById('statMessages').textContent = '0';
+            document.getElementById('statBytes').textContent = '0 B';
+        }
+
+        // Auto-format input
+        document.getElementById('host').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9.]/g, '');
+        });
+
+        document.getElementById('port').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+
+        document.getElementById('line').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+    </script>
+</body>
+</html>

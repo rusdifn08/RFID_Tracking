@@ -255,15 +255,49 @@ const ListRFID: React.FC = memo(() => {
                                 <span className="text-slate-800 font-medium text-[10px] sm:text-xs font-mono ml-2 text-right break-all">
                                     {selectedScan.timestamp ? (() => {
                                         try {
-                                            const date = new Date(selectedScan.timestamp);
-                                            // Gunakan UTC methods untuk menampilkan waktu sesuai GMT dari API
-                                            const day = String(date.getUTCDate()).padStart(2, '0');
+                                            let date: Date;
+                                            const timestamp = selectedScan.timestamp;
+                                            
+                                            // Cek apakah timestamp memiliki timezone indicator
+                                            const hasTimezone = timestamp.includes('Z') || timestamp.match(/[+-]\d{2}:\d{2}$/);
+                                            
+                                            if (!hasTimezone) {
+                                                // Timestamp tanpa timezone, parse manual untuk menghindari konversi timezone
+                                                // Format: "2026-01-14T10:47:25" atau "2026-01-14T10:47:25.123"
+                                                const parts = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?/);
+                                                if (parts) {
+                                                    const [, year, month, day, hour, minute, second] = parts;
+                                                    // Buat Date object dengan waktu lokal (tidak ada konversi timezone)
+                                                    date = new Date(
+                                                        parseInt(year),
+                                                        parseInt(month) - 1, // Month is 0-indexed
+                                                        parseInt(day),
+                                                        parseInt(hour),
+                                                        parseInt(minute),
+                                                        parseInt(second)
+                                                    );
+                                                } else {
+                                                    // Fallback ke parsing normal
+                                                    date = new Date(timestamp);
+                                                }
+                                            } else {
+                                                // Timestamp dengan timezone, parse normal
+                                                date = new Date(timestamp);
+                                            }
+                                            
+                                            if (isNaN(date.getTime())) {
+                                                return selectedScan.timestamp;
+                                            }
+                                            
+                                            // Format: DD MMM YYYY, HH.MM.SS (menggunakan waktu lokal, bukan UTC)
+                                            // Sama seperti di DashboardRFID.tsx yang sudah benar
+                                            const day = String(date.getDate()).padStart(2, '0');
                                             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                                            const month = monthNames[date.getUTCMonth()];
-                                            const year = date.getUTCFullYear();
-                                            const hours = String(date.getUTCHours()).padStart(2, '0');
-                                            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-                                            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                                            const month = monthNames[date.getMonth()];
+                                            const year = date.getFullYear();
+                                            const hours = String(date.getHours()).padStart(2, '0');
+                                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                                            const seconds = String(date.getSeconds()).padStart(2, '0');
                                             return `${day} ${month} ${year}, ${hours}.${minutes}.${seconds}`;
                                         } catch (e) {
                                             return selectedScan.timestamp;
