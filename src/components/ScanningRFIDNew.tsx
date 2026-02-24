@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle2, Loader2 } from 'lucide-react';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 
 interface ScanningRFIDNewProps {
     isOpen: boolean;
@@ -31,6 +31,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const rfidInputRef = useRef<string>(''); // Ref untuk menyimpan nilai rfidInput terbaru
 
     // Check server status saat modal dibuka
     useEffect(() => {
@@ -50,7 +51,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             const response = await fetch(`${API_BASE_URL}/health`, {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
+                    ...getDefaultHeaders(),
                 },
                 signal: controller.signal
             });
@@ -67,26 +68,104 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
         }
     };
 
-    // Auto focus input saat modal terbuka dan reset input
+    // Update ref setiap kali rfidInput berubah
+    useEffect(() => {
+        rfidInputRef.current = rfidInput;
+    }, [rfidInput]);
+
+    // Handler untuk menangkap input dari RFID scanner tanpa keyboard muncul
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const input = inputRef.current;
+        if (!input) return;
+
+        // Deteksi mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // Handler untuk menangkap keyboard input dari RFID scanner
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Hanya tangkap jika input field ada dan tidak disabled
+            if (!input || input.disabled || isProcessing) return;
+
+            // Abaikan jika user mengetik di elemen lain (seperti input lain, textarea, dll)
+            const target = e.target as HTMLElement;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target !== input) {
+                return;
+            }
+
+            // Tangkap semua karakter yang bisa menjadi bagian dari RFID
+            if (e.key.length === 1 || e.key === 'Enter') {
+                // Simulasi input ke field
+                if (e.key === 'Enter') {
+                    // Submit jika Enter
+                    const currentValue = rfidInputRef.current || input.value || '';
+                    if (currentValue.trim()) {
+                        handleRfidSubmit(currentValue);
+                    }
+                } else {
+                    // Tambahkan karakter ke input
+                    const currentValue = rfidInputRef.current || input.value || '';
+                    const newValue = currentValue + e.key;
+                    input.value = newValue;
+                    setRfidInput(newValue);
+                    rfidInputRef.current = newValue;
+                    
+                    // Trigger onChange event
+                    const event = new Event('input', { bubbles: true });
+                    input.dispatchEvent(event);
+                }
+
+                // Prevent default untuk mencegah keyboard muncul
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        // Handler untuk mencegah keyboard muncul saat focus
+        const handleFocus = (e: FocusEvent) => {
+            if (isMobile) {
+                // Blur segera untuk mencegah keyboard
+                setTimeout(() => {
+                    if (input && document.activeElement === input) {
+                        input.blur();
+                    }
+                }, 0);
+            }
+        };
+
+        // Handler untuk mencegah keyboard muncul saat touch
+        const handleTouchStart = (e: TouchEvent) => {
+            if (isMobile) {
+                e.preventDefault();
+            }
+        };
+
+        // Tambahkan event listener di document level untuk menangkap semua keyboard input
+        document.addEventListener('keydown', handleKeyDown, true);
+        
+        // Event listener untuk mencegah keyboard muncul
+        if (isMobile) {
+            input.addEventListener('focus', handleFocus);
+            input.addEventListener('touchstart', handleTouchStart);
+        }
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown, true);
+            if (isMobile) {
+                input.removeEventListener('focus', handleFocus);
+                input.removeEventListener('touchstart', handleTouchStart);
+            }
+        };
+    }, [isOpen, isProcessing]);
+
+    // Reset input saat modal terbuka
     useEffect(() => {
         if (isOpen) {
-            // Reset input saat modal dibuka
             setRfidInput('');
+            rfidInputRef.current = '';
             if (inputRef.current) {
                 inputRef.current.value = '';
-                // Focus langsung tanpa delay untuk memastikan input siap menerima input
-                const focusInput = () => {
-                    if (inputRef.current) {
-                        inputRef.current.focus();
-                        // Pastikan input benar-benar focused
-                        inputRef.current.click();
-                    }
-                };
-                // Multiple attempts untuk memastikan focus
-                focusInput();
-                setTimeout(focusInput, 50);
-                setTimeout(focusInput, 150);
-                setTimeout(focusInput, 300);
             }
         }
     }, [isOpen]);
@@ -96,6 +175,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
         if (!isOpen) {
             // Reset semua state
             setRfidInput('');
+            rfidInputRef.current = '';
             setScannedItems([]);
             setIsProcessing(false);
             setServerStatus('checking');
@@ -154,9 +234,10 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                 return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
             });
             setRfidInput('');
-            setTimeout(() => {
-                inputRef.current?.focus();
-            }, 100);
+            rfidInputRef.current = '';
+            if (inputRef.current) {
+                inputRef.current.value = '';
+            }
             return;
         }
 
@@ -180,8 +261,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             const response = await fetch(`${API_BASE_URL}/inputRFID`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
                 body: JSON.stringify(dataToInsert)
             });
@@ -204,7 +284,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             message: 'RFID sudah di-scan sebelumnya (Duplikasi)',
                             isDuplicate: true
                         }];
-                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                        return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
                     });
                 } else {
                     // Success - gunakan message dari API
@@ -215,8 +295,8 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             status: 'success' as const,
                             message: responseData.message || 'Garment berhasil ditambahkan'
                         }];
-                        // Sort berdasarkan timestamp (terlama di atas, terbaru di bawah)
-                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                        // Sort: terbaru di atas (index 0), terlama di bawah → no urut 1 = terlama, tertinggi = terbaru
+                        return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
                     });
                 }
             } else {
@@ -231,7 +311,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                             message: responseData.message || 'RFID sudah ada di database (Duplikasi)',
                             isDuplicate: true
                         }];
-                        return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                        return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
                     });
                 } else {
                     // Other errors
@@ -256,15 +336,15 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                     status: 'error' as const,
                     message: errorMessage
                 }];
-                return newItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
             });
         } finally {
             setIsProcessing(false);
             setRfidInput('');
-            // Auto focus kembali ke input
-            setTimeout(() => {
-                inputRef.current?.focus();
-            }, 100);
+            rfidInputRef.current = '';
+            if (inputRef.current) {
+                inputRef.current.value = '';
+            }
         }
     };
 
@@ -561,10 +641,40 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
                         value={rfidInput}
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
+                        onKeyPress={() => {
+                            // Pastikan semua key press diterima, termasuk dari RFID scanner
+                            // Tidak ada blocking untuk memastikan input dari scanner bisa masuk
+                        }}
+                        onFocus={(e) => {
+                            // Mencegah keyboard muncul di mobile
+                            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                            if (isMobile) {
+                                // Blur segera untuk mencegah keyboard muncul
+                                e.target.blur();
+                            }
+                        }}
+                        onTouchStart={(e) => {
+                            // Mencegah keyboard muncul saat touch di mobile
+                            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                            if (isMobile) {
+                                e.preventDefault();
+                            }
+                        }}
                         disabled={isProcessing}
                         className="sr-only"
-                        autoFocus
+                        autoFocus={false}
                         autoComplete="off"
+                        inputMode="none"
+                        tabIndex={-1}
+                        style={{
+                            position: 'absolute',
+                            opacity: 0,
+                            pointerEvents: 'auto',
+                            width: '1px',
+                            height: '1px',
+                            left: '-9999px',
+                            zIndex: 1
+                        }}
                         key={isOpen ? 'open' : 'closed'} // Force re-render saat modal buka/tutup
                     />
 

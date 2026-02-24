@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 import { exportListRFIDToExcel } from '../utils/exportToExcel';
 
 export interface RFIDItem {
@@ -45,18 +45,18 @@ interface TrackingRFIDGarmentResponse {
 export const useListRFID = () => {
     const location = useLocation();
     const { id } = useParams<{ id: string }>();
-    
+
     const [rfidData, setRfidData] = useState<RFIDItem[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>('');
-    
+
     // Filters
     const [filterWO, setFilterWO] = useState<string>('');
     const [filterBuyer, setFilterBuyer] = useState<string>('');
     const [filterStatus, setFilterStatus] = useState<string>('');
     const [filterLocation, setFilterLocation] = useState<string>('');
-    
+
     // Modal filters
     const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
@@ -64,7 +64,7 @@ export const useListRFID = () => {
     const [filterStatusModal, setFilterStatusModal] = useState<string>('Semua');
     const [filterSize, setFilterSize] = useState<string>('Semua');
     const [filterColor, setFilterColor] = useState<string>('Semua');
-    
+
     // Modals
     const [selectedScan, setSelectedScan] = useState<RFIDItem | null>(null);
     const [showModal, setShowModal] = useState<boolean>(false);
@@ -72,7 +72,7 @@ export const useListRFID = () => {
     const [itemToDelete, setItemToDelete] = useState<RFIDItem | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
     const [showExportModal, setShowExportModal] = useState<boolean>(false);
-    
+
     // Get line from URL
     const currentLine = useMemo(() => {
         if (id) return id;
@@ -83,7 +83,7 @@ export const useListRFID = () => {
         if (lineMatch && lineMatch[1]) return lineMatch[1];
         return '1';
     }, [id, location]);
-    
+
     // Parse timestamp helper
     const parseTimestamp = useCallback((timestamp: string): Date | null => {
         if (!timestamp) return null;
@@ -95,19 +95,18 @@ export const useListRFID = () => {
             return null;
         }
     }, []);
-    
+
     // Fetch RFID data
     const fetchRFIDData = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
-            
+
             const apiUrl = `${API_BASE_URL}/tracking/rfid_garment`;
             const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...getDefaultHeaders(),
                 },
             });
 
@@ -117,7 +116,7 @@ export const useListRFID = () => {
             }
 
             const rawResult = await response.json();
-            
+
             let result: TrackingRFIDGarmentResponse;
             if (rawResult.data && Array.isArray(rawResult.data)) {
                 result = rawResult as TrackingRFIDGarmentResponse;
@@ -132,13 +131,13 @@ export const useListRFID = () => {
                     data: rawResult.data || rawResult.items || rawResult.results || []
                 };
             }
-            
+
             if (!result.data || !Array.isArray(result.data)) {
                 setRfidData([]);
                 setLoading(false);
                 return;
             }
-            
+
             // Map data
             const mappedData: RFIDItem[] = result.data.map((item) => {
                 let status = 'Unknown';
@@ -156,11 +155,11 @@ export const useListRFID = () => {
                         status = item.last_status;
                     }
                 }
-                
+
                 const itemLine = item.line?.toString() || '1';
                 const bagian = (item.bagian || '').trim().toUpperCase();
                 const lokasi = (bagian === 'IRON' || bagian === 'OPERATOR') ? 'SEWING' : (item.bagian || '').trim();
-                
+
                 return {
                     id: item.id,
                     rfid: item.rfid_garment,
@@ -177,7 +176,7 @@ export const useListRFID = () => {
                     timestamp: item.timestamp || '',
                 };
             });
-            
+
             // Filter by line
             let filteredByLine = mappedData;
             if (currentLine && currentLine !== 'all') {
@@ -186,17 +185,17 @@ export const useListRFID = () => {
                     return String(itemLineNumber).trim() === String(currentLine).trim();
                 });
             }
-            
+
             // Remove duplicates by RFID, keep latest timestamp
             const uniqueRFIDData = filteredByLine.reduce((acc, current) => {
                 const existingIndex = acc.findIndex(item => item.rfid === current.rfid);
-                
+
                 if (existingIndex === -1) {
                     acc.push(current);
                 } else {
                     const existingTimestamp = parseTimestamp(acc[existingIndex].timestamp || '');
                     const currentTimestamp = parseTimestamp(current.timestamp || '');
-                    
+
                     if (currentTimestamp && existingTimestamp) {
                         if (currentTimestamp > existingTimestamp) {
                             acc[existingIndex] = current;
@@ -205,10 +204,10 @@ export const useListRFID = () => {
                         acc[existingIndex] = current;
                     }
                 }
-                
+
                 return acc;
             }, [] as RFIDItem[]);
-            
+
             setRfidData(uniqueRFIDData);
             setLoading(false);
         } catch (error) {
@@ -217,13 +216,13 @@ export const useListRFID = () => {
             setLoading(false);
         }
     }, [currentLine, parseTimestamp]);
-    
+
     // Filter data
     const filteredData = useMemo(() => {
         return rfidData.filter(item => {
             const searchTrimmed = searchTerm.trim();
             const searchLower = searchTrimmed.toLowerCase();
-            const matchSearch = !searchTrimmed || 
+            const matchSearch = !searchTrimmed ||
                 (item.rfid?.toLowerCase() || '').includes(searchLower) ||
                 (item.nomor_wo?.toLowerCase() || '').includes(searchLower) ||
                 (item.style?.toLowerCase() || '').includes(searchLower) ||
@@ -267,43 +266,43 @@ export const useListRFID = () => {
             const matchSize = filterSize === 'Semua' || item.size === filterSize;
             const matchColor = filterColor === 'Semua' || item.color === filterColor;
 
-            return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation && 
-                   matchDate && matchStatusModal && matchSize && matchColor;
+            return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation &&
+                matchDate && matchStatusModal && matchSize && matchColor;
         });
-    }, [rfidData, searchTerm, filterWO, filterBuyer, filterStatus, filterLocation, 
+    }, [rfidData, searchTerm, filterWO, filterBuyer, filterStatus, filterLocation,
         filterDateFrom, filterDateTo, filterStatusModal, filterSize, filterColor, parseTimestamp]);
-    
+
     // Get unique values for filters
-    const uniqueWO = useMemo(() => 
+    const uniqueWO = useMemo(() =>
         [...new Set(rfidData.map(item => item.nomor_wo).filter(Boolean))].sort(),
         [rfidData]
     );
-    const uniqueBuyers = useMemo(() => 
+    const uniqueBuyers = useMemo(() =>
         [...new Set(rfidData.map(item => item.buyer).filter(Boolean))].sort(),
         [rfidData]
     );
-    const uniqueStatuses = useMemo(() => 
+    const uniqueStatuses = useMemo(() =>
         [...new Set(rfidData.map(item => item.status).filter(Boolean))].sort(),
         [rfidData]
     );
-    const uniqueLocations = useMemo(() => 
+    const uniqueLocations = useMemo(() =>
         [...new Set(rfidData.map(item => item.lokasi).filter(Boolean))].sort(),
         [rfidData]
     );
-    const uniqueSizes = useMemo(() => 
+    const uniqueSizes = useMemo(() =>
         [...new Set(rfidData.map(item => item.size).filter(Boolean))].sort(),
         [rfidData]
     );
-    const uniqueColors = useMemo(() => 
+    const uniqueColors = useMemo(() =>
         [...new Set(rfidData.map(item => item.color).filter(Boolean))].sort(),
         [rfidData]
     );
-    
+
     // Load data on mount and when line changes
     useEffect(() => {
         fetchRFIDData();
     }, [fetchRFIDData]);
-    
+
     // Reset filter modal
     const handleResetFilter = useCallback(() => {
         setFilterDateFrom('');
@@ -312,30 +311,30 @@ export const useListRFID = () => {
         setFilterSize('Semua');
         setFilterColor('Semua');
     }, []);
-    
+
     // Filter data handler
     const handleFilterData = useCallback(() => {
         setShowFilterModal(false);
     }, []);
-    
+
     // Handle view details
     const handleView = useCallback((item: RFIDItem) => {
         setSelectedScan(item);
         setShowModal(true);
     }, []);
-    
+
     // Handle close modal
     const handleCloseModal = useCallback(() => {
         setShowModal(false);
         setSelectedScan(null);
     }, []);
-    
+
     // Handle delete
     const handleDelete = useCallback((item: RFIDItem) => {
         setItemToDelete(item);
         setShowDeleteModal(true);
     }, []);
-    
+
     // Confirm delete
     const confirmDelete = useCallback(async () => {
         if (!itemToDelete) return;
@@ -347,19 +346,19 @@ export const useListRFID = () => {
             setIsDeleting(false);
         }, 500);
     }, [itemToDelete]);
-    
+
     // Cancel delete
     const cancelDelete = useCallback(() => {
         setShowDeleteModal(false);
         setItemToDelete(null);
         setIsDeleting(false);
     }, []);
-    
+
     // Handle refresh
     const handleRefresh = useCallback(() => {
         fetchRFIDData();
     }, [fetchRFIDData]);
-    
+
     // Handle export
     const handleExport = useCallback(async (format: 'excel' | 'csv') => {
         const statusCounts = {
@@ -367,7 +366,10 @@ export const useListRFID = () => {
             Rework: filteredData.filter(item => item.status === 'Rework').length,
             Reject: filteredData.filter(item => item.status === 'Reject').length,
             OUTPUT: filteredData.filter(item => item.status === 'OUTPUT').length,
-            Unknown: filteredData.filter(item => !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(item.status)).length
+            Unknown: filteredData.filter(item => {
+                const status = item.status || '';
+                return !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(status);
+            }).length
         };
 
         const lokasiCounts: Record<string, number> = {};
@@ -389,9 +391,15 @@ export const useListRFID = () => {
             })
         };
 
-        await exportListRFIDToExcel(filteredData, lineId, format, summary);
+        // Map RFIDItem[] ke ListRFIDItem[] dengan memastikan status selalu string
+        const exportData = filteredData.map(item => ({
+            ...item,
+            status: item.status || 'Unknown'
+        }));
+
+        await exportListRFIDToExcel(exportData, lineId, format, summary);
     }, [filteredData, currentLine]);
-    
+
     return {
         // Data
         rfidData,
@@ -399,11 +407,11 @@ export const useListRFID = () => {
         loading,
         error,
         currentLine,
-        
+
         // Search
         searchTerm,
         setSearchTerm,
-        
+
         // Filters
         filterWO,
         setFilterWO,
@@ -413,7 +421,7 @@ export const useListRFID = () => {
         setFilterStatus,
         filterLocation,
         setFilterLocation,
-        
+
         // Modal filters
         showFilterModal,
         setShowFilterModal,
@@ -427,7 +435,7 @@ export const useListRFID = () => {
         setFilterSize,
         filterColor,
         setFilterColor,
-        
+
         // Modals
         selectedScan,
         setSelectedScan,
@@ -441,7 +449,7 @@ export const useListRFID = () => {
         setIsDeleting,
         showExportModal,
         setShowExportModal,
-        
+
         // Unique values
         uniqueWO,
         uniqueBuyers,
@@ -449,7 +457,7 @@ export const useListRFID = () => {
         uniqueLocations,
         uniqueSizes,
         uniqueColors,
-        
+
         // Functions
         fetchRFIDData,
         parseTimestamp,

@@ -11,23 +11,97 @@
 const isDevelopment = import.meta.env.DEV;
 
 // Import utility untuk mendapatkan local IP
-import { getApiBaseUrl, getLocalIP } from '../utils/network';
+import { getApiBaseUrl } from '../utils/network';
 
-// Konfigurasi Port
-const PROXY_PORT = 8000; // Port untuk proxy server (server.js)
+// Konfigurasi Port - berbeda per environment
+// MJL: 8000, MJL2: 8001, CLN: 8000
+// Deteksi port proxy berdasarkan port frontend
+const getProxyPort = (): number => {
+    if (typeof window === 'undefined') return 8000;
+    const currentPort = window.location.port;
+    // Port 5174 = MJL2 → proxy port 8001
+    if (currentPort === '5174') {
+        return 8001;
+    }
+    // Port 5173 = MJL → proxy port 8000
+    // Port lainnya (CLN) → proxy port 8000
+    return 8000;
+};
+
+const PROXY_PORT = getProxyPort(); // Port untuk proxy server (server.js) - dinamis berdasarkan environment
 // Backend API menggunakan IP eksplisit 10.8.0.104:7000 (dikonfigurasi di server.js)
 
 // Base URL untuk API Server (Proxy Server)
-// Frontend memanggil server.js (proxy) yang berjalan di local IP:8000
-// Server.js kemudian akan memanggil backend API di 10.8.0.104:7000
+// FLEKSIBILITAS: Otomatis menyesuaikan dengan IP/hostname dari mesin yang menjalankan frontend
+// - Jika akses dari localhost → proxy di localhost:8000
+// - Jika akses dari 10.5.0.2 → proxy di 10.5.0.2:8000
+// - Jika akses dari IP lain → proxy di IP tersebut:8000
+// 
+// Server.js kemudian akan memanggil backend API di 10.8.0.104:7000 atau 10.5.0.106:7000
 export const API_BASE_URL = isDevelopment
-    ? getApiBaseUrl(PROXY_PORT)  // Server.js (Proxy) - menggunakan local IP dengan port 8000
+    ? (() => {
+        // Untuk development, gunakan hostname dari window.location yang otomatis menyesuaikan
+        // Ini memastikan proxy server dicari di mesin yang sama dengan frontend
+        const baseUrl = getApiBaseUrl(PROXY_PORT);
+        const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'unknown';
+        console.log(`🔧 [API CONFIG] Development mode - Detected hostname: ${currentHostname}`);
+        console.log(`🔧 [API CONFIG] Development mode - API_BASE_URL: ${baseUrl}`);
+        console.log(`🔧 [API CONFIG] Proxy server harus berjalan di: ${baseUrl}`);
+        console.log(`🔧 [API CONFIG] ✅ FLEKSIBEL: Proxy URL otomatis menyesuaikan dengan mesin yang menjalankan frontend`);
+        return baseUrl;
+    })()
     : import.meta.env.VITE_API_URL || getApiBaseUrl(PROXY_PORT);
 
-// Base URL untuk WebSocket (jika diperlukan)
-export const WS_BASE_URL = isDevelopment
-    ? `ws://${getLocalIP()}:${PROXY_PORT}`
-    : import.meta.env.VITE_WS_URL || `ws://${getLocalIP()}:${PROXY_PORT}`;
+// Fungsi untuk mendapatkan backend IP berdasarkan environment (untuk keperluan lain)
+const getBackendIP = (): string => {
+    // Deteksi environment dari localStorage atau default
+    if (typeof window !== 'undefined') {
+        const storedEnv = localStorage.getItem('backend_environment');
+        if (storedEnv === 'MJL') {
+            return '10.5.0.106';
+        } else if (storedEnv === 'MJL2') {
+            return '10.5.0.99';
+        }
+    }
+    // Default: CLN
+    return '10.8.0.104';
+};
+
+// Port backend WebSocket (sama untuk semua environment)
+const BACKEND_WS_PORT = 7000;
+
+// Base URL untuk WebSocket - langsung ke backend API (bukan proxy)
+// Menggunakan function untuk mendapatkan URL secara dinamis berdasarkan environment
+export const getWSBaseUrl = (): string => {
+    const backendIP = getBackendIP();
+    const wsUrl = `ws://${backendIP}:${BACKEND_WS_PORT}`;
+
+    if (isDevelopment && typeof window !== 'undefined') {
+        console.log(`🔧 [WS CONFIG] Development mode - WS_BASE_URL: ${wsUrl}`);
+    }
+
+    return import.meta.env.VITE_WS_URL || wsUrl;
+};
+
+// Export WS_BASE_URL sebagai computed value (akan di-update saat environment berubah)
+export const WS_BASE_URL = getWSBaseUrl();
+
+// WebSocket URL untuk WIRA Dashboard - FLEKSIBEL berdasarkan environment dan backend IP
+// Menggunakan function untuk mendapatkan URL secara dinamis berdasarkan environment
+export const getWiraDashboardWSUrl = (): string => {
+    const backendIP = getBackendIP();
+    const wsUrl = `ws://${backendIP}:${BACKEND_WS_PORT}/ws/wira-dashboard`;
+
+    if (isDevelopment && typeof window !== 'undefined') {
+        console.log(`🔧 [WIRA WS CONFIG] Development mode - WIRA_DASHBOARD_WS_URL: ${wsUrl}`);
+        console.log(`🔧 [WIRA WS CONFIG] Backend IP: ${backendIP} (Environment: ${localStorage.getItem('backend_environment') || 'CLN'})`);
+    }
+
+    return import.meta.env.VITE_WIRA_DASHBOARD_WS_URL || wsUrl;
+};
+
+// Export WIRA_DASHBOARD_WS_URL sebagai computed value (akan di-update saat environment berubah)
+export const WIRA_DASHBOARD_WS_URL = getWiraDashboardWSUrl();
 
 // ============================================
 // PRODUCTION SCHEDULE API CONFIGURATION
@@ -38,6 +112,55 @@ export const PROD_SCH_API_BASE_URL = 'http://10.8.18.60:7186';
 
 // API Key untuk Production Schedule API
 export const PROD_SCH_API_KEY = '332100185';
+
+// ============================================
+// MJL API KEY CONFIGURATION
+// ============================================
+
+// API Key untuk MJL Backend (10.5.0.106)
+export const MJL_API_KEY = '6lYZkryM.j50CVZgnpBl8X7Nx6sy5KRyY6ET7k3Cb';
+export const MJL_API_KEY_HEADER = 'X-Api-Key';
+
+// Cache untuk environment (CLN, MJL, atau MJL2)
+let cachedEnvironment: 'CLN' | 'MJL' | 'MJL2' | null = null;
+
+// Fungsi untuk set environment cache (dipanggil dari komponen yang fetch /api/config/environment)
+export const setBackendEnvironment = (env: 'CLN' | 'MJL' | 'MJL2'): void => {
+    cachedEnvironment = env;
+    localStorage.setItem('backend_environment', env);
+};
+
+// Getter untuk environment yang sudah di-cache (bisa dipakai untuk conditional logic)
+export const getBackendEnvironment = (): 'CLN' | 'MJL' | 'MJL2' | null => cachedEnvironment;
+
+// Fungsi untuk mendapatkan default branch berdasarkan environment
+export const getDefaultBranch = (): string => {
+    const storedEnv = localStorage.getItem('backend_environment');
+    if (storedEnv === 'MJL') {
+        return 'MJ1';
+    }
+    if (storedEnv === 'CLN') {
+        return 'CJL';
+    }
+    // Default: CLN -> CJL
+    return 'CJL';
+};
+
+/**
+ * Helper function untuk mendapatkan default headers dengan API Key untuk semua environment
+ * @returns Headers object dengan API Key untuk semua environment (CLN, MJL, MJL2)
+ */
+export const getDefaultHeaders = (): HeadersInit => {
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    };
+
+    // Tambahkan API Key header untuk semua environment (CLN, MJL, MJL2)
+    headers[MJL_API_KEY_HEADER] = MJL_API_KEY;
+
+    return headers;
+};
 
 // ============================================
 // TYPES
@@ -163,12 +286,13 @@ export const getApiUrl = (endpoint: string = ''): string => {
 
 /**
  * Mendapatkan URL untuk WebSocket
- * @param path - WebSocket path (contoh: '/ws')
+ * @param path - WebSocket path (contoh: '/ws' atau '/wira/detail')
  * @returns WebSocket URL lengkap
  */
 export const getWebSocketUrl = (path: string = '/ws'): string => {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `${WS_BASE_URL}${cleanPath}`;
+    // Gunakan getWSBaseUrl() untuk mendapatkan URL yang selalu update dengan environment terbaru
+    return `${getWSBaseUrl()}${cleanPath}`;
 };
 
 // ============================================
@@ -187,10 +311,8 @@ export const apiRequest = async <T = any>(
 ): Promise<ApiResponse<T>> => {
     const url = getApiUrl(endpoint);
 
-    const defaultHeaders: HeadersInit = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    };
+    // Gunakan getDefaultHeaders() untuk konsistensi dan memastikan API Key ditambahkan
+    const defaultHeaders = getDefaultHeaders();
 
     const config: RequestInit = {
         ...options,
@@ -203,8 +325,31 @@ export const apiRequest = async <T = any>(
     try {
         const response = await fetch(url, config);
 
-        // Parse JSON response
-        const data = await response.json();
+        // Handle non-JSON responses
+        const contentType = response.headers.get('content-type');
+        let data;
+
+        if (contentType && contentType.includes('application/json')) {
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                const text = await response.text();
+                return {
+                    success: false,
+                    error: text || `HTTP ${response.status}: ${response.statusText}`,
+                    data: undefined,
+                    status: response.status
+                };
+            }
+        } else {
+            const text = await response.text();
+            return {
+                success: false,
+                error: text || `HTTP ${response.status}: ${response.statusText}`,
+                data: undefined,
+                status: response.status
+            };
+        }
 
         // Jika response tidak OK, return error response dengan data yang ada
         if (!response.ok) {
@@ -219,7 +364,7 @@ export const apiRequest = async <T = any>(
             }
             return {
                 success: false,
-                error: data.message || data.error || `HTTP ${response.status}: ${response.statusText}`,
+                error: data.message || data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`,
                 data: data,
                 status: response.status
             };
@@ -230,14 +375,14 @@ export const apiRequest = async <T = any>(
         // Karena response structure: { success, line, data: {...} }
         // Jangan ambil data.data karena kita butuh seluruh object
         let responseData = data;
-        
+
         // Hanya ambil data.data jika endpoint bukan tracking/line
         // Tracking/line perlu seluruh object { success, line, data }
         if (!endpoint.includes('/tracking/line')) {
             responseData = data.data || data;
         }
-        
-        
+
+
         return {
             success: true,
             data: responseData,
@@ -246,21 +391,34 @@ export const apiRequest = async <T = any>(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ [API REQUEST] Error [${endpoint}]:`, error);
-        
+
+        // Log error untuk debugging
+        if (isDevelopment) {
+            console.error(`❌ [API REQUEST] Error fetching ${url}:`, error);
+            console.error(`❌ [API REQUEST] Error message: ${errorMessage}`);
+            console.error(`❌ [API REQUEST] API_BASE_URL: ${API_BASE_URL}`);
+            console.error(`❌ [API REQUEST] Full URL: ${url}`);
+            console.error(`❌ [API REQUEST] Pastikan proxy server (server.js) berjalan di: ${API_BASE_URL}`);
+        } else {
+            console.error(`❌ [API REQUEST] Error [${endpoint}]:`, error);
+        }
+
         // Handle "Failed to fetch" error specifically
         if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+            const detailedError = isDevelopment
+                ? `Tidak dapat terhubung ke server. Pastikan proxy server (server.js) berjalan di ${API_BASE_URL}. Error: ${errorMessage}`
+                : 'Error connecting to backend API';
             return {
                 success: false,
-                error: `Tidak dapat terhubung ke proxy server. Pastikan server.js (proxy) berjalan di http://${getLocalIP()}:8000. Backend API harus berjalan di http://10.8.0.104:7000`,
+                error: detailedError,
                 data: undefined,
-                status: 500
+                status: 0
             };
         }
-        
+
         return {
             success: false,
-            error: errorMessage,
+            error: errorMessage || 'Error connecting to backend API',
             data: undefined,
             status: 500
         };
@@ -313,10 +471,17 @@ export const apiPost = async <T = any>(
     endpoint: string,
     data: any = {}
 ): Promise<ApiResponse<T>> => {
-    return await apiRequest<T>(endpoint, {
+    const requestOptions: RequestInit = {
         method: 'POST',
-        body: JSON.stringify(data),
-    });
+    };
+
+    // Kirim body jika data tidak kosong (meskipun ada query parameter)
+    // Untuk endpoint seperti /garment/folding/out?rfid_garment=xxx dengan body { nik: "xxx" }
+    if (data && Object.keys(data).length > 0) {
+        requestOptions.body = JSON.stringify(data);
+    }
+
+    return await apiRequest<T>(endpoint, requestOptions);
 };
 
 // ============================================
@@ -454,7 +619,7 @@ export const deleteRFID = async (rfidId: string): Promise<ApiResponse<RFIDData>>
 export const login = async (nik: string, password?: string): Promise<ApiResponse<LoginResponse>> => {
     // Import MD5 hashing
     const CryptoJS = await import('crypto-js');
-    
+
     // Hardcoded admin credentials - tidak perlu API
     if (nik === '12345' && password === 'admin') {
         const adminResponse: LoginResponse = {
@@ -472,14 +637,14 @@ export const login = async (nik: string, password?: string): Promise<ApiResponse
                 role: 'admin'
             }
         };
-        
+
         return {
             success: true,
             data: adminResponse,
             status: 200
         };
     }
-    
+
     // Validasi password harus ada
     if (!password) {
         return {
@@ -488,24 +653,23 @@ export const login = async (nik: string, password?: string): Promise<ApiResponse
             status: 400
         };
     }
-    
+
     try {
         // Panggil API baru: GET /user?nik=...
         const endpoint = `/user?nik=${encodeURIComponent(nik)}`;
         const response = await apiGet<LoginResponse>(endpoint);
-        
-        
+
+
         // Cek jika response berhasil dan ada data user
         if (response.success && response.data && response.data.user) {
             // Hash password input dengan MD5
             const passwordHash = CryptoJS.MD5(password).toString();
-            
+
             // Bandingkan dengan pwd_md5 dari database
             const dbPasswordHash = response.data.user.pwd_md5 || '';
-            
-            
+
+
             if (passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()) {
-                // Password cocok, return success
                 return {
                     success: true,
                     data: {
@@ -672,6 +836,185 @@ export const getCardWaiting = async (): Promise<ApiResponse<CardResponse>> => {
     return await apiGet<CardResponse>('/card/waiting');
 };
 
+/**
+ * Detail data per status & line (untuk modal Detail di Dashboard RFID).
+ * Contoh: GET /wira/detail?status=output_sewing&line=1
+ * Response: { status: "success", filter_applied: { line, status }, count, data: [...] }
+ */
+export const getWiraDetail = async (
+    status: string,
+    line: string | number
+): Promise<ApiResponse<{ status: string; filter_applied?: Record<string, string>; count?: number; data?: any[] }>> => {
+    return await apiGet('/wira/detail', { status, line: String(line) });
+};
+
+// ============================================
+// FINISHING API ENDPOINTS
+// ============================================
+
+export interface FinishingRoomData {
+    waiting: number;
+    checkin: number;
+    checkout: number;
+}
+
+export interface FinishingRejectRoomData extends FinishingRoomData {
+    reject_mati: number;
+}
+
+export interface FinishingData {
+    dryroom: FinishingRoomData;
+    folding: FinishingRoomData;
+    reject_room: FinishingRejectRoomData;
+}
+
+/**
+ * Get finishing data
+ * @returns Finishing data (dryroom, folding, reject_room)
+ */
+export const getFinishingData = async (): Promise<ApiResponse<FinishingData>> => {
+    return await apiGet<FinishingData>('/finishing');
+};
+
+/**
+ * Get finishing data per line
+ * @param lineId - Line ID (e.g., "3")
+ * @returns Finishing data (dryroom, folding, reject_room) for specific line
+ */
+export const getFinishingDataByLine = async (lineId: string): Promise<ApiResponse<FinishingData>> => {
+    return await apiGet<FinishingData>(`/finishing?line=${encodeURIComponent(lineId)}`);
+};
+
+/**
+ * Interface untuk response check in/out finishing
+ */
+export interface FinishingCheckResponse {
+    rfid_garment?: string;
+    rfid?: string;
+    area?: 'dryroom' | 'folding';
+    action?: 'checkin' | 'checkout';
+    timestamp?: string;
+    message?: string;
+    success?: boolean;
+    wo?: string;
+    style?: string;
+    item?: string;
+    buyer?: string;
+    color?: string;
+    size?: string;
+    status?: string;
+    nik_operator?: string;
+    is_done?: string;
+    error?: string;
+}
+
+/**
+ * Dryroom Check In
+ * @param rfid_garment - Nomor RFID garment yang akan di-check in
+ * @returns Response data check in
+ */
+export const dryroomCheckIn = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/dryroom/in?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
+/**
+ * Dryroom Check Out
+ * @param rfid_garment - Nomor RFID garment yang akan di-check out
+ * @returns Response data check out
+ */
+export const dryroomCheckOut = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/dryroom/out?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
+/**
+ * Folding Check In
+ * @param rfid_garment - Nomor RFID garment yang akan di-check in
+ * @returns Response data check in
+ */
+export const foldingCheckIn = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/folding/in?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
+export const foldingCheckOut = async (rfid_garment: string, nik?: string, tableNumber?: number): Promise<ApiResponse<FinishingCheckResponse>> => {
+    const body: { nik?: string; table?: string } = {};
+    if (nik) body.nik = nik;
+    if (tableNumber) body.table = tableNumber.toString();
+    return await apiPost<FinishingCheckResponse>(`/garment/folding/out?rfid_garment=${encodeURIComponent(rfid_garment)}`, body);
+};
+
+/**
+ * Reject Room Check In
+ * @param rfid_garment - Nomor RFID garment yang akan di-check in
+ * @returns Response data check in
+ */
+export const rejectRoomCheckIn = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/reject/in?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
+/**
+ * Reject Room Check Out
+ * @param rfid_garment - Nomor RFID garment yang akan di-check out
+ * @returns Response data check out
+ */
+export const rejectRoomCheckOut = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/reject/out?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
+// ============================================
+// ACTIVE USERS API ENDPOINTS
+// ============================================
+
+export interface ActiveUser {
+    nik: string;
+    name: string;
+    jabatan: string;
+    line: string;
+    loginTime: string;
+    ipAddress: string;
+}
+
+/**
+ * Get active users (yang sedang login)
+ * @param line - Optional line number untuk get user by line
+ * @returns Response data active users
+ */
+export const getActiveUsers = async (line?: string | number): Promise<ApiResponse<ActiveUser | ActiveUser[]>> => {
+    const endpoint = line ? `/api/active-users?line=${line}` : '/api/active-users';
+    return await apiGet<ActiveUser | ActiveUser[]>(endpoint);
+};
+
+/**
+ * Get user yang sedang scan di folding table (realtime tracking)
+ * @param table - Table number (optional)
+ * @returns User yang sedang scan atau null
+ */
+export const getScanningUsers = async (table?: string | number): Promise<ApiResponse<{ nik: string; name: string; line: string; scanStartTime: string } | { nik: string; name: string; line: string; scanStartTime: string }[]>> => {
+    const endpoint = table ? `/api/scanning-users?table=${table}` : '/api/scanning-users';
+    return await apiGet<{ nik: string; name: string; line: string; scanStartTime: string } | { nik: string; name: string; line: string; scanStartTime: string }[]>(endpoint);
+};
+
+/**
+ * Logout user dan hapus dari active sessions
+ * @param nik - NIK user yang akan logout (optional)
+ * @param line - Line number yang akan logout (optional)
+ * @returns Response data logout
+ */
+export const logoutUser = async (nik?: string, line?: string | number): Promise<ApiResponse> => {
+    const body: { nik?: string; line?: string } = {};
+    if (nik) body.nik = nik;
+    if (line) body.line = line.toString();
+    return await apiPost('/api/auth/logout', body);
+};
+
+/**
+ * Cek apakah session user masih valid di server (setelah auto-logout, session di server dihapus)
+ * @param nik - NIK user dari localStorage
+ * @returns { valid: true } jika masih login, { valid: false } jika harus login lagi
+ */
+export const checkSession = async (nik: string): Promise<ApiResponse<{ valid: boolean }>> => {
+    return await apiGet<{ valid: boolean }>('/api/auth/session', { nik });
+};
+
 // ============================================
 // PRODUCTION SCHEDULE API ENDPOINTS
 // ============================================
@@ -712,27 +1055,26 @@ export const getWOBreakdown = async (
         // Proxy akan memanggil ke 10.8.18.60:7186 dengan header GCC-API-KEY
         // Parameter Line dihilangkan agar mendapatkan semua WO dari setiap line
         let apiUrl = `${API_BASE_URL}/api/prod-sch/get-wo-breakdown?branch=${encodeURIComponent(branch)}`;
-        
+
         // Tambahkan start_date_from jika ada
         if (startDateFrom) {
             apiUrl += `&start_date_from=${encodeURIComponent(startDateFrom)}`;
         }
-        
+
         // Tambahkan start_date_to jika ada
         if (startDateTo) {
             apiUrl += `&start_date_to=${encodeURIComponent(startDateTo)}`;
         }
-        
+
         console.log('🔵 [WO BREAKDOWN API] Fetching via proxy:', apiUrl);
-        
+
         const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
+                ...getDefaultHeaders(),
             },
         });
-        
+
         console.log('🔵 [WO BREAKDOWN API] Response status:', response.status, response.statusText);
 
         if (!response.ok) {
@@ -749,7 +1091,7 @@ export const getWOBreakdown = async (
 
         const result: WOBreakdownResponse = await response.json();
         console.log('✅ [WO BREAKDOWN API] Success:', result);
-        
+
         return {
             success: true,
             data: result,
@@ -762,7 +1104,7 @@ export const getWOBreakdown = async (
             message: errorMessage,
             stack: error instanceof Error ? error.stack : undefined
         });
-        
+
         return {
             success: false,
             error: errorMessage,

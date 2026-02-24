@@ -9,7 +9,16 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server.js",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
+    "server:cln": "node server.js cln",
+    "server:mjl": "node server.js mjl",
+    "server:mjl2": "node server.js mjl2",
+    "user": "node user.js",
+    "dev:mjl2": "vite --port 5174",
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
+    "dev:all:cln": "concurrently \"npm run server:cln\" \"npm run dev\"",
+    "dev:all:mjl": "concurrently \"npm run server:mjl\" \"npm run dev\"",
+    "dev:all:mjl2": "concurrently \"npm run server:mjl2\" \"npm run dev:mjl2\"",
+    "test:websocket": "node test-websocket.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -51,7 +60,8 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.3",
-    "vite": "npm:rolldown-vite@7.2.2"
+    "vite": "npm:rolldown-vite@7.2.2",
+    "ws": "^8.18.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.2"

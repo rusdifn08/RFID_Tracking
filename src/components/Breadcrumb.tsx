@@ -1,5 +1,46 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home } from 'lucide-react';
+import { Home, Settings, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
+import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
+
+// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
+const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
+    // Deteksi environment berdasarkan port sebagai fallback
+    const currentPort = window.location.port;
+    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
+    
+    if (currentPort === '5174') {
+        fallbackEnv = 'MJL2';
+    } else if (currentPort === '5173') {
+        fallbackEnv = 'MJL';
+    } else {
+        fallbackEnv = 'CLN';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
+            headers: getDefaultHeaders()
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
+            // Cache environment untuk digunakan oleh getDefaultHeaders()
+            setBackendEnvironment(env);
+            return env;
+        }
+    } catch (error) {
+        console.error('Error fetching environment config:', error);
+        // Jika error, gunakan fallback berdasarkan port
+        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+        setBackendEnvironment(fallbackEnv);
+        return fallbackEnv;
+    }
+    // Default berdasarkan port jika tidak ada response
+    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
+    setBackendEnvironment(fallbackEnv);
+    return fallbackEnv;
+};
 
 interface BreadcrumbItem {
     label: string;
@@ -10,6 +51,21 @@ interface BreadcrumbItem {
 export default function Breadcrumb() {
     const location = useLocation();
     const navigate = useNavigate();
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
+    const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
+    const [editingLine, setEditingLine] = useState<number | null>(null);
+    const [editingSupervisor, setEditingSupervisor] = useState<string>('');
+    const [editingStartTime, setEditingStartTime] = useState<string>('07:30');
+    const [isLoading, setIsLoading] = useState(false);
+    const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>('CLN');
+
+    // Fetch environment saat component mount
+    useEffect(() => {
+        getEnvironment().then(env => {
+            setEnvironment(env);
+        });
+    }, []);
 
     // Mapping route ke breadcrumb
     const getBreadcrumbs = (): BreadcrumbItem[] => {
@@ -38,7 +94,11 @@ export default function Breadcrumb() {
                 isActive: true,
             });
         } else if (path.startsWith('/line/')) {
-            const lineId = path.match(/\/line\/(\d+)/)?.[1];
+            // Decode URL untuk menangani format "LINE%203" atau "LINE 3"
+            const decodedPath = decodeURIComponent(path);
+            // Cek format angka saja atau format "LINE X"
+            const lineIdMatch = decodedPath.match(/\/line\/(\d+)/) || decodedPath.match(/\/line\/LINE[% ]*(\d+)/i);
+            const lineId = lineIdMatch?.[1];
             const lineTitles: { [key: string]: string } = {
                 '1': 'Production Line 1',
                 '2': 'Production Line 2',
@@ -63,7 +123,11 @@ export default function Breadcrumb() {
                 isActive: true,
             });
         } else if (path.startsWith('/dashboard-rfid/')) {
-            const lineId = path.match(/\/dashboard-rfid\/(\d+)/)?.[1];
+            // Decode URL untuk menangani format "LINE%203" atau "LINE 3"
+            const decodedPath = decodeURIComponent(path);
+            // Cek format angka saja atau format "LINE X"
+            const lineIdMatch = decodedPath.match(/\/dashboard-rfid\/(\d+)/) || decodedPath.match(/\/dashboard-rfid\/LINE[% ]*(\d+)/i);
+            const lineId = lineIdMatch?.[1];
             const lineTitles: { [key: string]: string } = {
                 '1': 'Production Line 1',
                 '2': 'Production Line 2',
@@ -150,6 +214,105 @@ export default function Breadcrumb() {
     };
 
     const breadcrumbs = getBreadcrumbs();
+    
+    // Cek apakah di halaman Production Lines (/monitoring-rfid)
+    const isProductionLinesPage = location.pathname.startsWith('/monitoring-rfid');
+
+    // Load supervisor data
+    const loadSupervisorData = async () => {
+        try {
+            setIsLoading(true);
+            // Pastikan environment sudah ter-load, jika belum tunggu sebentar
+            let currentEnv = environment;
+            if (!currentEnv || currentEnv === 'CLN') {
+                // Coba fetch environment lagi jika belum ter-load
+                currentEnv = await getEnvironment();
+                setEnvironment(currentEnv);
+            }
+            
+            // Pass environment sebagai query parameter
+            const url = `${API_BASE_URL}/api/supervisor-data?environment=${currentEnv}`;
+            
+            const response = await fetch(url, {
+                headers: getDefaultHeaders()
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    setSupervisorData(data.data.supervisors || {});
+                    setStartTimesData(data.data.startTimes || {});
+                }
+            }
+        } catch (error) {
+            // Silent error handling
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Save supervisor data dan startTime
+    const saveSupervisor = async (lineId: number, supervisor: string, startTime?: string) => {
+        try {
+            setIsLoading(true);
+            const response = await fetch(`${API_BASE_URL}/api/supervisor-data`, {
+                method: 'POST',
+                headers: {
+                    ...getDefaultHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lineId: lineId,
+                    supervisor: supervisor,
+                    startTime: startTime,
+                    environment: environment // Pass environment untuk environment-aware storage
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    // Update local state
+                    setSupervisorData(prev => ({
+                        ...prev,
+                        [lineId.toString()]: supervisor
+                    }));
+                    if (startTime) {
+                        setStartTimesData(prev => ({
+                            ...prev,
+                            [lineId.toString()]: startTime
+                        }));
+                    }
+                    setEditingLine(null);
+                    setEditingSupervisor('');
+                    setEditingStartTime('07:30');
+                    // Reload data
+                    await loadSupervisorData();
+                    
+                    // Dispatch custom event untuk trigger refresh di RFIDLineContent
+                    window.dispatchEvent(new CustomEvent('supervisorUpdated', {
+                        detail: { lineId, supervisor, environment }
+                    }));
+                }
+            }
+        } catch (error) {
+            // Silent error handling
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Get production lines data berdasarkan environment (filter out "All Production Line")
+    const getProductionLines = () => {
+        let lines;
+        if (environment === 'MJL2') {
+            lines = productionLinesMJL2;
+        } else if (environment === 'MJL') {
+            lines = productionLinesMJL;
+        } else {
+            lines = productionLinesCLN;
+        }
+        // Filter out "All Production Line" (id 0 untuk CLN, id 111 untuk MJL, id 112 untuk MJL2)
+        return lines.filter(line => line.id !== 0 && line.id !== 111 && line.id !== 112);
+    };
 
     // Jangan tampilkan breadcrumb di Home dan Dashboard RFID
     if (location.pathname === '/home' || location.pathname === '/' || location.pathname.startsWith('/dashboard-rfid/')) {
@@ -217,7 +380,184 @@ export default function Breadcrumb() {
                         )}
                     </div>
                 ))}
+                
+                {/* Tombol Pengaturan di ujung breadcrumb untuk Production Lines */}
+                {isProductionLinesPage && (
+                    <>
+                        <div className="flex-1"></div>
+                        <button
+                            onClick={async () => {
+                                setIsSettingsModalOpen(true);
+                                // Pastikan environment sudah ter-load sebelum load supervisor data
+                                if (environment) {
+                                    await loadSupervisorData();
+                                } else {
+                                    // Jika environment belum ter-load, tunggu sebentar
+                                    const env = await getEnvironment();
+                                    setEnvironment(env);
+                                    await loadSupervisorData();
+                                }
+                            }}
+                            className="group flex items-center justify-center px-2 xs:px-3 py-1.5 xs:py-2 rounded-md bg-gray-100 hover:bg-blue-50 text-gray-600 hover:text-blue-600 transition-all duration-300 border border-gray-200 hover:border-blue-300"
+                            title="Pengaturan Supervisor"
+                        >
+                            <Settings
+                                className="w-4 xs:w-5 sm:w-5 h-4 xs:h-5 sm:h-5 transition-all duration-300 group-hover:rotate-90"
+                                strokeWidth={2}
+                            />
+                        </button>
+                    </>
+                )}
             </div>
+
+            {/* Modal Pengaturan Supervisor */}
+            {isSettingsModalOpen && (
+                <div 
+                    className="fixed inset-0 flex items-center justify-center z-50 p-4"
+                    style={{
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)'
+                    }}
+                    onClick={() => setIsSettingsModalOpen(false)}
+                >
+                    <div 
+                        className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100"
+                        style={{
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header dengan gradient */}
+                        <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 px-6 py-5 border-b border-blue-400">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white mb-1">Pengaturan Supervisor</h2>
+                                    <p className="text-blue-100 text-sm">Kelola data supervisor untuk setiap production line</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsSettingsModalOpen(false);
+                                        setEditingLine(null);
+                                        setEditingSupervisor('');
+                                    }}
+                                    className="p-2 hover:bg-white/20 rounded-full transition-all duration-200 group"
+                                >
+                                    <X className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-200" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content dengan scroll */}
+                        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                            {isLoading && Object.keys(supervisorData).length === 0 ? (
+                                <div className="text-center py-12">
+                                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div>
+                                    <p className="mt-4 text-gray-600 font-medium">Memuat data supervisor...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {getProductionLines().map((line) => {
+                                        const lineIdStr = line.id.toString();
+                                        const currentSupervisor = supervisorData[lineIdStr] || '-';
+                                        const currentStartTime = startTimesData[lineIdStr] || '07:30';
+                                        const isEditing = editingLine === line.id;
+
+                                        return (
+                                            <div 
+                                                key={line.id} 
+                                                className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 overflow-hidden"
+                                            >
+                                                <div className="flex items-center gap-4 p-5">
+                                                    <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                                                        <span className="text-white font-bold text-lg">{line.id}</span>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-semibold text-gray-900 text-base mb-1">{line.title}</p>
+                                                        {isEditing ? (
+                                                            <div className="space-y-3 mt-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px]">Supervisor:</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editingSupervisor}
+                                                                        onChange={(e) => setEditingSupervisor(e.target.value)}
+                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                                                        placeholder="Masukkan nama supervisor"
+                                                                        autoFocus
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px]">Jam Masuk:</label>
+                                                                    <input
+                                                                        type="time"
+                                                                        value={editingStartTime}
+                                                                        onChange={(e) => setEditingStartTime(e.target.value)}
+                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                                                        placeholder="07:30"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-3 pt-2">
+                                                                    <button
+                                                                        onClick={() => saveSupervisor(line.id, editingSupervisor, editingStartTime)}
+                                                                        disabled={isLoading || !editingSupervisor.trim()}
+                                                                        className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
+                                                                    >
+                                                                        Simpan
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingLine(null);
+                                                                            setEditingSupervisor('');
+                                                                            setEditingStartTime('07:30');
+                                                                        }}
+                                                                        className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-all duration-200"
+                                                                    >
+                                                                        Batal
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-gray-500 text-sm">Supervisor:</span>
+                                                                    <span className="font-semibold text-gray-900 text-sm bg-blue-50 px-3 py-1 rounded-md">
+                                                                        {currentSupervisor === '-' ? 'Belum ditetapkan' : currentSupervisor}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-gray-500 text-sm">Jam Masuk:</span>
+                                                                    <span className="font-semibold text-gray-900 text-sm bg-green-50 px-3 py-1 rounded-md">
+                                                                        {currentStartTime}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {!isEditing && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingLine(line.id);
+                                                                const supervisorFromJson = supervisorData[lineIdStr];
+                                                                const startTimeFromJson = startTimesData[lineIdStr];
+                                                                setEditingSupervisor(supervisorFromJson && supervisorFromJson !== '-' ? supervisorFromJson : '');
+                                                                setEditingStartTime(startTimeFromJson || '07:30');
+                                                            }}
+                                                            className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 border border-blue-200 hover:border-blue-300"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Rss } from 'lucide-react';
+import rfidIcon from '../assets/rfid.webp';
 
 export default function HomeContent() {
     const navigate = useNavigate();
@@ -12,7 +12,7 @@ export default function HomeContent() {
             title: 'RFID Tracking',
             subtitle: 'Real-time Tracking of Garment Data',
             location: '9 Locations',
-            icon: Rss,
+            icon: rfidIcon,
             color: 'text-[#0073EE]',
             bgStart: 'from-sky-400',
             bgEnd: 'to-blue-800',
@@ -37,7 +37,6 @@ export default function HomeContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 xs:gap-2.5 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6 2xl:gap-8 w-full max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 pt-2 xs:pt-3 sm:pt-4"
                 >
                 {modules.map((module, index) => {
-                    const IconComponent = module.icon;
                     const isHovered = hoveredCard === module.id;
 
                     return (
@@ -76,25 +75,25 @@ export default function HomeContent() {
                                 paddingTop: 'clamp(0.25rem, 1.5vh, 0.75rem)',
                             
                             }}>
-                                {/* ICON (Centered & Big) - Tanpa lingkaran, hanya icon dengan gradasi */}
+                                {/* ICON (Centered & Big) - Menggunakan gambar rfid.webp dengan gradasi biru */}
                                 <div className="relative mb-1 xs:mb-1.5 sm:mb-2 md:mb-2.5 lg:mb-3 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6 flex-shrink-0">
                                     <div className="relative" style={{ 
-                                        width: 'clamp(2rem, 5vw, 4rem)',
-                                        height: 'clamp(2rem, 5vw, 4rem)'
+                                        width: 'clamp(2.5rem, 6vw, 5rem)',
+                                        height: 'clamp(2.5rem, 6vw, 5rem)'
                                     }}>
-                                        <svg width="0" height="0" style={{ position: 'absolute' }}>
-                                            <defs>
-                                                <linearGradient id={`iconGradient-${module.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                                                    <stop offset="0%" stopColor="#38bdf8" />
-                                                    <stop offset="100%" stopColor="#1e40af" />
-                                                </linearGradient>
-                                            </defs>
-                                        </svg>
-                                        <IconComponent 
-                                            className="w-full h-full" 
-                                            strokeWidth={2.5}
+                                        <div 
+                                            className="w-full h-full"
                                             style={{
-                                                stroke: `url(#iconGradient-${module.id})`,
+                                                maskImage: `url(${module.icon})`,
+                                                WebkitMaskImage: `url(${module.icon})`,
+                                                maskSize: 'contain',
+                                                WebkitMaskSize: 'contain',
+                                                maskRepeat: 'no-repeat',
+                                                WebkitMaskRepeat: 'no-repeat',
+                                                maskPosition: 'center',
+                                                WebkitMaskPosition: 'center',
+                                                background: `linear-gradient(135deg, #38bdf8 0%, #1e40af 100%)`,
+                                                filter: 'drop-shadow(0 0 2px rgba(30, 64, 175, 0.3)) drop-shadow(0 0 4px rgba(56, 189, 248, 0.2))',
                                             }}
                                         />
                                     </div>

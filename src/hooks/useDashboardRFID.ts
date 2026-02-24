@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 
 interface DashboardData {
     good: number;
@@ -88,7 +88,8 @@ export const useDashboardRFID = (lineId: string, filterWo?: string): UseDashboar
 
         const fetchTrackingData = async () => {
             try {
-                let url = `${API_BASE_URL}/wira?line=${encodeURIComponent(lineId)}`;
+                // API backend mengharapkan parameter LINE (kapital) bukan line
+                let url = `${API_BASE_URL}/wira?LINE=${encodeURIComponent(lineId)}`;
                 
                 // Tambahkan filter WO jika ada
                 if (filterWoState) {
@@ -110,8 +111,7 @@ export const useDashboardRFID = (lineId: string, filterWo?: string): UseDashboar
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                     cache: 'no-cache',
                     signal: controller.signal,
@@ -228,6 +228,7 @@ export const useDashboardRFID = (lineId: string, filterWo?: string): UseDashboar
 
         const fetchWoData = async () => {
             try {
+                // API backend mengharapkan parameter line (huruf kecil) untuk endpoint /monitoring/line
                 let url = `${API_BASE_URL}/monitoring/line?line=${encodeURIComponent(lineId)}`;
                 
                 // Jika ada filter WO, gunakan API /wira untuk mendapatkan data WO spesifik
@@ -239,8 +240,7 @@ export const useDashboardRFID = (lineId: string, filterWo?: string): UseDashboar
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
+                        ...getDefaultHeaders(),
                     },
                 });
 

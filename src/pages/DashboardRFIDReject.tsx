@@ -1,14 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { useSidebar } from '../context/SidebarContext';
-import backgroundImage from '../assets/background.jpg';
-import ChartCard from '../components/dashboard/ChartCard';
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Activity, BarChart3, Table, Filter, Download, Calendar, TrendingUp } from 'lucide-react';
+import { BarChart3, Table, Filter, Download, Calendar, TrendingUp, AlertTriangle, XCircle } from 'lucide-react';
 import ExportModal from '../components/ExportModal';
 import { exportToExcel, type ExportType } from '../utils/exportToExcel';
+import { getFinishingData } from '../config/api';
+import { Card, MetricCard, FilterButton } from '../components/finishing';
+import ScanningFinishingModal from '../components/ScanningFinishingModal';
 
 interface LineRejectData {
     line: string;
@@ -21,6 +23,8 @@ interface LineRejectData {
 
 export default function DashboardRFIDReject() {
     const { isOpen } = useSidebar();
+    const queryClient = useQueryClient();
+    const [isLoaded, setIsLoaded] = useState(false);
 
     // --- STATE UNTUK FILTER & EXPORT (DATA REJECT PER LINE) ---
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
@@ -32,14 +36,35 @@ export default function DashboardRFIDReject() {
 
     const [showExportModal, setShowExportModal] = useState(false);
 
-    // Mock data dashboard Reject Room
-    // Aturan:
-    // - Reject Check In >= Reject Check Out >= Reject Mati
-    // - Waiting Reject = Check In - Check Out
-    const rejectCheckIn = 180;
-    const rejectCheckOut = 150;
-    const rejectMati = 40;
-    const waitingReject = rejectCheckIn - rejectCheckOut; // 30
+    // --- STATE UNTUK SCANNING MODAL ---
+    const [showRejectScanModal, setShowRejectScanModal] = useState(false);
+    const [rejectScanAction, setRejectScanAction] = useState<'checkin' | 'checkout'>('checkin');
+    const [rejectScanLabel, setRejectScanLabel] = useState<string>('Check In');
+
+    // Effect untuk animation
+    useEffect(() => {
+        setIsLoaded(true);
+    }, []);
+
+    // Fetch data finishing dari API untuk mendapatkan data reject_room
+    const { data: finishingResponse } = useQuery({
+        queryKey: ['finishing-data-reject'],
+        queryFn: async () => {
+            const response = await getFinishingData();
+            if (!response.success || !response.data) {
+                throw new Error(response.error || 'Gagal mengambil data finishing');
+            }
+            return response.data;
+        },
+        refetchInterval: 30000, // Refetch setiap 30 detik
+        retry: 3,
+    });
+
+    // Data reject dari API atau default values
+    const rejectCheckIn = finishingResponse?.reject_room?.checkin ?? 0;
+    const rejectCheckOut = finishingResponse?.reject_room?.checkout ?? 0;
+    const rejectMati = finishingResponse?.reject_room?.reject_mati ?? 0;
+    const waitingReject = finishingResponse?.reject_room?.waiting ?? 0;
 
     const totalReject = rejectCheckIn + rejectCheckOut + rejectMati;
 
@@ -120,272 +145,305 @@ export default function DashboardRFIDReject() {
     const sidebarWidth = isOpen ? '18%' : '5rem';
 
     return (
-        <div
-            className="flex h-screen w-full font-sans text-gray-800 overflow-hidden fixed inset-0 m-0 p-0"
-            style={{
-                backgroundImage: `url(${backgroundImage})`,
-                backgroundSize: '100% 100%',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                backgroundAttachment: 'fixed',
-            }}
-        >
-            {/* Sidebar */}
-            <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
-                <Sidebar />
-            </div>
+        <div className="flex h-screen w-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative selection:bg-sky-200 selection:text-sky-900">
+            {/* Background Pattern */}
+            <div className="fixed inset-0 z-0 pointer-events-none opacity-40"
+                style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+            />
 
-            {/* Main Content Area */}
+            {/* SIDEBAR */}
+            <aside className="fixed left-0 top-0 h-full z-[60] shadow-2xl shadow-slate-200/50 transition-all duration-300">
+                <Sidebar />
+            </aside>
+
+            {/* MAIN WRAPPER */}
             <div
-                className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out"
+                className="flex flex-col h-full relative z-10 transition-all duration-300 ease-in-out"
                 style={{
                     marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
                 }}
             >
-                {/* Header */}
-                <div className="sticky top-0 z-40 shadow-md">
-                    <Header />
-                </div>
+                {/* HEADER */}
+                <Header />
 
-                {/* Main Content */}
-                <main
-                    className="flex-1 w-full overflow-hidden px-1.5 xs:px-2 sm:px-3 md:px-4 relative"
+                {/* MAIN CONTENT */}
+                <main className={`
+                    flex-1 flex flex-col
+                    transition-opacity duration-700 ease-out
+                    ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
+                    overflow-y-auto md:overflow-hidden bg-[#f8fafc]
+                `}
                     style={{
-                        marginTop: 'clamp(4.5rem, 10vh, 5.5rem)',
-                        paddingTop: 'clamp(0.5rem, 1vh, 1rem)',
-                        paddingBottom: '0.5rem',
-                        minHeight: 0,
+                        height: '100vh',
+                        maxHeight: '100vh',
+                        padding: 'clamp(0.5rem, 1vh, 1rem)',
+                        paddingTop: 'clamp(4rem, 6vh, 5.5rem)',
+                        gap: 'clamp(0.25rem, 1vh, 1rem)'
                     }}
                 >
-                    <div className="flex flex-col gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 h-full">
-                        {/* ROW 1: Overview Data Reject (2/8) + 2 Grafik (6/8, dibagi 2) */}
-                        <div className="flex gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 h-[40%] min-h-0">
-                            {/* OVERVIEW DATA REJECT - 2/8 width */}
-                            <ChartCard
-                                title="Overview Data Reject"
-                                icon={BarChart3}
-                                className="w-2/8 min-h-0"
-                                iconColor="#dc2626"
-                                iconBgColor="#fee2e2"
-                            >
-                                <div className="grid grid-cols-2 gap-1.5 xs:gap-2 sm:gap-2.5 p-1 xs:p-1.5 sm:p-2 h-full min-h-0">
-                                    {/* Pie Chart */}
-                                    <div className="flex items-center justify-center">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={pieStatusData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius="35%"
-                                                    outerRadius="85%"
-                                                    paddingAngle={2}
-                                                    dataKey="value"
-                                                >
-                                                    {pieStatusData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                                    ))}
-                                                </Pie>
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    {/* Total Reject */}
-                                    <div className="flex flex-col items-center justify-center">
-                                        <span className="text-[10px] xs:text-xs sm:text-sm font-semibold text-slate-600 mb-1">
-                                            TOTAL REJECT
-                                        </span>
-                                        <span className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-red-600">
-                                            {totalReject.toLocaleString()}
-                                        </span>
+                    {/* UNIFIED RESPONSIVE LAYOUT - SQUISHABLE */}
+
+                    {/* ROW 1: 3 Cards - Overview, RFT, Reject per Jam */}
+                    {/* MD+ (Tablet/Desktop): 3 Columns, Flex-1 (Fit to screen height), min-h-0 to allow shrinking */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 flex-none md:flex-1 min-h-0"
+                        style={{ gap: 'clamp(0.25rem, 1vh, 1rem)' }}>
+
+                        {/* OVERVIEW DATA REJECT */}
+                        <Card title="Overview Data Reject" icon={BarChart3} className="group hover:shadow-xl transition-all duration-300 flex flex-col h-[300px] md:h-full min-h-0">
+                            <div className="flex items-center justify-between h-full min-h-0 px-2 md:px-3 gap-2">
+                                {/* Pie Chart */}
+                                <div className="flex-1 h-full min-h-0 relative animate-fade-in">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={pieStatusData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius="35%"
+                                                outerRadius="65%"
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                                stroke="none"
+                                                cornerRadius={6}
+                                                animationBegin={0}
+                                                animationDuration={800}
+                                            >
+                                                {pieStatusData.map((entry, index) => (
+                                                    <Cell
+                                                        key={`cell-${index}`}
+                                                        fill={entry.color}
+                                                        style={{ cursor: 'pointer' }}
+                                                    />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{
+                                                    fontSize: '11px',
+                                                    borderRadius: '8px',
+                                                    padding: '4px 8px'
+                                                }}
+                                                formatter={(value: number) => [value.toLocaleString(), '']}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                {/* TOTAL REJECT */}
+                                <div className="flex flex-col items-center justify-center min-w-[30%] animate-slide-in-right shrink-0">
+                                    <span className="font-semibold text-slate-600 mb-0 md:mb-1 uppercase tracking-wider text-center leading-tight whitespace-nowrap"
+                                        style={{ fontSize: 'clamp(0.8rem, 1.5vh, 1.2rem)' }}>
+                                        TOTAL REJECT
+                                    </span>
+                                    <span className="font-black tracking-tight text-red-600 leading-none"
+                                        style={{ fontSize: 'clamp(3.5rem, 10vh, 6rem)' }}>
+                                        {totalReject.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </Card>
+
+                        {/* RIGHT FIRST TIME MONTH */}
+                        <Card title="Right first time Month" icon={TrendingUp} className="group hover:shadow-xl transition-all duration-300 flex flex-col h-[300px] md:h-full min-h-0">
+                            <div className="h-full min-h-0 p-1 md:p-2">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={rightFirstTimeData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
+                                        <XAxis
+                                            dataKey="month"
+                                            tick={{ fontSize: 10 }}
+                                            interval={0}
+                                            height={15}
+                                        />
+                                        <YAxis
+                                            domain={[90, 98]}
+                                            tick={{ fontSize: 10 }}
+                                            width={35}
+                                            label={{ value: 'RFT (%)', angle: -90, position: 'insideLeft', style: { fontSize: '10px' } }}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                fontSize: '11px',
+                                                borderRadius: '8px',
+                                                padding: '4px 8px'
+                                            }}
+                                            formatter={(value: number) => [`${value.toFixed(2)}%`, 'RFT']}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="percentage"
+                                            stroke="#22c55e"
+                                            strokeWidth={2}
+                                            dot={{ r: 2, fill: '#22c55e', strokeWidth: 2, stroke: '#fff' }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </Card>
+
+                        {/* DATA REJECT PER JAM */}
+                        <Card title="Data Reject per Jam" icon={TrendingUp} className="group hover:shadow-xl transition-all duration-300 flex flex-col h-[300px] md:h-full min-h-0">
+                            <div className="h-full min-h-0 p-1 md:p-2">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={rejectPerHourLineData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
+                                        <XAxis
+                                            dataKey="hour"
+                                            tick={{ fontSize: 10 }}
+                                            interval={0}
+                                            height={15}
+                                        />
+                                        <YAxis
+                                            tick={{ fontSize: 10 }}
+                                            width={35}
+                                            label={{ value: 'Qty', angle: -90, position: 'insideLeft', style: { fontSize: '10px' } }}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                fontSize: '11px',
+                                                borderRadius: '8px',
+                                                padding: '4px 8px'
+                                            }}
+                                        />
+                                        <Legend wrapperStyle={{ fontSize: '10px' }} iconSize={8} height={20} />
+                                        {lineRejectData.slice(0, 3).map((line, idx) => {
+                                            const colors = ['#0ea5e9', '#22c55e', '#ef4444'];
+                                            return (
+                                                <Line
+                                                    key={line.line}
+                                                    type="monotone"
+                                                    dataKey={line.line}
+                                                    stroke={colors[idx]}
+                                                    strokeWidth={2}
+                                                    dot={{ r: 2, fill: colors[idx], strokeWidth: 2, stroke: '#fff' }}
+                                                />
+                                            );
+                                        })}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* ROW 2: Distribusi Status & Detail Table */}
+                    {/* MD+ (Tablet/Desktop): 2 Columns, Flex-1 (Fit to screen height), min-h-0 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 flex-1 md:flex-1 min-h-0"
+                        style={{ gap: 'clamp(0.25rem, 1vh, 1rem)' }}>
+
+                        {/* DISTRIBUSI STATUS REJECT */}
+                        <Card title="Distribusi Status Reject" icon={AlertTriangle} action={
+                            <div className="flex items-center gap-1">
+                                <FilterButton icon={Filter} label="WO" onClick={() => setShowWoFilterModal(true)} variant="wo" />
+                                <FilterButton icon={Calendar} label="Date" onClick={() => setShowFilterModal(true)} variant="date" />
+                            </div>
+                        } className="group hover:shadow-xl transition-all duration-300 flex flex-col h-auto min-h-[350px] md:h-full md:min-h-0">
+                            <div className="grid grid-cols-2 gap-2 p-2 h-full content-stretch min-h-0">
+                                <div className="animate-fade-in w-full flex flex-col justify-center min-h-0">
+                                    <MetricCard
+                                        label="Waiting"
+                                        value={waitingReject}
+                                        type="waiting"
+                                    />
+                                </div>
+                                <div className="animate-fade-in w-full flex flex-col justify-center min-h-0" style={{ animationDelay: '100ms' }}>
+                                    <MetricCard
+                                        label="Check In"
+                                        value={rejectCheckIn}
+                                        type="checkin"
+                                        onClick={() => {
+                                            setRejectScanAction('checkin');
+                                            setRejectScanLabel('Check In');
+                                            setShowRejectScanModal(true);
+                                        }}
+                                    />
+                                </div>
+                                <div className="animate-fade-in w-full flex flex-col justify-center min-h-0" style={{ animationDelay: '200ms' }}>
+                                    <MetricCard
+                                        label="Check Out"
+                                        value={rejectCheckOut}
+                                        type="checkout"
+                                        onClick={() => {
+                                            setRejectScanAction('checkout');
+                                            setRejectScanLabel('Check Out');
+                                            setShowRejectScanModal(true);
+                                        }}
+                                    />
+                                </div>
+                                <div className="animate-fade-in w-full flex flex-col justify-center min-h-0" style={{ animationDelay: '300ms' }}>
+                                    <div
+                                        className="relative w-full h-full flex flex-col justify-center items-center p-1 rounded-xl border transition-all duration-300 hover-card-reject bg-red-50/50 border-red-100 hover:scale-[1.02] hover:shadow-lg hover:border-red-200 overflow-hidden min-h-[60px] cursor-pointer"
+                                        onClick={() => {
+                                            setRejectScanAction('checkout');
+                                            setRejectScanLabel('Reject Mati');
+                                            setShowRejectScanModal(true);
+                                        }}
+                                    >
+                                        <div className="absolute top-1 left-2 right-2 flex justify-between items-start z-10">
+                                            <span className="font-bold uppercase tracking-widest opacity-80 text-slate-600"
+                                                style={{ fontSize: 'clamp(0.625rem, 1.5vw, 0.875rem)' }}>
+                                                Reject Mati
+                                            </span>
+                                            <div className="p-0.5 rounded-lg bg-white/80 backdrop-blur-sm shadow-sm text-red-600">
+                                                <XCircle className="w-3 h-3 md:w-4 md:h-4" />
+                                            </div>
+                                        </div>
+                                        <div className="font-black text-red-600 tracking-tighter drop-shadow-sm text-center mt-2 leading-none"
+                                            style={{ fontSize: 'clamp(2rem, 5vw, 4.5rem)' }}>
+                                            {rejectMati.toLocaleString()}
+                                        </div>
                                     </div>
                                 </div>
-                            </ChartCard>
-
-                            {/* CONTAINER 2 GRAFIK - 6/8 width, dibagi 2 */}
-                            <div className="w-6/8 flex gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 h-full min-h-0">
-                                {/* RIGHT FIRST TIME MONTH - 1/2 dari 6/8 */}
-                                <ChartCard
-                                    title="Right first time Month"
-                                    icon={TrendingUp}
-                                    className="w-1/2 min-h-0"
-                                    iconColor="#22c55e"
-                                    iconBgColor="#dcfce7"
-                                >
-                                    <div className="h-full min-h-0 p-1 xs:p-1.5 sm:p-2">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={rightFirstTimeData}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                                <XAxis
-                                                    dataKey="month"
-                                                    tick={{ fontSize: 10 }}
-                                                    interval={0}
-                                                />
-                                                <YAxis
-                                                    domain={[90, 98]}
-                                                    tick={{ fontSize: 10 }}
-                                                    label={{ value: 'Right first time (%)', angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                                                        border: '1px solid #e5e7eb',
-                                                        borderRadius: '8px',
-                                                        fontSize: '12px'
-                                                    }}
-                                                    formatter={(value: number) => [`${value.toFixed(2)}%`, 'Right first time']}
-                                                    labelFormatter={(label) => {
-                                                        const monthData = rightFirstTimeData.find(d => d.month === label);
-                                                        return monthData?.monthFull || label;
-                                                    }}
-                                                />
-                                                <Line
-                                                    type="monotone"
-                                                    dataKey="percentage"
-                                                    stroke="#22c55e"
-                                                    strokeWidth={2}
-                                                    dot={{ r: 4, fill: '#22c55e' }}
-                                                    name="Right first time"
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </ChartCard>
-
-                                {/* DATA REJECT PER JAM - 1/2 dari 6/8 */}
-                                <ChartCard
-                                    title="Data Reject per Jam"
-                                    icon={TrendingUp}
-                                    className="w-1/2 min-h-0"
-                                    iconColor="#8b5cf6"
-                                    iconBgColor="#f3e8ff"
-                                >
-                                    <div className="h-full min-h-0 p-1 xs:p-1.5 sm:p-2">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={rejectPerHourLineData}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                                <XAxis
-                                                    dataKey="hour"
-                                                    tick={{ fontSize: 10 }}
-                                                    interval={0}
-                                                />
-                                                <YAxis
-                                                    tick={{ fontSize: 10 }}
-                                                    label={{ value: 'Jumlah Reject', angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                                                        border: '1px solid #e5e7eb',
-                                                        borderRadius: '8px',
-                                                        fontSize: '12px'
-                                                    }}
-                                                />
-                                                <Legend
-                                                    wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }}
-                                                    iconType="line"
-                                                />
-                                                {lineRejectData.slice(0, 3).map((line, idx) => {
-                                                    const colors = ['#0ea5e9', '#22c55e', '#ef4444']; // Blue, Green, Red untuk LINE 1, 2, 3
-                                                    return (
-                                                        <Line
-                                                            key={line.line}
-                                                            type="monotone"
-                                                            dataKey={line.line}
-                                                            stroke={colors[idx]}
-                                                            strokeWidth={2}
-                                                            dot={{ r: 3 }}
-                                                            name={line.line}
-                                                        />
-                                                    );
-                                                })}
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </ChartCard>
                             </div>
-                        </div>
+                        </Card>
 
-                        {/* ROW 2: Left Column (Distribusi Status) + Right Column (Detail Data Reject Garment Table) */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 flex-1 min-h-0">
-                            {/* LEFT COLUMN - Hanya Distribusi Status Reject */}
-                            <div className="flex flex-col gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 h-full min-h-0">
-                                {/* DISTRIBUSI STATUS REJECT */}
-                                <ChartCard
-                                    title="Distribusi Status Reject"
-                                    icon={Activity}
-                                    className="flex-1 min-h-0"
-                                    iconColor="#0369a1"
-                                    iconBgColor="#e0f2fe"
+                        {/* DETAIL DATA REJECT GARMENT TABLE */}
+                        <Card title="Detail Data Reject Garment" icon={Table} action={
+                            <div className="flex items-center gap-1 md:gap-2">
+                                <button
+                                    onClick={() => setShowFilterModal(true)}
+                                    className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all duration-200"
                                 >
-                                    <div className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2 p-1 xs:p-1.5 sm:p-2 h-full min-h-0">
-                                        <StatusBox label="Waiting" value={waitingReject} color="#f97316" />
-                                        <StatusBox label="Check In" value={rejectCheckIn} color="#0ea5e9" />
-                                        <StatusBox label="Check Out" value={rejectCheckOut} color="#22c55e" />
-                                        <StatusBox label="Reject Mati" value={rejectMati} color="#ef4444" />
-                                    </div>
-                                </ChartCard>
+                                    <Filter className="w-3 h-3" />
+                                    <span>Filter</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowExportModal(true)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 shadow-sm transition-all duration-200"
+                                >
+                                    <Download className="w-3 h-3" />
+                                    <span>Export</span>
+                                </button>
                             </div>
-
-                            {/* RIGHT COLUMN - Detail Data Reject Garment Table */}
-                            <div className="flex flex-col gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 h-full min-h-0">
-                                {/* DETAIL DATA REJECT GARMENT */}
-                                <ChartCard
-                                    title="Detail Data Reject Garment"
-                                    icon={Table}
-                                    className="flex-1 min-h-0"
-                                    iconColor="#0ea5e9"
-                                    iconBgColor="#e0f2fe"
-                                    headerAction={(
-                                        <div className="flex items-center gap-1.5 xs:gap-2">
-                                            <button
-                                                onClick={() => setShowFilterModal(true)}
-                                                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 xs:px-3 py-1.5 rounded-lg text-[10px] xs:text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors"
-                                            >
-                                                <Filter className="w-3.5 h-3.5 text-slate-500" />
-                                                <span>Filter</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setShowExportModal(true)}
-                                                className="inline-flex items-center gap-1.5 px-2.5 xs:px-3 py-1.5 rounded-lg text-[10px] xs:text-xs font-semibold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-sm hover:shadow-md transition-colors"
-                                            >
-                                                <Download className="w-3.5 h-3.5" />
-                                                <span>Export</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                >
-                                    <div className="p-1.5 xs:p-2 sm:p-2.5 overflow-auto h-full min-h-0">
-                                        <table className="w-full border-collapse text-[10px] xs:text-[11px] sm:text-xs">
-                                            <thead>
-                                                <tr>
-                                                    <HeaderCell>NO</HeaderCell>
-                                                    <HeaderCell>Line</HeaderCell>
-                                                    <HeaderCell>WO</HeaderCell>
-                                                    <HeaderCell>STYLE</HeaderCell>
-                                                    <HeaderCell>QTY</HeaderCell>
+                        } className="group hover:shadow-xl transition-all duration-300 flex flex-col h-auto min-h-[350px] md:h-full md:min-h-0">
+                            <div className="p-0 md:p-1 overflow-hidden h-full flex flex-col">
+                                <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
+                                    <table className="w-full border-collapse sticky top-0" style={{ fontSize: 'clamp(0.6rem, 1vh, 0.875rem)' }}>
+                                        <thead className="sticky top-0 z-10 bg-white shadow-sm">
+                                            <tr>
+                                                <th className="py-1.5 px-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">NO</th>
+                                                <th className="py-1.5 px-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">Line</th>
+                                                <th className="py-1.5 px-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">WO</th>
+                                                <th className="py-1.5 px-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">STYLE</th>
+                                                <th className="py-1.5 px-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">QTY</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {detailRejectGarmentData.map((row, idx) => (
+                                                <tr
+                                                    key={idx}
+                                                    className={`transition-all duration-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-sky-50/70`}
+                                                >
+                                                    <BodyCell className="text-center">{row.no}</BodyCell>
+                                                    <BodyCell className="font-semibold text-slate-700">{row.line}</BodyCell>
+                                                    <BodyCell>{row.wo}</BodyCell>
+                                                    <BodyCell>{row.style}</BodyCell>
+                                                    <BodyCell className="font-semibold text-red-600">{row.qty.toLocaleString()}</BodyCell>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {detailRejectGarmentData.map((row, idx: number) => (
-                                                    <tr
-                                                        key={idx}
-                                                        className={`transition-colors duration-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'
-                                                            } hover:bg-sky-50/70`}
-                                                    >
-                                                        <BodyCell className="text-center">{row.no}</BodyCell>
-                                                        <BodyCell className="font-semibold text-slate-700">{row.line}</BodyCell>
-                                                        <BodyCell>{row.wo}</BodyCell>
-                                                        <BodyCell>{row.style}</BodyCell>
-                                                        <BodyCell className="font-semibold text-red-600">{row.qty.toLocaleString()}</BodyCell>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </ChartCard>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
+                        </Card>
                     </div>
                 </main>
 
@@ -558,25 +616,92 @@ export default function DashboardRFIDReject() {
                     lineId="REJECT"
                 />
 
+                {/* SCANNING MODAL FOR REJECT ROOM */}
+                <ScanningFinishingModal
+                    isOpen={showRejectScanModal}
+                    onClose={() => {
+                        setShowRejectScanModal(false);
+                        // Refetch data setelah modal ditutup
+                        queryClient.invalidateQueries({
+                            queryKey: ['finishing-data-reject'],
+                            refetchType: 'active'
+                        });
+                    }}
+                    type="reject"
+                    defaultAction={rejectScanAction}
+                    autoSubmit={true}
+                    customActionLabel={rejectScanLabel}
+                    onSuccess={async () => {
+                        // Refetch data segera setelah scan berhasil
+                        queryClient.invalidateQueries({
+                            queryKey: ['finishing-data-reject'],
+                            refetchType: 'active'
+                        });
+                    }}
+                />
+
                 <Footer />
             </div>
 
             <style>{`
                 /* Custom Scrollbar */
-                main::-webkit-scrollbar {
+                .dashboard-scrollable::-webkit-scrollbar,
+                .custom-scrollbar::-webkit-scrollbar {
                     width: 8px;
                     height: 8px;
                 }
-                main::-webkit-scrollbar-track {
+                .dashboard-scrollable::-webkit-scrollbar-track,
+                .custom-scrollbar::-webkit-scrollbar-track {
                     background: #f1f5f9;
                     border-radius: 4px;
                 }
-                main::-webkit-scrollbar-thumb {
+                .dashboard-scrollable::-webkit-scrollbar-thumb,
+                .custom-scrollbar::-webkit-scrollbar-thumb {
                     background: #cbd5e1;
                     border-radius: 4px;
+                    transition: background 0.2s ease;
                 }
-                main::-webkit-scrollbar-thumb:hover {
+                .dashboard-scrollable::-webkit-scrollbar-thumb:hover,
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                     background: #94a3b8;
+                }
+
+                /* Animations */
+                @keyframes fade-in {
+                    from {
+                        opacity: 0;
+                        transform: translateY(10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+
+                @keyframes slide-in-right {
+                    from {
+                        opacity: 0;
+                        transform: translateX(-20px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateX(0);
+                    }
+                }
+
+                .animate-fade-in {
+                    animation: fade-in 0.6s ease-out forwards;
+                    opacity: 0;
+                }
+
+                .animate-slide-in-right {
+                    animation: slide-in-right 0.6s ease-out forwards;
+                    opacity: 0;
+                }
+
+                /* Hover effects untuk card reject mati */
+                .hover-card-reject:hover {
+                    transform: translateY(-2px);
                 }
             `}</style>
         </div>
@@ -588,26 +713,10 @@ interface CellProps {
     className?: string;
 }
 
-function HeaderCell({ children }: CellProps) {
-    return (
-        <th
-            className="border px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 text-left font-bold"
-            style={{
-                background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
-                color: '#0f172a',
-                borderColor: '#0284C7',
-                borderWidth: '1px',
-            }}
-        >
-            {children}
-        </th>
-    );
-}
-
 function BodyCell({ children, className }: CellProps) {
     return (
         <td
-            className={`border px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 text-[10px] xs:text-[11px] sm:text-xs text-gray-700 ${className || ''}`}
+            className={`border px-1.5 xs:px-2 sm:px-2.5 py-1 xs:py-1.5 sm:py-2 text-slate-700 ${className || ''}`}
             style={{
                 borderColor: '#e5e7eb',
                 borderWidth: '1px',
@@ -619,32 +728,5 @@ function BodyCell({ children, className }: CellProps) {
 }
 
 
-interface StatusBoxProps {
-    label: string;
-    value: number;
-    color: string;
-}
-
-function StatusBox({ label, value, color }: StatusBoxProps) {
-    return (
-        <div
-            className="flex flex-col items-center justify-center rounded-lg border-2 p-1 xs:p-1.5 sm:p-2 h-full min-h-0 bg-white/90 shadow-sm hover:shadow-md transition-all"
-            style={{ borderColor: color }}
-        >
-            <span
-                className="text-xs xs:text-sm sm:text-base md:text-lg font-bold mb-1"
-                style={{ color }}
-            >
-                {label}
-            </span>
-            <span
-                className="text-xl xs:text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black"
-                style={{ color }}
-            >
-                {value.toLocaleString()}
-            </span>
-        </div>
-    );
-}
 
 

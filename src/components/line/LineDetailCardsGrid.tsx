@@ -6,7 +6,8 @@ interface Card {
  id: number;
  title: string;
  subtitle: string;
- icon: SvgIconComponent;
+ icon: SvgIconComponent | null;
+ iconImage?: string;
  path: string;
 }
 
@@ -35,6 +36,7 @@ const LineDetailCardsGrid = memo(({ cards }: LineDetailCardsGridProps) => {
       title={card.title}
       subtitle={card.subtitle}
       icon={card.icon}
+      iconImage={card.iconImage}
       path={card.path}
       isHovered={hoveredCardId === card.id}
       isOtherHovered={hoveredCardId !== null}

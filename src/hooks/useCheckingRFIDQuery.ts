@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 
 export interface RFIDCheckItem {
     rfid: string;
@@ -65,8 +65,7 @@ const checkRFID = async (rfid: string): Promise<any> => {
     const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
         method: 'GET',
         headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            ...getDefaultHeaders(),
         },
     });
 
@@ -83,8 +82,7 @@ const fetchTrackingData = async (rfid: string): Promise<any[]> => {
     const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
         method: 'GET',
         headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            ...getDefaultHeaders(),
         },
     });
 

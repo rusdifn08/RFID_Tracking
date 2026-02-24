@@ -32,6 +32,9 @@ interface DashboardState extends DashboardData {
     setFilterDateTo: (date: string) => void;
     filterWo: string;
     setFilterWo: (wo: string) => void;
+    // State untuk tracking apakah filter tanggal sudah di-apply (setelah klik search)
+    isDateFilterActive: boolean;
+    setIsDateFilterActive: (active: boolean) => void;
 }
 
 const initialState: DashboardData = {
@@ -68,15 +71,19 @@ export const useDashboardStore = create<DashboardState>()(
         showDateFilterModal: false,
         setShowDateFilterModal: (show) => set({ showDateFilterModal: show }),
         
-        // Filter states
-        filterDateFrom: '',
+        // Filter states - default ke hari ini
+        filterDateFrom: new Date().toISOString().split('T')[0],
         setFilterDateFrom: (date) => set({ filterDateFrom: date }),
         
-        filterDateTo: '',
+        filterDateTo: new Date().toISOString().split('T')[0],
         setFilterDateTo: (date) => set({ filterDateTo: date }),
         
         filterWo: '',
         setFilterWo: (wo) => set({ filterWo: wo }),
+        
+        // State untuk tracking apakah filter tanggal sudah di-apply
+        isDateFilterActive: false,
+        setIsDateFilterActive: (active) => set({ isDateFilterActive: active }),
     }))
 );
 
@@ -103,5 +110,6 @@ export const selectFilterStates = (state: DashboardState) => ({
     filterDateFrom: state.filterDateFrom,
     filterDateTo: state.filterDateTo,
     filterWo: state.filterWo,
+    isDateFilterActive: state.isDateFilterActive,
 });
 

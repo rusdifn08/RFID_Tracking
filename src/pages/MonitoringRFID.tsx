@@ -24,7 +24,7 @@ export default function MonitoringRFID() {
 
             {/* Main Content Area */}
             <div
-                className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
+                className="flex flex-col w-full min-h-screen relative"
                 style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
             >
                 {/* Header */}

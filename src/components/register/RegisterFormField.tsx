@@ -21,6 +21,7 @@ const RegisterFormField = memo(forwardRef<HTMLInputElement | HTMLSelectElement, 
    }`;
 
   if (type === 'select') {
+   const { onChange, onBlur, name: registerName, ref: registerRef } = register;
    return (
     <div className="md:col-span-1">
      <label htmlFor={name} className="block text-sm font-semibold text-gray-900 mb-1.5">
@@ -28,9 +29,21 @@ const RegisterFormField = memo(forwardRef<HTMLInputElement | HTMLSelectElement, 
      </label>
      <select
       id={name}
-      {...register}
+      name={registerName}
+      ref={(e) => {
+        registerRef(e);
+        if (typeof ref === 'function') {
+          ref(e);
+        } else if (ref) {
+          (ref as any).current = e;
+        }
+      }}
+      onChange={(e) => {
+        onChange(e); // Panggil react-hook-form onChange
+        console.log(`🔵 [RegisterFormField] Select ${name} changed:`, e.target.value);
+      }}
+      onBlur={onBlur}
       className={`${inputClasses} cursor-pointer`}
-      ref={ref as React.Ref<HTMLSelectElement>}
      >
       <option value="">Pilih {label}</option>
       {options?.map(option => (
@@ -45,6 +58,7 @@ const RegisterFormField = memo(forwardRef<HTMLInputElement | HTMLSelectElement, 
   }
 
   if (type === 'password') {
+   const { onChange, onBlur, name: registerName, ref: registerRef } = register;
    return (
     <div className="md:col-span-1">
      <label htmlFor={name} className="block text-sm font-semibold text-gray-900 mb-1.5">
@@ -54,10 +68,22 @@ const RegisterFormField = memo(forwardRef<HTMLInputElement | HTMLSelectElement, 
       <input
        type={showPassword ? "text" : "password"}
        id={name}
-       {...register}
+       name={registerName}
+       ref={(e) => {
+        registerRef(e);
+        if (typeof ref === 'function') {
+          ref(e);
+        } else if (ref) {
+          (ref as any).current = e;
+        }
+       }}
+       onChange={(e) => {
+        onChange(e); // Panggil react-hook-form onChange
+        console.log(`🔵 [RegisterFormField] Password changed:`, e.target.value ? '***' : '(empty)');
+       }}
+       onBlur={onBlur}
        className={inputClasses + ' pr-10'}
        placeholder={placeholder}
-       ref={ref as React.Ref<HTMLInputElement>}
       />
       <button
        type="button"

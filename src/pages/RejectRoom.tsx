@@ -96,8 +96,6 @@ export default function RejectRoom() {
                                     onMouseEnter={() => setHoveredCard(card.id)}
                                     className="relative group cursor-pointer transition-all duration-300"
                                     style={{
-                                        animation: `fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards ${index * 150}ms`,
-                                        opacity: 0,
                                         zIndex: isHovered ? 10 : 1,
                                     }}
                                 >
@@ -140,8 +138,8 @@ export default function RejectRoom() {
                                                     color: isDimmed
                                                         ? '#9CA3AF'
                                                         : isHovered
-                                                        ? '#b91c1c'
-                                                        : '#dc2626',
+                                                            ? '#b91c1c'
+                                                            : '#dc2626',
                                                     textTransform: 'capitalize',
                                                 }}
                                             >
@@ -153,8 +151,8 @@ export default function RejectRoom() {
                                                     color: isHovered
                                                         ? '#0f172a'
                                                         : isDimmed
-                                                        ? '#9CA3AF'
-                                                        : '#6B7280',
+                                                            ? '#9CA3AF'
+                                                            : '#6B7280',
                                                     textTransform: 'capitalize',
                                                 }}
                                             >
@@ -172,10 +170,7 @@ export default function RejectRoom() {
             </div>
 
             <style>{`
-                @keyframes fadeInUp {
-                    from { opacity: 0; transform: translateY(40px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
+                /* Custom Scrollbar */
                 /* Custom Scrollbar */
                 main::-webkit-scrollbar {
                     width: 8px;
