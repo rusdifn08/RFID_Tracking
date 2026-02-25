@@ -13,6 +13,10 @@ RFID Tracking untuk Gistex Garment Indonesia.
 
 ## Menjalankan Aplikasi
 
+Masuk ke folder frontend di tiap branch
+CLN  -> C:\frontend\RFID_Tracking
+MJL  -> C:\RFID_NEW
+MJl2 -> C:\frontend\RFID_GM2
 ### 1. Install dependensi
 
 ```bash
