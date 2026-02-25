@@ -60,9 +60,10 @@ interface UseCheckingRFIDReturn {
     filteredItems: RFIDCheckItem[];
 }
 
-// Fetch function untuk check RFID
-const checkRFID = async (rfid: string): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
+// Satu API: GET /tracking?rfid_garment=XXX
+// Response: { success, message, garment_detail, tracking_count, tracking_history }
+const fetchTrackingByRfid = async (rfid: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/tracking?rfid_garment=${encodeURIComponent(rfid)}`, {
         method: 'GET',
         headers: {
             ...getDefaultHeaders(),
@@ -73,28 +74,7 @@ const checkRFID = async (rfid: string): Promise<any> => {
         throw new Error('RFID tidak ditemukan di database');
     }
 
-    const data = await response.json();
-    return data;
-};
-
-// Fetch function untuk tracking data
-const fetchTrackingData = async (rfid: string): Promise<any[]> => {
-    const response = await fetch(`${API_BASE_URL}/tracking/rfid_garment?rfid_garment=${encodeURIComponent(rfid)}`, {
-        method: 'GET',
-        headers: {
-            ...getDefaultHeaders(),
-        },
-    });
-
-    if (!response.ok) {
-        throw new Error('Gagal memuat tracking data');
-    }
-
-    const data = await response.json();
-    if (data.success && data.data && Array.isArray(data.data)) {
-        return data.data;
-    }
-    return [];
+    return await response.json();
 };
 
 export const useCheckingRFIDQuery = (): UseCheckingRFIDReturn => {
@@ -118,66 +98,63 @@ export const useCheckingRFIDQuery = (): UseCheckingRFIDReturn => {
         }
     }, []);
 
-    // Mutation untuk check RFID
+    // Helper: map last_status ke statusData
+    const mapStatusData = (lastStatus: string | undefined): string => {
+        if (!lastStatus) return 'Unknown';
+        const upper = lastStatus.toUpperCase().trim();
+        if (upper === 'GOOD') return 'Good';
+        if (upper === 'REWORK') return 'Rework';
+        if (upper === 'REJECT') return 'Reject';
+        if (upper === 'OUTPUT_SEWING' || upper.includes('OUTPUT_SEWING')) return 'OUTPUT';
+        return lastStatus;
+    };
+
+    // Helper: map bagian ke lokasi
+    const mapLokasi = (bagian: string | undefined): string => {
+        if (!bagian) return '';
+        const b = bagian.trim().toUpperCase();
+        if (b === 'IRON' || b === 'OPERATOR') return 'SEWING';
+        if (b === 'CUTTING') return 'CUTTING';
+        return bagian;
+    };
+
+    // Mutation untuk check RFID (satu API /tracking?rfid_garment=)
     const checkRFIDMutation = useMutation({
-        mutationFn: checkRFID,
+        mutationFn: fetchTrackingByRfid,
         onSuccess: (data, rfid) => {
             const timestamp = new Date();
             let newItem: RFIDCheckItem;
 
-            if (data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
-                const latestData = data.data[0];
-                
-                let statusData = 'Unknown';
-                if (latestData.last_status) {
-                    const upperStatus = latestData.last_status.toUpperCase().trim();
-                    if (upperStatus === 'GOOD') {
-                        statusData = 'Good';
-                    } else if (upperStatus === 'REWORK') {
-                        statusData = 'Rework';
-                    } else if (upperStatus === 'REJECT') {
-                        statusData = 'Reject';
-                    } else if (upperStatus === 'OUTPUT_SEWING' || upperStatus.includes('OUTPUT_SEWING')) {
-                        statusData = 'OUTPUT';
-                    } else {
-                        statusData = latestData.last_status;
-                    }
-                }
-                
-                let lokasi = '';
-                if (latestData.bagian) {
-                    const bagian = latestData.bagian.trim().toUpperCase();
-                    if (bagian === 'IRON' || bagian === 'OPERATOR') {
-                        lokasi = 'SEWING';
-                    } else if (bagian === 'CUTTING') {
-                        lokasi = 'CUTTING';
-                    } else {
-                        lokasi = bagian;
-                    }
-                }
+            if (data.success && data.garment_detail) {
+                const g = data.garment_detail;
+                const history = Array.isArray(data.tracking_history) ? data.tracking_history : [];
+                const latest = history[0]; // terbaru pertama
+
+                const statusData = latest ? mapStatusData(latest.last_status) : 'Unknown';
+                const lokasi = latest ? mapLokasi(latest.bagian) : '';
 
                 newItem = {
                     rfid: rfid.trim(),
                     timestamp,
                     status: 'found',
-                    wo: latestData.wo || '',
-                    style: latestData.style || '',
-                    buyer: latestData.buyer || '',
-                    item: latestData.item || '',
-                    color: latestData.color || '',
-                    size: latestData.size || '',
-                    line: latestData.line || '',
-                    lastScanned: latestData.timestamp || '',
-                    lokasi: lokasi,
-                    statusData: statusData,
-                    details: `Found in ${lokasi || 'Unknown'} - Status: ${statusData}`,
+                    wo: g.wo || latest?.wo || '',
+                    style: g.style || latest?.style || '',
+                    buyer: g.buyer || latest?.buyer || '',
+                    item: g.item || latest?.item || '',
+                    color: g.color || latest?.color || '',
+                    size: g.size || latest?.size || '',
+                    line: latest?.line || '',
+                    lastScanned: latest?.timestamp || g.timestamp || '',
+                    lokasi,
+                    statusData,
+                    details: data.message || `Found in ${lokasi || 'Unknown'} - Status: ${statusData}`,
                 };
             } else {
                 newItem = {
                     rfid: rfid.trim(),
                     timestamp,
                     status: 'not_found',
-                    details: 'RFID tidak ditemukan di database',
+                    details: data.message || 'RFID tidak ditemukan di database',
                 };
             }
 
@@ -207,14 +184,23 @@ export const useCheckingRFIDQuery = (): UseCheckingRFIDReturn => {
         },
     });
 
-    // Query untuk tracking data (hanya fetch saat modal dibuka)
+    // Query untuk tracking history (modal) - sama API, return tracking_history
     const { data: trackingQueryData, isLoading: isLoadingTracking } = useQuery({
         queryKey: ['tracking-rfid', selectedRfid],
-        queryFn: () => fetchTrackingData(selectedRfid),
+        queryFn: async () => {
+            const res = await fetchTrackingByRfid(selectedRfid);
+            if (res.success && Array.isArray(res.tracking_history)) return res.tracking_history;
+            return [];
+        },
         enabled: showTrackingModal && !!selectedRfid,
         staleTime: 30000,
         retry: 1,
     });
+
+    // Reset tracking data saat pilihan RFID berubah (hindari tampil data lama saat buka modal)
+    useEffect(() => {
+        setTrackingData([]);
+    }, [selectedRfid]);
 
     // Update tracking data saat query data berubah
     useEffect(() => {

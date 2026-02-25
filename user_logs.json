@@ -831,5 +831,53 @@
     "backendIP": "10.5.0.106",
     "environment": "MJL",
     "timestamp": "2026-02-20T01:36:32.850Z"
+  },
+  {
+    "nik": "01",
+    "name": "FO_1",
+    "jabatan": "FOLDING",
+    "bagian": "FOLDING",
+    "role": "user",
+    "rfid_user": "01",
+    "line": "1",
+    "ipAddress": "10.5.2.176",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+    "loginTime": "2026-02-25T00:38:59.232Z",
+    "logoutTime": null,
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-02-25T00:38:59.232Z"
+  },
+  {
+    "nik": "01",
+    "name": "FO_1",
+    "jabatan": "FOLDING",
+    "bagian": "FOLDING",
+    "role": "user",
+    "rfid_user": "01",
+    "line": "1",
+    "ipAddress": "10.5.0.2",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    "loginTime": "2026-02-25T06:53:41.299Z",
+    "logoutTime": null,
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-02-25T06:53:41.299Z"
+  },
+  {
+    "nik": "GM210254",
+    "name": "FIFI APRIL LISTIYANTI",
+    "jabatan": "FOLDING",
+    "bagian": "FOLDING",
+    "role": "user",
+    "rfid_user": "0005575724",
+    "line": "7",
+    "ipAddress": "10.5.2.14",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    "loginTime": "2026-02-25T07:20:51.435Z",
+    "logoutTime": null,
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-02-25T07:20:51.435Z"
   }
 ]

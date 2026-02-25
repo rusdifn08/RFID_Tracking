@@ -1,6 +1,14 @@
 // Helper functions untuk Checking RFID
 
 /**
+ * Format timestamp ISO (2026-02-25T15:23:02) menjadi 2026-02-25 15:23:02 (tanpa T, pakai spasi)
+ */
+export const formatTimestampSpace = (timestamp: string | undefined): string => {
+    if (!timestamp) return '-';
+    return timestamp.replace('T', ' ');
+};
+
+/**
  * Parse timestamp dari format API ke format yang konsisten
  * Format input: "2026-01-14T10:47:25" (ISO 8601 tanpa timezone)
  * Format output: "14 Jan 2026, 10.47.25"

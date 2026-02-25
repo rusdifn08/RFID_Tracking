@@ -2248,54 +2248,10 @@ app.get('/wo/production_branch', async (req, res) => {
 });
 
 /**
- * Query data tracking dari MySQL berdasarkan rfid_garment
- * GET /tracking?rfid_garment=
+ * GET /tracking?rfid_garment= - Proxy ke backend API (garment_detail + tracking_history)
  */
 app.get('/tracking', async (req, res) => {
-    const { rfid_garment } = req.query;
-
-    if (!rfid_garment) {
-        return res.status(400).json({
-            success: false,
-            message: 'rfid_garment parameter is required',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    try {
-        const connection = await mysql.createConnection({
-            host: MYSQL_CONFIG.host,
-            user: MYSQL_CONFIG.user,
-            password: MYSQL_CONFIG.password,
-            database: MYSQL_CONFIG.database,
-            connectTimeout: MYSQL_CONFIG.connectTimeout
-        });
-
-        // Query untuk cek tracking berdasarkan rfid_garment
-        // Asumsi ada table tracking dengan kolom rfid_garment
-        const [rows] = await connection.execute(
-            `SELECT * FROM tracking WHERE rfid_garment = ? ORDER BY created_at DESC`,
-            [rfid_garment]
-        );
-
-        await connection.end();
-
-        return res.json({
-            success: true,
-            data: rows,
-            count: rows.length,
-            message: rows.length > 0 ? 'Tracking data found' : 'No tracking data found',
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        console.error('MySQL Error [tracking]:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Database error',
-            error: error.message,
-            timestamp: new Date().toISOString()
-        });
-    }
+    return await proxyRequest('/tracking', req, res);
 });
 
 // ============================================

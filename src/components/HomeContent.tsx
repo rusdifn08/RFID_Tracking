@@ -75,7 +75,7 @@ export default function HomeContent() {
                                 paddingTop: 'clamp(0.25rem, 1.5vh, 0.75rem)',
                             
                             }}>
-                                {/* ICON (Centered & Big) - Menggunakan gambar rfid.webp dengan gradasi biru */}
+                                {/* ICON (Centered & Big) - target.webp warna asli file */}
                                 <div className="relative mb-1 xs:mb-1.5 sm:mb-2 md:mb-2.5 lg:mb-3 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6 flex-shrink-0">
                                     <div className="relative" style={{ 
                                         width: 'clamp(2.5rem, 6vw, 5rem)',

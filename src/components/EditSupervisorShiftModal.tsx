@@ -131,8 +131,8 @@ export default function EditSupervisorShiftModal({
             <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md min-w-0 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden">
                 {/* Header - tetap terlihat, tidak di-scroll */}
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3 flex-shrink-0">
-                    <h2 className="text-base xs:text-lg sm:text-xl font-bold text-white leading-tight line-clamp-2">
-                        Edit Supervisor, Jam Masuk, Shift & Target
+                    <h2 className="text-base xs:text-lg sm:text-xl font-bold text-white leading-tight truncate pr-2">
+                        Edit Data {lineTitle}
                     </h2>
                     <button
                         onClick={onClose}
@@ -144,16 +144,9 @@ export default function EditSupervisorShiftModal({
                     </button>
                 </div>
 
-                {/* Content - scrollable di layar kecil */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-                    <div className="p-4 xs:p-5 sm:p-6 space-y-4 sm:space-y-5 md:space-y-6">
-                        {/* Line Info */}
-                        <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-                            <p className="text-xs sm:text-sm text-gray-600 mb-0.5">Production Line</p>
-                            <p className="text-base sm:text-lg font-semibold text-gray-900">{lineTitle}</p>
-                            <p className="text-[11px] sm:text-xs text-gray-500 mt-1">Environment: {environment}</p>
-                        </div>
-
+                {/* Content - compact agar responsive tanpa scroll */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain min-h-0">
+                    <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
                         {/* Supervisor Input */}
                         <div>
                             <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">

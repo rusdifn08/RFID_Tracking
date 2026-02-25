@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Radio, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import type { RFIDCheckItem } from '../../hooks/useCheckingRFID';
+import { formatTimestampSpace } from '../../utils/checkingUtils';
 
 interface CheckResultsListProps {
     filteredItems: RFIDCheckItem[];
@@ -72,7 +73,7 @@ const CheckResultsList = memo(({ filteredItems, checkItems, onItemClick }: Check
                                         )}
                                         {item.lastScanned && (
                                             <span className="text-[10px] xs:text-xs text-gray-600 bg-gray-100 px-2 xs:px-2.5 sm:px-3 py-0.5 xs:py-1 rounded-lg">
-                                                🕒 Last Scanned: {item.lastScanned}
+                                                🕒 Last Scanned: {formatTimestampSpace(item.lastScanned)}
                                             </span>
                                         )}
                                         {item.lokasi && (

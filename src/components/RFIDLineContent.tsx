@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, User, Sun, Moon, Edit, Target } from 'lucide-react';
+import { ArrowRight, User, Sun, Moon, Edit } from 'lucide-react';
+import targetIcon from '../assets/target.webp';
 import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
 import type { ProductionLine } from '../data/production_line';
 import {
@@ -430,7 +431,7 @@ export default function ProductionLine() {
         }
     };
 
-    // Helper Render Shift Icon dengan design profesional
+    // Helper Render Shift Icon (siang = Sun, malam = Moon) - tidak diubah
     const renderShiftIcon = (lineId: number) => {
         const shift = lineShifts[lineId] || 'day';
         const isDay = shift === 'day';
@@ -438,9 +439,7 @@ export default function ProductionLine() {
         return (
             <div className="w-full h-full flex items-center justify-center relative">
                 {isDay ? (
-                    // Tema Siang - Matahari dengan gradient dan glow
                     <div className="relative w-full h-full flex items-center justify-center">
-                        {/* Glow effect untuk matahari */}
                         <div
                             className="absolute inset-0 rounded-full blur-sm opacity-60"
                             style={{
@@ -450,17 +449,15 @@ export default function ProductionLine() {
                         <Sun
                             className="w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 relative z-10"
                             style={{
-                                color: '#B45309', // Coklat gelap untuk kontras tinggi dengan background emas
+                                color: '#B45309',
                                 filter: 'drop-shadow(0 2px 6px rgb(253, 255, 241)) drop-shadow(0 0 3px rgb(252, 244, 98))',
                                 strokeWidth: 3
                             }}
-                            fill="#F59E0B" // Amber untuk fill dengan kontras lebih baik
+                            fill="#F59E0B"
                         />
                     </div>
                 ) : (
-                    // Tema Malam - Bulan dengan bintang dan glow
                     <div className="relative w-full h-full flex items-center justify-center">
-                        {/* Glow effect untuk bulan */}
                         <div
                             className="absolute inset-0 rounded-full blur-sm opacity-50"
                             style={{
@@ -470,27 +467,14 @@ export default function ProductionLine() {
                         <Moon
                             className="w-5 xs:w-6 sm:w-7 h-5 xs:h-6 sm:h-7 relative z-10"
                             style={{
-                                color: '#FBBF24', // Kuning emas untuk kontras dengan background biru gelap
+                                color: '#FBBF24',
                                 filter: 'drop-shadow(0 2px 6px rgba(147,197,253,0.5))',
                                 strokeWidth: 2.5
                             }}
-                            fill="#FCD34D" // Kuning emas untuk fill
+                            fill="#FCD34D"
                         />
-                        {/* Bintang kecil untuk efek malam */}
-                        <div
-                            className="absolute top-0 right-1 w-1 h-1 rounded-full opacity-80"
-                            style={{
-                                background: '#FBBF24',
-                                boxShadow: '0 0 4px 2px rgba(251,191,36,0.6)'
-                            }}
-                        />
-                        <div
-                            className="absolute bottom-1 left-0 w-0.5 h-0.5 rounded-full opacity-70"
-                            style={{
-                                background: '#FBBF24',
-                                boxShadow: '0 0 3px 1px rgba(251,191,36,0.5)'
-                            }}
-                        />
+                        <div className="absolute top-0 right-1 w-1 h-1 rounded-full opacity-80" style={{ background: '#FBBF24', boxShadow: '0 0 4px 2px rgba(251,191,36,0.6)' }} />
+                        <div className="absolute bottom-1 left-0 w-0.5 h-0.5 rounded-full opacity-70" style={{ background: '#FBBF24', boxShadow: '0 0 3px 1px rgba(251,191,36,0.5)' }} />
                     </div>
                 )}
             </div>
@@ -559,7 +543,11 @@ export default function ProductionLine() {
                                             className={`flex items-center gap-1 xs:gap-1.5 px-2 xs:px-2.5 py-1 rounded-lg border shadow-sm transition-all duration-300 ${isHovered ? 'bg-amber-50/95 border-amber-300 text-amber-900' : 'bg-white border-amber-200/80 text-amber-800'}`}
                                             title="Target produksi line"
                                         >
-                                            <Target size={12} className="xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 text-amber-600" strokeWidth={2.5} />
+                                            <img
+                                                src={targetIcon}
+                                                alt=""
+                                                className="w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 flex-shrink-0 object-contain"
+                                            />
                                             <span className="text-[10px] xs:text-xs sm:text-sm font-bold tabular-nums leading-none">
                                                 {targetNum > 0 ? targetNum : '–'}
                                             </span>
