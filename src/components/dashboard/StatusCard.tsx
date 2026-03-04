@@ -5,14 +5,14 @@ import reworkIcon from '../../../assets/rework.png';
 import rejectIcon from '../../../assets/reject.png';
 import wiraIcon from '../../../assets/wira.png';
 
-export type LoginLedStatus = 'success' | 'unsuccess';
+export type LoginLedStatus = 'success' | 'unsuccess' | 'login';
 
 interface StatusCardProps {
     type: 'GOOD' | 'REWORK' | 'HASPER' | 'REJECT' | 'WIRA';
     count: number;
     label?: string;
     onClick?: () => void;
-    /** Indikator LED login (hanya untuk Good QC / Good PQC): success = hijau, unsuccess = merah, null = abu (standby) */
+    /** Indikator LED: success = hijau, unsuccess = merah, login = abu gelap (alat baru nyala), null = abu (standby) */
     loginLed?: LoginLedStatus | null;
 }
 
@@ -39,20 +39,22 @@ const StatusCard = memo(({ type, count, label, onClick, loginLed }: StatusCardPr
                 padding: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.75rem)'
             }}
         >
-            {/* LED indikator login di pojok kanan atas (Good QC / Good PQC): hijau = success, merah = unsuccess, abu = standby */}
+            {/* LED: success = hijau, unsuccess = merah, login = abu gelap (alat baru nyala), null = standby */}
             {loginLed !== undefined && (
                 <div
                     className={`absolute top-2 right-2 z-10 w-3 h-3 rounded-full border-2 border-white shadow-md transition-colors duration-300 ${loginLed === 'success' || loginLed === 'unsuccess' ? 'animate-pulse' : ''}`}
                     style={{
-                        backgroundColor: loginLed === 'success' ? '#22c55e' : loginLed === 'unsuccess' ? '#ef4444' : '#9ca3af',
+                        backgroundColor: loginLed === 'success' ? '#22c55e' : loginLed === 'unsuccess' ? '#ef4444' : loginLed === 'login' ? '#6b7280' : '#9ca3af',
                         boxShadow: loginLed === 'success'
                             ? '0 0 8px rgba(34,197,94,0.9)'
                             : loginLed === 'unsuccess'
                                 ? '0 0 8px rgba(239,68,68,0.9)'
-                                : '0 0 4px rgba(156,163,175,0.5)',
+                                : loginLed === 'login'
+                                    ? '0 0 2px rgba(107,114,128,0.4)'
+                                    : '0 0 4px rgba(156,163,175,0.5)',
                     }}
-                    title={loginLed === 'success' ? 'Login berhasil' : loginLed === 'unsuccess' ? 'Login gagal' : 'Menunggu login'}
-                    aria-label={loginLed === 'success' ? 'Indikator login berhasil' : loginLed === 'unsuccess' ? 'Indikator login gagal' : 'Indikator standby'}
+                    title={loginLed === 'success' ? 'Login berhasil' : loginLed === 'unsuccess' ? 'Login gagal' : loginLed === 'login' ? 'Alat baru menyala' : 'Menunggu login'}
+                    aria-label={loginLed === 'success' ? 'Indikator login berhasil' : loginLed === 'unsuccess' ? 'Indikator login gagal' : loginLed === 'login' ? 'Alat baru menyala' : 'Indikator standby'}
                 />
             )}
             {/* Gap: kecil di bawah HD, semakin besar device semakin besar gap (icon–teks–data) */}

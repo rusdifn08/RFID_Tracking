@@ -2,10 +2,11 @@ import { useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useMqttLoginSuccessPolling } from '../hooks/useMqttLoginSuccess';
 import LoginSuccessAnimation from './LoginSuccessAnimation';
+import LoginFailAnimation from './LoginFailAnimation';
 
 /**
- * Animasi login success: event dari MQTT via server.
- * Server (server.js) subscribe MQTT ke broker 10.5.0.106:1883; dashboard dapat event lewat polling API.
+ * Animasi login success & login gagal: event dari MQTT via server.
+ * Server (server.js) subscribe MQTT; dashboard dapat event lewat polling API.
  */
 export default function MqttLoginSuccessOverlay() {
     const location = useLocation();
@@ -21,5 +22,10 @@ export default function MqttLoginSuccessOverlay() {
 
     useMqttLoginSuccessPolling(currentLineId);
 
-    return <LoginSuccessAnimation currentLineId={currentLineId} />;
+    return (
+        <>
+            <LoginSuccessAnimation currentLineId={currentLineId} />
+            <LoginFailAnimation currentLineId={currentLineId} />
+        </>
+    );
 }

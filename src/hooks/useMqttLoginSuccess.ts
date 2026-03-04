@@ -21,6 +21,7 @@ const log = (msg: string, ...args: unknown[]) => {
 /** Polling event login dari server. Server dapat event dari MQTT (port 1883), frontend ambil lewat API. */
 export function useMqttLoginSuccessPolling(currentLineId: string | null): void {
     const setEvent = useMqttLoginSuccessStore((s) => s.setEvent);
+    const setEventFail = useMqttLoginSuccessStore((s) => s.setEventFail);
     const setLedStatus = useMqttLoginSuccessStore((s) => s.setLedStatus);
 
     useEffect(() => {
@@ -38,6 +39,23 @@ export function useMqttLoginSuccessPolling(currentLineId: string | null): void {
                     setLedStatus({
                         qc: data.ledStatus.qc ?? null,
                         pqc: data.ledStatus.pqc ?? null,
+                    });
+                }
+                if (data?.eventFail && data.eventFail.line === currentLineId) {
+                    const currentFail = useMqttLoginSuccessStore.getState().eventFail;
+                    const at = data.eventFail.at ?? Date.now();
+                    if (!currentFail || currentFail.at !== at) {
+                        setEventFail({
+                            line: data.eventFail.line,
+                            role: data.eventFail.role,
+                            at,
+                        });
+                        log('Event fail dari server (MQTT) → animasi login gagal (1x)', data.eventFail);
+                    }
+                    const cur = useMqttLoginSuccessStore.getState().ledStatus;
+                    setLedStatus({
+                        ...cur,
+                        [data.eventFail.role]: { status: 'unsuccess' as const, at },
                     });
                 }
                 if (data?.event && data.event.line === currentLineId) {
@@ -59,7 +77,7 @@ export function useMqttLoginSuccessPolling(currentLineId: string | null): void {
         poll();
         const interval = setInterval(poll, 1500);
         return () => clearInterval(interval);
-    }, [currentLineId, setEvent, setLedStatus]);
+    }, [currentLineId, setEvent, setEventFail, setLedStatus]);
 }
 
 /** Tidak dipakai: MQTT hanya jalan di server. Tetap export agar pemanggil tidak error. */

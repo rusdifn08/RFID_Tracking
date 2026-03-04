@@ -2,6 +2,7 @@
  * Proxy Server untuk Frontend
  * Server proxy yang menghubungkan frontend dengan backend API
  */
+import './set-no-debug.js';
 
 import express from 'express';
 import cors from 'cors';
@@ -646,6 +647,21 @@ app.use(express.json());
 // HELPER FUNCTION - PROXY REQUEST
 // ============================================
 
+/** Throttle log error per endpoint agar tidak membanjiri console (max 1x per 60 detik per jenis error). */
+const ERROR_LOG_THROTTLE_MS = 60000;
+const lastProxyErrorLog = {};
+
+function shouldLogProxyError(endpoint, error) {
+    const msg = (error && error.cause && error.cause.message) || (error && error.message) || String(error);
+    const shortMsg = (msg.includes('ECONNREFUSED') ? 'ECONNREFUSED' : msg.includes('AbortError') || msg.includes('aborted') ? 'AbortError' : msg).slice(0, 60);
+    const key = `${endpoint}:${shortMsg}`;
+    const now = Date.now();
+    const last = lastProxyErrorLog[key];
+    if (last && (now - last) < ERROR_LOG_THROTTLE_MS) return false;
+    lastProxyErrorLog[key] = now;
+    return true;
+}
+
 /**
  * Helper function untuk proxy request ke backend API
  * @param {string} endpoint - Endpoint path (contoh: '/user')
@@ -701,13 +717,19 @@ async function proxyRequest(endpoint, req, res, options = {}) {
             signal: controller.signal
         }).catch((fetchError) => {
             clearTimeout(timeoutId);
-            console.error(`❌ [PROXY] Fetch error for ${endpoint}:`, fetchError);
-            if (endpoint === '/wira') {
-                console.error(`❌ [WIRA] Failed to fetch from ${url}`);
-                console.error(`❌ [WIRA] Error details:`, fetchError.message);
-            }
-            if (isTrackingTimeEndpoint) {
-                console.error(`❌ [TRACKING TIME] Failed to fetch ${endpoint} from ${url}`);
+            const cause = fetchError && fetchError.cause;
+            const isRefused = cause && (cause.code === 'ECONNREFUSED' || cause.message && cause.message.includes('ECONNREFUSED'));
+            const isAbort = fetchError.name === 'AbortError' || (fetchError.message && fetchError.message.includes('aborted'));
+            const doLog = shouldLogProxyError(endpoint, fetchError);
+            if (doLog) {
+                const shortMsg = isRefused ? `Backend unreachable (ECONNREFUSED ${BACKEND_IP}:${BACKEND_PORT})` : isAbort ? 'Request aborted/timeout' : fetchError.message || 'fetch failed';
+                console.error(`❌ [PROXY] ${endpoint}: ${shortMsg}. (Log ini di-throttle 60 detik.)`);
+                if (endpoint === '/wira') {
+                    console.error(`❌ [WIRA] ${shortMsg}`);
+                }
+                if (isTrackingTimeEndpoint) {
+                    console.error(`❌ [TRACKING TIME] ${endpoint}: ${shortMsg}`);
+                }
             }
             throw fetchError;
         });
@@ -739,7 +761,11 @@ async function proxyRequest(endpoint, req, res, options = {}) {
         // Forward response dengan status code yang sama
         res.status(response.status).json(data);
     } catch (error) {
-        console.error(`\n❌ [PROXY] Error for ${endpoint}:`, error);
+        if (shouldLogProxyError(endpoint, error)) {
+            const cause = error && error.cause;
+            const shortMsg = cause && cause.code === 'ECONNREFUSED' ? `Backend unreachable (ECONNREFUSED ${BACKEND_IP}:${BACKEND_PORT})` : error.name === 'AbortError' ? 'Request aborted/timeout' : (error.message || '').slice(0, 80);
+            console.error(`❌ [PROXY] Error for ${endpoint}: ${shortMsg}`);
+        }
         let errorMessage = 'Error connecting to backend API';
         let statusCode = 500;
 
@@ -2318,12 +2344,11 @@ app.get('/monitoring/line', async (req, res) => {
  * GET /wira?line=1 - WIRA data untuk Dashboard RFID
  */
 app.get('/wira', async (req, res) => {
-
     try {
         const result = await proxyRequest('/wira', req, res);
         return result;
     } catch (error) {
-        console.error(`❌ [WIRA] Error:`, error);
+        // Log sudah di-throttle di proxyRequest; di sini hanya kirim response JSON
         return res.status(500).json({
             success: false,
             message: 'Error fetching WIRA data',
@@ -4193,14 +4218,20 @@ app.get('/api/folding/count', (req, res) => {
 // ============================================
 const MQTT_LOGIN_EVENT_TTL_MS = 5000;
 
+// TTL status online: alat dianggap online jika mengirim "online" dalam 2 menit terakhir
+const MQTT_STATUS_ONLINE_TTL_MS = 120000;
+
 app.get('/api/mqtt-login-success', (req, res) => {
     try {
         const now = Date.now();
         const event = lastMqttLoginEvent;
+        const eventFail = lastMqttLoginFailEvent;
         const eventWithinTtl = event && (now - event.at) < MQTT_LOGIN_EVENT_TTL_MS;
+        const eventFailWithinTtl = eventFail && (now - eventFail.at) < MQTT_LOGIN_EVENT_TTL_MS;
         if (event && !eventWithinTtl) lastMqttLoginEvent = null;
+        if (eventFail && !eventFailWithinTtl) lastMqttLoginFailEvent = null;
 
-        const line = req.query.line != null ? String(req.query.line) : (event && event.line) || null;
+        const line = req.query.line != null ? String(req.query.line) : (event && event.line) || (eventFail && eventFail.line) || null;
         const ledStatus = { qc: null, pqc: null };
         if (line && lastMqttLoginByLineAndRole[line]) {
             const byRole = lastMqttLoginByLineAndRole[line];
@@ -4214,12 +4245,50 @@ app.get('/api/mqtt-login-success', (req, res) => {
         if (eventWithinTtl && event && event.line === line) {
             ledStatus[event.role] = { status: 'success', at: event.at };
         }
+        if (eventFailWithinTtl && eventFail && eventFail.line === line) {
+            ledStatus[eventFail.role] = { status: 'unsuccess', at: eventFail.at };
+        }
+
+        // eventFail hanya dikirim 1x per kejadian agar animasi gagal login tidak muncul berulang
+        const eventFailToSend = eventFailWithinTtl ? eventFail : null;
+        if (eventFailToSend) lastMqttLoginFailEvent = null;
 
         return res.json({
             success: true,
             event: eventWithinTtl ? event : null,
+            eventFail: eventFailToSend,
             ledStatus
         });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * GET /api/mqtt-status-online?line=1
+ * Cek apakah alat RFID (QC, PQC, Output) sedang online.
+ * Alat mengirim payload "online" ke topic status/line{N}/qc|pqc|output/{env} saat terhubung MQTT.
+ * Response: { success, status: { qc: { online, at? }, pqc: { online, at? }, output: { online, at? } } }
+ */
+app.get('/api/mqtt-status-online', (req, res) => {
+    try {
+        const line = req.query.line != null ? String(req.query.line) : null;
+        const now = Date.now();
+        const status = { qc: { online: false }, pqc: { online: false }, output: { online: false } };
+
+        if (line && lastStatusOnline[line]) {
+            const byRole = lastStatusOnline[line];
+            ['qc', 'pqc', 'output'].forEach((role) => {
+                const entry = byRole[role];
+                if (entry && (now - entry.at) < MQTT_STATUS_ONLINE_TTL_MS) {
+                    status[role] = { online: true, at: entry.at };
+                } else {
+                    status[role] = entry ? { online: false, at: entry.at } : { online: false };
+                }
+            });
+        }
+
+        return res.json({ success: true, line: line || null, status });
     } catch (err) {
         return res.status(500).json({ success: false, error: err.message });
     }
@@ -4255,10 +4324,14 @@ app.use((err, req, res, next) => {
 // ============================================
 
 let mqttClient = null;
-/** Event login terakhir dari MQTT, untuk diteruskan ke dashboard via polling (animasi) */
+/** Event login success terakhir dari MQTT (untuk animasi) */
 let lastMqttLoginEvent = null;
+/** Event login fail/unsuccess terakhir dari MQTT (untuk animasi login gagal) */
+let lastMqttLoginFailEvent = null;
 /** Status login per line + role untuk LED indicator: { [line]: { qc: { status, at }, pqc: { status, at } } } */
 let lastMqttLoginByLineAndRole = {};
+/** Status online alat RFID: payload "online" ke status/line{N}/qc|pqc|output/{env}. { [line]: { qc: { at }, pqc: { at }, output: { at } } } */
+let lastStatusOnline = {};
 
 function startMqttClient() {
     if (mqttClient) {
@@ -4282,16 +4355,31 @@ function startMqttClient() {
         console.log(`   Topic: ${topic}`);
         console.log(`   Payload: ${payloadStr}`);
 
+        // Topic status: status/line{N}/qc|pqc|output/{env} — payload "online" = alat RFID terhubung
+        const statusMatch = topic.match(/^status\/line(\d+)\/(qc|pqc|output)\/(cln|mjl|mjl2)$/);
+        if (statusMatch && payloadStr.toLowerCase() === 'online') {
+            const line = statusMatch[1];
+            const role = statusMatch[2];
+            const at = Date.now();
+            if (!lastStatusOnline[line]) lastStatusOnline[line] = {};
+            lastStatusOnline[line][role] = { at };
+            return;
+        }
+
         const match = topic.match(/^line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
         if (!match) return;
         const line = match[1];
         const role = match[2];
-        const isSuccess = payloadStr.toLowerCase() === 'success';
-        const status = isSuccess ? 'success' : 'unsuccess';
+        const pl = payloadStr.toLowerCase();
+        // 3 jenis payload: success, unsuccess, login (alat baru nyala / indikator lampu mati)
+        const status = pl === 'success' ? 'success' : pl === 'login' ? 'login' : 'unsuccess';
+        const isSuccess = status === 'success';
         const at = Date.now();
 
         if (isSuccess) {
             lastMqttLoginEvent = { line, role, at };
+        } else if (status === 'unsuccess') {
+            lastMqttLoginFailEvent = { line, role, at };
         }
         if (!lastMqttLoginByLineAndRole[line]) lastMqttLoginByLineAndRole[line] = {};
         lastMqttLoginByLineAndRole[line][role] = { status, at };
@@ -4301,15 +4389,20 @@ function startMqttClient() {
         console.log('✅ [MQTT] CONNECTED');
         console.log(`   Broker: ${MQTT_BROKER_URL}`);
         console.log(`   Client ID: ${MQTT_OPTIONS.clientId}`);
-        // Topic per line + environment: line1/qc/mjl, line1/pqc/mjl, ... (env = cln | mjl | mjl2)
-        const envLower = CURRENT_ENV.toLowerCase();
-        const lineNumbers = getMqttLineNumbers();
+        // Subscribe ke SEMUA environment (cln, mjl, mjl2): login + status online
+        const envs = ['cln', 'mjl', 'mjl2'];
+        const lineNumbers = Array.from({ length: 16 }, (_, i) => i + 1); // 1-16
         const topics = [];
         lineNumbers.forEach((n) => {
-            topics.push(`line${n}/qc/${envLower}`);
-            topics.push(`line${n}/pqc/${envLower}`);
+            envs.forEach((env) => {
+                topics.push(`line${n}/qc/${env}`);
+                topics.push(`line${n}/pqc/${env}`);
+                topics.push(`status/line${n}/qc/${env}`);
+                topics.push(`status/line${n}/pqc/${env}`);
+                topics.push(`status/line${n}/output/${env}`);
+            });
         });
-        console.log(`   Subscribed ${topics.length} topics (line{N}/qc|pqc/${envLower}). Siap menerima pesan.\n`);
+        console.log(`   Subscribed ${topics.length} topics (line + status/line per qc,pqc,output × cln,mjl,mjl2). Siap menerima pesan.\n`);
         topics.forEach((topic) => {
             mqttClient.subscribe(topic, { qos: 0 }, (err) => {
                 if (err) console.error(`❌ [MQTT] Subscribe error [${topic}]:`, err.message);
