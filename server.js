@@ -680,7 +680,8 @@ async function proxyRequest(endpoint, req, res, options = {}) {
         });
 
         const queryString = queryParams.toString();
-        const url = `${BACKEND_API_URL}${endpoint}${queryString ? `?${queryString}` : ''}`;
+        const baseUrl = options.baseUrl ?? BACKEND_API_URL;
+        const url = `${baseUrl}${endpoint}${queryString ? `?${queryString}` : ''}`;
 
         // Log untuk tracking time endpoints
         const isTrackingTimeEndpoint = ['/line', '/rework', '/qc-pqc', '/pqc-rework', '/pqc-indryroom',
@@ -2423,6 +2424,33 @@ app.post('/garment/dryroom/out', async (req, res) => {
     return await proxyRequest('/garment/dryroom/out', req, res);
 });
 
+/** Base URL untuk Reject Room in/out (port 7000) */
+const REJECT_ROOM_INOUT_URL = 'http://10.5.0.106:7000';
+
+/**
+ * POST /garment/reject/in - Reject Room check in → 10.5.0.106:7000
+ * Query: ?rfid_garment=xxx
+ */
+app.post('/garment/reject/in', async (req, res) => {
+    return await proxyRequest('/garment/reject/in', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
+});
+
+/**
+ * POST /garment/reject/out - Reject Room check out → 10.5.0.106:7000
+ * Query: ?rfid_garment=xxx
+ */
+app.post('/garment/reject/out', async (req, res) => {
+    return await proxyRequest('/garment/reject/out', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
+});
+
+/**
+ * POST /garment/reject/scrap - Reject Room reject mati (scrap)
+ * Query: ?rfid_garment=xxx
+ */
+app.post('/garment/reject/scrap', async (req, res) => {
+    return await proxyRequest('/garment/reject/scrap', req, res);
+});
+
 /**
  * POST /garment/folding/in - Check in RFID garment ke area Folding
  * Query: ?rfid_garment=xxx
@@ -3819,9 +3847,9 @@ app.get('/api/supervisor-data', (req, res) => {
             '0': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '07:30'
         };
         const defaultStartTimesMJL = {
-            '111': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '07:30',
-            '6': '07:30', '7': '07:30', '8': '07:30', '9': '07:30', '10': '07:30', '11': '07:30',
-            '12': '07:30', '13': '07:30', '14': '07:30', '15': '07:30', '16': '07:30'
+            '111': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '06:00',
+            '6': '06:00', '7': '07:30', '8': '07:30', '9': '07:30', '10': '07:30', '11': '07:30',
+            '12': '07:30', '13': '07:30', '14': '07:30', '15': '07:30', '16': '07:30', '21': '07:30'
         };
         const defaultStartTimesMJL2 = {
             '112': '07:30', '1': '07:30', '2': '07:30', '3': '07:30', '4': '07:30', '5': '07:30',
@@ -3835,10 +3863,10 @@ app.get('/api/supervisor-data', (req, res) => {
         };
 
         const defaultMJL = {
-            '111': 'Rusdi', '1': 'DATI', '2': 'SUSI', '3': 'DEDE', '4': 'DEDE',
-            '5': 'HENI', '6': 'IYAH & DEDEH', '7': '-', '8': '-', '9': 'DALENA',
-            '10': 'DALENA', '11': 'TATAN', '12': 'SITI', '13': 'DEDE WINDY',
-            '14': 'TINI', '15': 'LINA', '16': '-'
+            '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'Not Assigned',
+            '5': 'HAWA', '6': 'IYAH', '7': 'Not Assigned', '8': '-', '9': 'Not Assigned',
+            '10': 'Not Assigned', '11': 'TATAN', '12': 'SITI', '13': 'DEDE WINDY',
+            '14': 'TINI', '15': 'LINA', '16': 'WIDIA', '21': 'Dudung'
         };
 
         const defaultMJL2 = {
@@ -3848,23 +3876,20 @@ app.get('/api/supervisor-data', (req, res) => {
         };
 
         if (environment === 'MJL') {
-            // MJL: ambil line 111 dan 1-15
+            // MJL: ambil line 111, 1-16, dan 21
             const defaultData = defaultMJL;
             const defaultStartData = defaultStartTimesMJL;
             Object.keys(defaultData).forEach(lineId => {
                 const id = parseInt(lineId, 10);
-                // Untuk line 1-9 yang shared: 
-                // HANYA gunakan environment-aware key (MJL_1, dll) atau default MJL
-                // JANGAN gunakan allSupervisors[lineId] karena itu mungkin data CLN dari migration lama
+                // Untuk line 1-9 yang shared: gunakan environment-aware key (MJL_1, dll)
                 if (id >= 1 && id <= 9) {
                     const envKey = `MJL_${lineId}`;
-                    // Hanya gunakan environment-aware key atau default, TIDAK gunakan key lama
                     filteredSupervisors[lineId] = allSupervisors[envKey] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[envKey] || defaultStartData[lineId] || '07:30';
                     filteredTargets[lineId] = typeof allTargets[envKey] === 'number' ? allTargets[envKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 } else {
-                    // Line 111 dan 10-16: gunakan dari JSON (key MJL_10..MJL_16 atau 10..16), jika tidak default
-                    const mjlKey = id >= 10 && id <= 16 ? `MJL_${lineId}` : lineId;
+                    // Line 111, 10-16, dan 21: gunakan key MJL_10..MJL_16, MJL_21 atau fallback lineId
+                    const mjlKey = (id >= 10 && id <= 16) || id === 21 ? `MJL_${lineId}` : lineId;
                     filteredSupervisors[lineId] = allSupervisors[mjlKey] || allSupervisors[lineId] || defaultData[lineId];
                     filteredStartTimes[lineId] = allStartTimes[mjlKey] || allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
                     filteredTargets[lineId] = typeof allTargets[mjlKey] === 'number' ? allTargets[mjlKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
@@ -4043,17 +4068,13 @@ app.post('/api/supervisor-data', (req, res) => {
         const id = parseInt(lineIdStr, 10);
 
         // Untuk line yang shared, simpan dengan environment-aware key
-        // Format: "MJL_1", "CLN_1", "MJL2_1", dll untuk line yang shared
-        // Format: "1", "111", "112", "10", dll untuk line spesifik environment
+        // MJL: line 1-9, 10-16, dan 21 pakai prefix MJL_ agar konsisten dengan GET
         let storageKey = lineIdStr;
         if (environment === 'CLN' && id >= 1 && id <= 5) {
-            // Line 1-5 untuk CLN: simpan dengan environment prefix
             storageKey = `${environment}_${lineIdStr}`;
-        } else if (environment === 'MJL' && id >= 1 && id <= 9) {
-            // Line 1-9 untuk MJL: simpan dengan environment prefix
-            storageKey = `${environment}_${lineIdStr}`;
+        } else if (environment === 'MJL' && (id >= 1 && id <= 9 || id >= 10 && id <= 16 || id === 21)) {
+            storageKey = `MJL_${lineIdStr}`;
         } else if (environment === 'MJL2' && id >= 1 && id <= 9) {
-            // Line 1-9 untuk MJL2: simpan dengan environment prefix
             storageKey = `MJL2_${lineIdStr}`;
         }
 

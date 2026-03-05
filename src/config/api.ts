@@ -1010,6 +1010,15 @@ export const rejectRoomCheckOut = async (rfid_garment: string): Promise<ApiRespo
     return await apiPost<FinishingCheckResponse>(`/garment/reject/out?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
 };
 
+/**
+ * Reject Room Reject Mati (Scrap)
+ * @param rfid_garment - Nomor RFID garment yang di-scan untuk reject mati / scrap
+ * @returns Response data
+ */
+export const rejectRoomScrap = async (rfid_garment: string): Promise<ApiResponse<FinishingCheckResponse>> => {
+    return await apiPost<FinishingCheckResponse>(`/garment/reject/scrap?rfid_garment=${encodeURIComponent(rfid_garment)}`, {});
+};
+
 // ============================================
 // ACTIVE USERS API ENDPOINTS
 // ============================================

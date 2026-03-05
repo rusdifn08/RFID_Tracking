@@ -73,7 +73,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 1,
   title: 'Production Line 1',
-  supervisor: 'DATI',
+  supervisor: 'DATI&SUSI',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
   line: '1'
@@ -81,7 +81,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 2,
   title: 'Production Line 2',
-  supervisor: 'SUSI',
+  supervisor: 'DALENA',
   borderColor: 'border-pink-500',
   accentColor: 'text-pink-600',
   line: '2'
@@ -89,7 +89,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 3,
   title: 'Production Line 3',
-  supervisor: 'DEDE',
+  supervisor: 'DEDE ROSIAH',
   borderColor: 'border-yellow-400',
   accentColor: 'text-yellow-600',
   line: '3'
@@ -97,7 +97,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 4,
   title: 'Production Line 4',
-  supervisor: 'DEDE',
+  supervisor: 'Not Assigned',
   borderColor: 'border-yellow-400',
   accentColor: 'text-yellow-600',
   line: '4'
@@ -113,7 +113,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 6,
   title: 'Production Line 6',
-  supervisor: 'IYAH & DEDEH',
+  supervisor: 'IYAH',
   borderColor: 'border-emerald-500',
   accentColor: 'text-emerald-600',
   line: '6'
@@ -121,7 +121,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 7,
   title: 'Production Line 7',
-  supervisor: '-',
+  supervisor: 'Not Assigned',
   borderColor: 'border-teal-400',
   accentColor: 'text-teal-600',
   line: '7'
@@ -137,7 +137,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 9,
   title: 'Production Line 9',
-  supervisor: 'DALENA',
+  supervisor: 'Not Assigned',
   borderColor: 'border-teal-400',
   accentColor: 'text-teal-600',
   line: '9'
@@ -145,7 +145,7 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 10,
   title: 'Production Line 10',
-  supervisor: 'DALENA',
+  supervisor: 'Not Assigned',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
   line: '10'

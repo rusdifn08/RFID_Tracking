@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle2, Loader2, LogIn, LogOut } from 'lucide-react';
-import { dryroomCheckIn, dryroomCheckOut, foldingCheckIn, foldingCheckOut, rejectRoomCheckIn, rejectRoomCheckOut, API_BASE_URL, getDefaultHeaders, getActiveUsers } from '../config/api';
+import { dryroomCheckIn, dryroomCheckOut, foldingCheckIn, foldingCheckOut, rejectRoomCheckIn, rejectRoomCheckOut, rejectRoomScrap, API_BASE_URL, getDefaultHeaders, getActiveUsers } from '../config/api';
 
 // Sound effect paths - file ada di root assets folder
 const successSoundPath = '/assets/succes.mp3';
@@ -447,7 +447,9 @@ export default function ScanningFinishingModal({
                     response = await foldingCheckOut(trimmedRfid, trimmedNik, tableNumber);
                 }
             } else if (type === 'reject') {
-                if (currentAction === 'checkin') {
+                if (customActionLabel === 'Reject Mati') {
+                    response = await rejectRoomScrap(trimmedRfid);
+                } else if (currentAction === 'checkin') {
                     response = await rejectRoomCheckIn(trimmedRfid);
                 } else {
                     response = await rejectRoomCheckOut(trimmedRfid);
