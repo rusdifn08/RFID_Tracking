@@ -1,11 +1,13 @@
 import { useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useMqttLoginSuccessPolling } from '../hooks/useMqttLoginSuccess';
+import { useMqttInfoPolling } from '../hooks/useMqttInfo';
 import LoginSuccessAnimation from './LoginSuccessAnimation';
 import LoginFailAnimation from './LoginFailAnimation';
+import MqttInfoAnimation from './MqttInfoAnimation';
 
 /**
- * Animasi login success & login gagal: event dari MQTT via server.
+ * Animasi login success, login gagal, dan info garment: event dari MQTT via server.
  * Server (server.js) subscribe MQTT; dashboard dapat event lewat polling API.
  */
 export default function MqttLoginSuccessOverlay() {
@@ -21,11 +23,13 @@ export default function MqttLoginSuccessOverlay() {
     }, [location.pathname]);
 
     useMqttLoginSuccessPolling(currentLineId);
+    useMqttInfoPolling(currentLineId);
 
     return (
         <>
             <LoginSuccessAnimation currentLineId={currentLineId} />
             <LoginFailAnimation currentLineId={currentLineId} />
+            <MqttInfoAnimation currentLineId={currentLineId} />
         </>
     );
 }

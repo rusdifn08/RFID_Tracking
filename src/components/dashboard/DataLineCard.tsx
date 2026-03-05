@@ -1,6 +1,7 @@
 import { memo, useMemo, useState, useRef, useEffect } from 'react';
 import { Filter, Search, ChevronDown, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import ChartCard from './ChartCard';
+import { getTodayLocalDateString } from '../../utils/dateUtils';
 import { ExportButton } from '../finishing/ExportButton';
 
 interface DataLineCardProps {
@@ -126,7 +127,7 @@ const DataLineCard = memo(({ lineTitle, woData, filterDateFrom, filterDateTo, fi
                                     <label className="relative">
                                         <input
                                             type="date"
-                                            value={filterDateFrom || new Date().toISOString().split('T')[0]}
+                                            value={filterDateFrom || getTodayLocalDateString()}
                                             onChange={(e) => onDateFromChange(e.target.value)}
                                             className="absolute opacity-0 w-0 h-0"
                                         />
@@ -138,7 +139,7 @@ const DataLineCard = memo(({ lineTitle, woData, filterDateFrom, filterDateTo, fi
                                     <label className="relative">
                                         <input
                                             type="date"
-                                            value={filterDateTo || new Date().toISOString().split('T')[0]}
+                                            value={filterDateTo || getTodayLocalDateString()}
                                             onChange={(e) => onDateToChange(e.target.value)}
                                             className="absolute opacity-0 w-0 h-0"
                                         />

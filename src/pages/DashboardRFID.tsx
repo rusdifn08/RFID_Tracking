@@ -12,7 +12,7 @@ import { exportToExcel } from '../utils/exportToExcel';
 import { useDashboardRFIDQuery } from '../hooks/useDashboardRFIDQuery';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { useMqttLoginSuccessStore } from '../stores/mqttLoginSuccessStore';
-import { formatDateForAPI } from '../utils/dateUtils';
+import { formatDateForAPI, getTodayLocalDateString } from '../utils/dateUtils';
 import { useWiraDashboardWebSocket } from '../hooks/useWiraDashboardWebSocket';
 /* Lazy Load Heavy Components */
 const OverviewChart = lazy(() => import('../components/dashboard/OverviewChart'));
@@ -210,8 +210,8 @@ export default function DashboardRFID() {
         }
     }, [showDetailModal, detailQueryParams.type, detailQueryParams.section, currentWo, appliedFilterWo, woData]);
 
-    // Untuk detail modal & API: pakai applied dates bila filter aktif (setelah Search), else hari ini
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // Untuk detail modal & API: pakai applied dates bila filter aktif (setelah Search), else hari ini (timezone lokal)
+    const todayStr = getTodayLocalDateString();
     const detailDateFrom = isDateFilterActive ? (appliedFilterDateFrom || todayStr) : todayStr;
     const detailDateTo = isDateFilterActive ? (appliedFilterDateTo || todayStr) : todayStr;
 
@@ -1546,8 +1546,8 @@ export default function DashboardRFID() {
                                 <div className="flex items-center gap-4">
                                     <div className="text-sm text-white/90 hidden sm:block" style={{ fontFamily: 'Poppins, sans-serif' }}>
                                         {(() => {
-                                            const from = detailDateFrom || new Date().toISOString().slice(0, 10);
-                                            const to = detailDateTo || new Date().toISOString().slice(0, 10);
+                                            const from = detailDateFrom || getTodayLocalDateString();
+                                            const to = detailDateTo || getTodayLocalDateString();
                                             const fromFormatted = new Date(from + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
                                             const toFormatted = new Date(to + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
                                             return from === to ? `Data ${fromFormatted}` : `Data Dari ${fromFormatted} s/d ${toFormatted}`;

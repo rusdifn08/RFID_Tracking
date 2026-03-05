@@ -76,7 +76,43 @@ status/line{N}/{role}/{env}
 
 ---
 
-## 4. Alur di Microcontroller
+## 4. Topic Info (Informasi Garment)
+
+Digunakan untuk **informasi posisi garment** (BEFORE/AFTER); dashboard menampilkan animasi info sesuai payload.
+
+### Formula topic
+
+```
+info/line{N}/{role}/{env}
+```
+
+| Bagian | Nilai | Contoh |
+|--------|--------|--------|
+| `{N}` | Nomor line (1–16) | `1` |
+| `{role}` | `qc` atau `pqc` | `qc`, `pqc` |
+| `{env}` | Environment | `mjl`, `mjl2`, `cln` |
+
+### Contoh topic
+
+- `info/line1/qc/mjl` — Info dari QC, line 1  
+- `info/line1/pqc/mjl` — Info dari PQC, line 1  
+
+### Payload (case-insensitive, dikirim persis)
+
+| Payload | Teks animasi di dashboard |
+|---------|----------------------------|
+| `BEFORE_OUTPUT` | Garment Masih Berada di Output |
+| `BEFORE_PQC` | Garment Masih Berada di PQC |
+| `BEFORE_QC` | Garment Masih Berada di QC |
+| `AFTER_QC` | Garment Sudah Berada di QC Good |
+| `AFTER_PQC` | Garment Sudah Berada di PQC Good |
+
+- **BEFORE_*** → informasi “garment masih berada di …”.  
+- **AFTER_*** → informasi “garment sudah berada di … Good”.
+
+---
+
+## 5. Alur di Microcontroller
 
 ### 4.1 Saat terhubung ke MQTT
 
@@ -89,7 +125,7 @@ status/line{N}/{role}/{env}
    - `status/line{N}/pqc/{env}` → payload `online`
    - `status/line{N}/output/{env}` → payload `online` (jika ada device output)
 
-### 4.2 Saat tap RFID (ID Card) — proses login
+### 5.2 Saat tap RFID (ID Card) — proses login
 
 1. User tap ID Card di reader RFID.
 2. Microcontroller memproses login (validasi ke backend/local).
@@ -108,13 +144,13 @@ Ringkas:
 
 Dashboard tidak subscribe MQTT langsung; server (proxy) yang subscribe dan menyediakan API.
 
-### 5.1 Event login & LED
+### 6.1 Event login & LED
 
 - **Endpoint:** `GET /api/mqtt-login-success?line={N}`  
 - **Response:** `event` (success), `eventFail` (unsuccess), `ledStatus` (qc/pqc: success \| unsuccess \| login).  
 - Dashboard polling (mis. 1,5 detik) untuk menampilkan animasi dan LED.
 
-### 5.2 Status online
+### 6.2 Status online
 
 - **Endpoint:** `GET /api/mqtt-status-online?line={N}`  
 - **Response:** `status.qc`, `status.pqc`, `status.output` masing-masing `{ online: true/false, at?: number }`.  
@@ -131,5 +167,7 @@ Dashboard tidak subscribe MQTT langsung; server (proxy) yang subscribe dan menye
 | Status online | `status/line{N}/qc/{env}` | `online` | QC online |
 | Status online | `status/line{N}/pqc/{env}` | `online` | PQC online |
 | Status online | `status/line{N}/output/{env}` | `online` | Output online |
+| Info garment | `info/line{N}/qc/{env}` | `BEFORE_*` \| `AFTER_*` | Lihat tabel payload info |
+| Info garment | `info/line{N}/pqc/{env}` | `BEFORE_*` \| `AFTER_*` | Lihat tabel payload info |
 
 **`{N}`** = 1–16, **`{env}`** = `mjl` \| `mjl2` \| `cln`.

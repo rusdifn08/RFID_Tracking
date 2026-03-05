@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { getTodayLocalDateString } from '../utils/dateUtils';
 
 interface DashboardData {
     good: number;
@@ -76,27 +77,27 @@ export const useDashboardStore = create<DashboardState>()(
         setShowDateFilterModal: (show) => set({ showDateFilterModal: show }),
         
         // Filter states - default ke hari ini
-        filterDateFrom: new Date().toISOString().split('T')[0],
+        filterDateFrom: getTodayLocalDateString(),
         setFilterDateFrom: (date) => set({ filterDateFrom: date }),
         
-        filterDateTo: new Date().toISOString().split('T')[0],
+        filterDateTo: getTodayLocalDateString(),
         setFilterDateTo: (date) => set({ filterDateTo: date }),
         
         filterWo: '',
         setFilterWo: (wo) => set({ filterWo: wo }),
 
-        appliedFilterDateFrom: new Date().toISOString().split('T')[0],
-        appliedFilterDateTo: new Date().toISOString().split('T')[0],
+        appliedFilterDateFrom: getTodayLocalDateString(),
+        appliedFilterDateTo: getTodayLocalDateString(),
         isDateFilterActive: false,
         setIsDateFilterActive: (active) => set({ isDateFilterActive: active }),
         applyDateFilter: () => set((state) => ({
-            appliedFilterDateFrom: state.filterDateFrom || new Date().toISOString().split('T')[0],
-            appliedFilterDateTo: state.filterDateTo || new Date().toISOString().split('T')[0],
+            appliedFilterDateFrom: state.filterDateFrom || getTodayLocalDateString(),
+            appliedFilterDateTo: state.filterDateTo || getTodayLocalDateString(),
             isDateFilterActive: true,
         })),
 
         resetFiltersToDefault: () => {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getTodayLocalDateString();
             set({
                 filterDateFrom: today,
                 filterDateTo: today,

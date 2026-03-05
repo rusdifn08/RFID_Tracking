@@ -4294,6 +4294,23 @@ app.get('/api/mqtt-status-online', (req, res) => {
     }
 });
 
+/**
+ * GET /api/mqtt-info?line=1
+ * Event info dari MQTT (topic info/line{N}/qc|pqc/{env}), payload: BEFORE_OUTPUT, BEFORE_PQC, BEFORE_QC, AFTER_QC, AFTER_PQC.
+ * Dikirim 1x lalu di-clear agar animasi info tidak berulang.
+ */
+app.get('/api/mqtt-info', (req, res) => {
+    try {
+        const line = req.query.line != null ? String(req.query.line) : null;
+        const event = lastMqttInfoEvent;
+        const toSend = event && (!line || event.line === line) ? event : null;
+        if (toSend) lastMqttInfoEvent = null;
+        return res.json({ success: true, event: toSend });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ============================================
 // ERROR HANDLING
 // ============================================
@@ -4332,6 +4349,8 @@ let lastMqttLoginFailEvent = null;
 let lastMqttLoginByLineAndRole = {};
 /** Status online alat RFID: payload "online" ke status/line{N}/qc|pqc|output/{env}. { [line]: { qc: { at }, pqc: { at }, output: { at } } } */
 let lastStatusOnline = {};
+/** Event info terakhir dari MQTT (topic info/line{N}/qc|pqc/{env}): payload BEFORE_* / AFTER_* untuk animasi info di dashboard. Dikirim 1x ke API lalu di-clear. */
+let lastMqttInfoEvent = null;
 
 function startMqttClient() {
     if (mqttClient) {
@@ -4363,6 +4382,19 @@ function startMqttClient() {
             const at = Date.now();
             if (!lastStatusOnline[line]) lastStatusOnline[line] = {};
             lastStatusOnline[line][role] = { at };
+            return;
+        }
+
+        // Topic info: info/line{N}/qc|pqc/{env} — payload BEFORE_OUTPUT, BEFORE_PQC, BEFORE_QC, AFTER_QC, AFTER_PQC
+        const infoMatch = topic.match(/^info\/line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
+        if (infoMatch) {
+            const line = infoMatch[1];
+            const role = infoMatch[2];
+            const pl = payloadStr.trim().toUpperCase();
+            const allowed = ['BEFORE_OUTPUT', 'BEFORE_PQC', 'BEFORE_QC', 'AFTER_QC', 'AFTER_PQC'];
+            if (allowed.includes(pl)) {
+                lastMqttInfoEvent = { line, role, payload: pl, at: Date.now() };
+            }
             return;
         }
 
@@ -4400,9 +4432,11 @@ function startMqttClient() {
                 topics.push(`status/line${n}/qc/${env}`);
                 topics.push(`status/line${n}/pqc/${env}`);
                 topics.push(`status/line${n}/output/${env}`);
+                topics.push(`info/line${n}/qc/${env}`);
+                topics.push(`info/line${n}/pqc/${env}`);
             });
         });
-        console.log(`   Subscribed ${topics.length} topics (line + status/line per qc,pqc,output × cln,mjl,mjl2). Siap menerima pesan.\n`);
+        console.log(`   Subscribed ${topics.length} topics (line + status/line + info/line per qc,pqc,output × cln,mjl,mjl2). Siap menerima pesan.\n`);
         topics.forEach((topic) => {
             mqttClient.subscribe(topic, { qos: 0 }, (err) => {
                 if (err) console.error(`❌ [MQTT] Subscribe error [${topic}]:`, err.message);
