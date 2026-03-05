@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, User, Sun, Moon, Edit, Tag } from 'lucide-react';
 import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment, getInitialEnvironment } from '../config/api';
@@ -84,9 +84,6 @@ export default function ProductionLine() {
     // State untuk edit modal
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedLine, setSelectedLine] = useState<ProductionLine | null>(null);
-
-    // Ref untuk polling interval
-    const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Fetch environment saat component mount
     useEffect(() => {
@@ -217,26 +214,17 @@ export default function ProductionLine() {
         setStylesData((prev) => ({ ...prev, ...next }));
     };
 
-    // Load supervisor data dari API saat component mount dan saat environment berubah
+    // Load supervisor & shift data sekali saja saat mount/ environment berubah. Refetch hanya saat simpan dari modal (event).
     useEffect(() => {
         if (!environment) return;
 
-        // Load initial data
         loadSupervisorData();
         loadShiftData();
 
-        // Setup polling untuk real-time update (setiap 3 detik)
-        pollingIntervalRef.current = setInterval(() => {
-            loadSupervisorData();
-            loadShiftData();
-        }, 3000);
-
-        // Listen untuk custom event ketika supervisor di-update dari modal
         const handleSupervisorUpdate = () => {
             loadSupervisorData();
             loadShiftData();
         };
-
         const handleShiftUpdate = () => {
             loadSupervisorData();
             loadShiftData();
@@ -246,21 +234,10 @@ export default function ProductionLine() {
         window.addEventListener('shiftUpdated', handleShiftUpdate);
         window.addEventListener('targetUpdated', handleSupervisorUpdate);
 
-        // Refresh saat window focus (user kembali ke tab)
-        const handleFocus = () => {
-            loadSupervisorData();
-            loadShiftData();
-        };
-        window.addEventListener('focus', handleFocus);
-
         return () => {
             window.removeEventListener('supervisorUpdated', handleSupervisorUpdate);
             window.removeEventListener('shiftUpdated', handleShiftUpdate);
             window.removeEventListener('targetUpdated', handleSupervisorUpdate);
-            window.removeEventListener('focus', handleFocus);
-            if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-            }
         };
     }, [environment]);
 
@@ -386,15 +363,8 @@ export default function ProductionLine() {
 
         loadActiveLines();
 
-        // Setup polling untuk refresh active lines setiap 5 detik
-        const intervalId = setInterval(() => {
-            loadActiveLines();
-        }, 5000);
-
-        return () => {
-            clearInterval(intervalId);
-        };
-    }, [environment, productionLines]); // Refresh saat environment atau productionLines berubah
+        return () => {};
+    }, [environment, productionLines]); // Load wira sekali saja saat mount / environment berubah
 
     // Initialize default shifts untuk production lines yang belum ada di data
     useEffect(() => {

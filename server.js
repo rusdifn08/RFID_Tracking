@@ -3835,8 +3835,8 @@ app.get('/api/supervisor-data', (req, res) => {
 
         // Filter data berdasarkan environment
         // CLN: line 0, 1-5
-        // MJL: line 111, 1-15
-        // MJL2: line 112, 1-8
+        // MJL: line 111, 1-16, dan 21
+        // MJL2: line 112, 1-9
         // Untuk line 1-5 yang ada di CLN, gunakan data default dari production_line.ts jika tidak ada di JSON
         const filteredSupervisors = {};
         const filteredStartTimes = {};
@@ -3895,6 +3895,12 @@ app.get('/api/supervisor-data', (req, res) => {
                     filteredTargets[lineId] = typeof allTargets[mjlKey] === 'number' ? allTargets[mjlKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0);
                 }
             });
+            // Pastikan line 21 selalu ada di response MJL (untuk Production Line 21 card & edit)
+            if (!filteredSupervisors['21']) {
+                filteredSupervisors['21'] = allSupervisors['MJL_21'] || allSupervisors['21'] || defaultMJL['21'] || 'Dudung';
+                filteredStartTimes['21'] = allStartTimes['MJL_21'] || allStartTimes['21'] || defaultStartTimesMJL['21'] || '07:30';
+                filteredTargets['21'] = typeof allTargets['MJL_21'] === 'number' ? allTargets['MJL_21'] : (typeof allTargets['21'] === 'number' ? allTargets['21'] : 0);
+            }
         } else if (environment === 'MJL2') {
             // MJL2: ambil line 112 dan 1-9
             const defaultData = defaultMJL2;

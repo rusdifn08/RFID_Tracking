@@ -118,9 +118,9 @@ export default function DashboardFolding() {
       // Response bisa berupa array atau single object
       return Array.isArray(response.data) ? response.data : [response.data];
     },
-    refetchInterval: 10000, // Refresh setiap 10 detik
-    refetchOnMount: true, // Ambil data saat component mount
-    refetchOnWindowFocus: true, // Ambil data saat window focus
+    refetchInterval: 30000, // Refresh setiap 30 detik (ringan, tidak setiap detik)
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     retry: 2,
   });
 
@@ -151,10 +151,10 @@ export default function DashboardFolding() {
       }
       return Array.isArray(response.data) ? response.data : [response.data];
     },
-    enabled: isAllUsersMode(), // Hanya fetch jika mode all-users aktif
-    refetchInterval: 2000, // Refresh setiap 2 detik untuk realtime update
+    enabled: isAllUsersMode(),
+    refetchInterval: 15000, // Refresh setiap 15 detik (tidak setiap detik)
     refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     retry: 2,
   });
 
@@ -186,9 +186,9 @@ export default function DashboardFolding() {
       }
       return response.data;
     },
-    staleTime: 20000,
-    refetchInterval: 1000,
-    refetchOnWindowFocus: true,
+    staleTime: 30000,
+    refetchInterval: false, // Tidak polling; refetch hanya saat filter berubah atau manual
+    refetchOnWindowFocus: false,
     retry: 3,
   });
 
@@ -235,9 +235,10 @@ export default function DashboardFolding() {
         }));
       }
     },
-    staleTime: 20000, // Data dianggap fresh selama 20 detik
-    refetchInterval: 1000, // Refresh setiap 1 detik (Realtime Ultra Cepat)
-    refetchOnWindowFocus: true, // Refetch saat window focus
+    enabled: !selectedTableDetail, // Jangan fetch saat modal Scanning Folding terbuka
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
     retry: 2,
   });
 
@@ -617,11 +618,11 @@ export default function DashboardFolding() {
         throw error;
       }
     },
-    staleTime: 0, // Data selalu dianggap stale, sehingga selalu fetch data terbaru saat mount
-    refetchInterval: 1000, // Refresh setiap 1 detik (Realtime Ultra Cepat)
-    refetchOnWindowFocus: true, // Refetch saat window focus
-    refetchOnMount: true, // Selalu fetch saat component mount
-    refetchOnReconnect: true, // Refetch saat reconnect
+    staleTime: 5000,
+    refetchInterval: false, // Tidak polling; refetch hanya saat mount + setelah scan (onSuccess)
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
     retry: 2,
     // Gunakan placeholderData untuk menjaga data lama saat refetch (mencegah data menjadi 0)
     // Tapi jangan gunakan saat mount pertama kali, biarkan fetch data baru
@@ -752,10 +753,10 @@ export default function DashboardFolding() {
         return {};
       }
     },
-    enabled: activeUsersMap.size > 0, // Hanya fetch jika ada active user
-    staleTime: 20000, // Data dianggap fresh selama 20 detik
-    refetchInterval: 1000, // Refresh setiap 1 detik (Realtime Ultra Cepat)
-    refetchOnWindowFocus: true, // Refetch saat window focus
+    enabled: activeUsersMap.size > 0,
+    staleTime: 60000,
+    refetchInterval: false, // Tidak polling semua table; refetch hanya saat mount + setelah scan
+    refetchOnWindowFocus: false,
     retry: 2,
   });
 
@@ -1528,6 +1529,7 @@ export default function DashboardFolding() {
           tableWo={checkOutStations.find(s => s.tableNumber === selectedTableDetail)?.wo || ''}
           onClose={() => {
             setSelectedTableDetail(null);
+            refetchHourlyData(); // Fetch ulang hourly setelah modal scanning ditutup
           }}
           optimisticCounts={optimisticCounts}
           setOptimisticCounts={setOptimisticCounts}
@@ -1758,12 +1760,11 @@ const TableDetailModal = ({ tableNumber, tableColor, tableWo, onClose, refetchDa
       }
       return Array.isArray(response.data) ? response.data[0] : response.data;
     },
-    refetchInterval: 10000,
+    refetchInterval: false,
     retry: 2,
-    // Pastikan data selalu fresh saat modal dibuka
     staleTime: 0,
     refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   // Refetch active user saat modal table detail dibuka untuk memastikan NIK ter-update
@@ -1801,21 +1802,16 @@ const TableDetailModal = ({ tableNumber, tableColor, tableWo, onClose, refetchDa
         throw error;
       }
     },
-    staleTime: 0, // Data selalu dianggap stale, sehingga selalu fetch data terbaru saat mount
-    refetchInterval: 60000, // Refresh setiap 60 detik (background refresh)
-    refetchOnWindowFocus: true, // Refetch saat window focus
-    refetchOnMount: true, // Selalu fetch saat component mount
-    refetchOnReconnect: true, // Refetch saat reconnect
+    staleTime: 0,
+    refetchInterval: false, // Tidak polling; refetch hanya saat modal buka + setelah scan (onSuccess)
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
     retry: 2,
-    // Gunakan placeholderData untuk menjaga data lama saat refetch (mencegah data menjadi 0)
-    // Tapi jangan gunakan saat mount pertama kali, biarkan fetch data baru
     placeholderData: (previousData: any) => {
-      // Hanya gunakan data sebelumnya jika sedang refetch (bukan mount pertama)
-      // Jika previousData ada dan bukan 0, gunakan itu
       if (previousData !== undefined && previousData !== null && previousData !== 0) {
         return previousData;
       }
-      // Return undefined untuk mount pertama kali, biarkan fetch data baru
       return undefined;
     },
   });
@@ -1845,12 +1841,12 @@ const TableDetailModal = ({ tableNumber, tableColor, tableWo, onClose, refetchDa
         return '-';
       }
     },
-    enabled: !!tableNumber && hasActiveUser, // Hanya fetch jika ada active user
-    staleTime: 0, // Data selalu dianggap stale, sehingga selalu fetch data terbaru saat mount
-    refetchInterval: 60000, // Refresh setiap 60 detik (background refresh)
-    refetchOnWindowFocus: true, // Refetch saat window focus
-    refetchOnMount: true, // Selalu fetch saat component mount
-    refetchOnReconnect: true, // Refetch saat reconnect
+    enabled: !!tableNumber && hasActiveUser,
+    staleTime: 0,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
     retry: 2,
   });
 
@@ -1924,12 +1920,12 @@ const TableDetailModal = ({ tableNumber, tableColor, tableWo, onClose, refetchDa
         return [];
       }
     },
-    enabled: !!tableNumber && hasActiveUser, // Hanya fetch jika ada active user
-    staleTime: 0, // Data selalu dianggap stale, sehingga selalu fetch data terbaru saat mount
-    refetchInterval: 60000, // Refresh setiap 60 detik (background refresh)
-    refetchOnWindowFocus: true, // Refetch saat window focus
-    refetchOnMount: true, // Selalu fetch saat component mount
-    refetchOnReconnect: true, // Refetch saat reconnect
+    enabled: !!tableNumber && hasActiveUser,
+    staleTime: 0,
+    refetchInterval: false, // Tidak polling; refetch hanya saat modal buka + setelah scan (onSuccess)
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
   });
 
   const tableDetailData = useMemo<TableDetailItem[]>(() => {
