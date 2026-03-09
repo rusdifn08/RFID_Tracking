@@ -1,40 +1,34 @@
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
-
-// Material-UI Imports
-import { Paper } from '@mui/material';
+import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
 import {
     Dashboard as DashboardIcon,
     EventNote as ListRfidIcon,
 } from '@mui/icons-material';
 
-export default function RejectRoom() {
-    const navigate = useNavigate();
-    const { isOpen } = useSidebar();
-    const [hoveredCard, setHoveredCard] = useState<number | null>(null);
+const cards = [
+    {
+        id: 1,
+        title: 'Dashboard RFID Reject',
+        subtitle: 'Monitoring Real-time Reject Room',
+        icon: DashboardIcon,
+        path: '/dashboard-rfid-reject',
+    },
+    {
+        id: 2,
+        title: 'List RFID Reject',
+        subtitle: 'Database & Log Reject',
+        icon: ListRfidIcon,
+        path: '/list-rfid-reject',
+    },
+];
 
-    const cards = [
-        {
-            id: 1,
-            title: 'Dashboard RFID Reject',
-            subtitle: 'Monitoring Real-time Reject Room',
-            icon: DashboardIcon,
-            path: '/dashboard-rfid-reject',
-        },
-        {
-            id: 2,
-            title: 'List RFID Reject',
-            subtitle: 'Database & Log Reject',
-            icon: ListRfidIcon,
-            path: '/list-rfid-reject',
-        },
-    ];
+export default function RejectRoom() {
+    const { isOpen } = useSidebar();
 
     return (
         <div
@@ -68,7 +62,7 @@ export default function RejectRoom() {
                 {/* Breadcrumb */}
                 <Breadcrumb />
 
-                {/* Main Content */}
+                {/* Main Content - card design sama dengan Finishing (satu tema biru) */}
                 <main
                     className="flex-1 w-full overflow-y-auto px-2 xs:px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 relative"
                     style={{
@@ -80,98 +74,13 @@ export default function RejectRoom() {
                         scrollbarColor: '#cbd5e1 #f1f5f9',
                     }}
                 >
-                    {/* --- CARDS GRID --- */}
-                    <div
-                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 xs:gap-4 sm:gap-5 md:gap-6 max-w-6xl mx-auto mt-3"
-                        onMouseLeave={() => setHoveredCard(null)}
-                    >
-                        {cards.map((card, index) => {
-                            const isHovered = hoveredCard === card.id;
-                            const isDimmed = hoveredCard !== null && hoveredCard !== card.id;
-
-                            return (
-                                <div
-                                    key={card.id}
-                                    onClick={() => navigate(card.path)}
-                                    onMouseEnter={() => setHoveredCard(card.id)}
-                                    className="relative group cursor-pointer transition-all duration-300"
-                                    style={{
-                                        zIndex: isHovered ? 10 : 1,
-                                    }}
-                                >
-                                    <Paper
-                                        elevation={0}
-                                        className="relative flex flex-col p-4 xs:p-5 sm:p-6 bg-white transition-all duration-300"
-                                        style={{
-                                            borderRadius: '16px',
-                                            boxShadow: isHovered
-                                                ? '0 10px 40px -10px rgba(239, 68, 68, 0.3)'
-                                                : '0 4px 20px -5px rgba(0,0,0,0.1)',
-                                            transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
-                                            filter: isDimmed ? 'grayscale(100%)' : 'none',
-                                            opacity: isDimmed ? 0.5 : 1,
-                                            border: '1px solid rgba(248, 113, 113, 0.4)',
-                                        }}
-                                    >
-                                        {/* Icon - Nuansa biru merah untuk reject */}
-                                        <div className="mb-3 xs:mb-4 flex items-center justify-start">
-                                            <div className="flex items-center justify-center">
-                                                <card.icon
-                                                    sx={{
-                                                        fontSize: 'clamp(32px, 4vw, 48px)',
-                                                        background: isDimmed
-                                                            ? 'linear-gradient(135deg, #9CA3AF, #6B7280)'
-                                                            : 'linear-gradient(135deg, #0ea5e9, #ef4444)',
-                                                        WebkitBackgroundClip: 'text',
-                                                        color: 'transparent',
-                                                        transition: 'all 0.3s ease',
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Text Content */}
-                                        <div className="flex-1">
-                                            <h3
-                                                className="text-base xs:text-lg sm:text-xl md:text-2xl font-bold leading-tight mb-1 xs:mb-1.5 sm:mb-2 transition-colors duration-300"
-                                                style={{
-                                                    color: isDimmed
-                                                        ? '#9CA3AF'
-                                                        : isHovered
-                                                            ? '#b91c1c'
-                                                            : '#dc2626',
-                                                    textTransform: 'capitalize',
-                                                }}
-                                            >
-                                                {card.title}
-                                            </h3>
-                                            <p
-                                                className="text-xs xs:text-sm sm:text-base font-medium leading-relaxed transition-colors duration-300"
-                                                style={{
-                                                    color: isHovered
-                                                        ? '#0f172a'
-                                                        : isDimmed
-                                                            ? '#9CA3AF'
-                                                            : '#6B7280',
-                                                    textTransform: 'capitalize',
-                                                }}
-                                            >
-                                                {card.subtitle}
-                                            </p>
-                                        </div>
-                                    </Paper>
-                                </div>
-                            );
-                        })}
-                    </div>
+                    <LineDetailCardsGrid cards={cards} gridColsClass="md:grid-cols-2" />
                 </main>
 
                 <Footer />
             </div>
 
             <style>{`
-                /* Custom Scrollbar */
-                /* Custom Scrollbar */
                 main::-webkit-scrollbar {
                     width: 8px;
                     height: 8px;

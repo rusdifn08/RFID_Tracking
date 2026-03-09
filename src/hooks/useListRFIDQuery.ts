@@ -169,6 +169,7 @@ export const useListRFIDQuery = () => {
     
     // State untuk filters dan modals
     const [searchTerm, setSearchTerm] = useState<string>('');
+    const [searchWO, setSearchWO] = useState<string>('');
     const [filterWO, setFilterWO] = useState<string>('');
     const [filterBuyer, setFilterBuyer] = useState<string>('');
     const [filterStatus, setFilterStatus] = useState<string>('');
@@ -218,6 +219,8 @@ export const useListRFIDQuery = () => {
                 (item.lokasi?.toLowerCase() || '').includes(searchLower) ||
                 (item.line?.toLowerCase() || '').includes(searchLower);
 
+            const searchWOLower = searchWO.trim().toLowerCase();
+            const matchSearchWO = !searchWOLower || (item.nomor_wo?.toLowerCase() || '').includes(searchWOLower);
             const matchWO = !filterWO || item.nomor_wo === filterWO;
             const matchBuyer = !filterBuyer || item.buyer === filterBuyer;
             const matchStatus = !filterStatus || item.status === filterStatus;
@@ -250,10 +253,10 @@ export const useListRFIDQuery = () => {
             const matchSize = filterSize === 'Semua' || item.size === filterSize;
             const matchColor = filterColor === 'Semua' || item.color === filterColor;
 
-            return matchSearch && matchWO && matchBuyer && matchStatus && matchLocation && 
+            return matchSearch && matchSearchWO && matchWO && matchBuyer && matchStatus && matchLocation && 
                    matchDate && matchStatusModal && matchSize && matchColor;
         });
-    }, [rfidData, searchTerm, filterWO, filterBuyer, filterStatus, filterLocation, 
+    }, [rfidData, searchTerm, searchWO, filterWO, filterBuyer, filterStatus, filterLocation, 
         filterDateFrom, filterDateTo, filterStatusModal, filterSize, filterColor]);
     
     // Get unique values for filters
@@ -390,6 +393,8 @@ export const useListRFIDQuery = () => {
         // Search
         searchTerm,
         setSearchTerm,
+        searchWO,
+        setSearchWO,
         
         // Filters
         filterWO,

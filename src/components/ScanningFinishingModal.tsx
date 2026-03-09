@@ -460,10 +460,12 @@ export default function ScanningFinishingModal({
 
             // Cek apakah response berhasil (bisa dari response.success atau response.data.message)
             // response adalah ApiResponse<FinishingCheckResponse>, jadi data ada di response.data
+            // 404 = RFID tidak ditemukan → selalu gagal, pakai suara error
             const responseData = response.data as any; // Type assertion karena response.data bisa berisi data lengkap dari API
-            const isSuccess = response.success ||
-                (responseData?.message && typeof responseData.message === 'string' && responseData.message.includes('Success')) ||
-                (responseData?.success === true);
+            const isSuccess = response.status !== 404 &&
+                (response.success ||
+                    (responseData?.message && typeof responseData.message === 'string' && responseData.message.includes('Success')) ||
+                    (responseData?.success === true));
 
             if (isSuccess) {
                 // Response berhasil

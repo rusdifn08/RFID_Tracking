@@ -1,12 +1,13 @@
 import { memo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ChartCard from './ChartCard';
-import { BarChart3, XCircle } from 'lucide-react';
+import { BarChart3, XCircle, Clock } from 'lucide-react';
 import dryroomIcon from '../../assets/dryroom_icon.webp';
 import foldingIcon from '../../assets/folding_icon.webp';
 import { DEFAULT_ROOM_STATUS_ENABLED } from './constants';
 import { getFinishingDataByLine } from '../../config/api';
 import RoomStatusDetailModal, { type RoomStatusType } from './RoomStatusDetailModal';
+import OutputPerJamCard, { TAB_CONFIG, type OutputTab } from './OutputPerJamCard';
 
 // Filter CSS agar icon webp tampil biru (#0284C7) sesuai tema Room Status
 const iconBlueFilter = 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)';
@@ -15,8 +16,12 @@ interface RoomStatusCardProps {
     lineId?: string;
 }
 
+type ViewMode = 'room_status' | 'hourly_data';
+
 const RoomStatusCard = memo(({ lineId }: RoomStatusCardProps) => {
     const showRoomStatus = DEFAULT_ROOM_STATUS_ENABLED;
+    const [viewMode, setViewMode] = useState<ViewMode>('room_status');
+    const [activeHourlyTab, setActiveHourlyTab] = useState<OutputTab>('output_sewing');
     const [detailModalRoom, setDetailModalRoom] = useState<RoomStatusType | null>(null);
     const openDetail = useCallback((room: RoomStatusType) => () => setDetailModalRoom(room), []);
     const closeDetail = useCallback(() => setDetailModalRoom(null), []);
@@ -46,10 +51,78 @@ const RoomStatusCard = memo(({ lineId }: RoomStatusCardProps) => {
         return null;
     }
 
+    const switchButtons = (
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-gray-50 p-0.5">
+            <button
+                type="button"
+                onClick={() => setViewMode('room_status')}
+                className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    viewMode === 'room_status' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+                Room Status
+            </button>
+            <button
+                type="button"
+                onClick={() => setViewMode('hourly_data')}
+                className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    viewMode === 'hourly_data' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+                Hourly Data
+            </button>
+        </div>
+    );
+
+    const hourlyTabButtons = viewMode === 'hourly_data' && (
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-gray-50 p-0.5">
+            {TAB_CONFIG.map((tab) => (
+                <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveHourlyTab(tab.key)}
+                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                        activeHourlyTab === tab.key ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                    {tab.label}
+                </button>
+            ))}
+        </div>
+    );
+
+    const headerAction = (
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            {switchButtons}
+            {hourlyTabButtons}
+        </div>
+    );
+
+    if (viewMode === 'hourly_data') {
+        return (
+            <ChartCard
+                title="Output per Jam"
+                icon={Clock}
+                headerAction={headerAction}
+                className="w-full h-full flex flex-col border-sky-500"
+            >
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    <OutputPerJamCard
+                        lineId={lineId || ''}
+                        className="h-full"
+                        activeTab={activeHourlyTab}
+                        onTabChange={setActiveHourlyTab}
+                    />
+                </div>
+            </ChartCard>
+        );
+    }
+
     return (
         <ChartCard
             title="Room Status"
             icon={BarChart3}
+            headerAction={headerAction}
             className="w-full h-full flex flex-col border-sky-500"
         >
             <div

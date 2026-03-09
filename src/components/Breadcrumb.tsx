@@ -210,6 +210,41 @@ export default function Breadcrumb() {
                 label: 'Dashboard RFID Finishing',
                 isActive: true,
             });
+        } else if (path.startsWith('/reject-room')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Reject Room',
+                isActive: true,
+            });
+        } else if (path.startsWith('/dashboard-rfid-reject')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Reject Room',
+                path: '/reject-room',
+            });
+            breadcrumbs.push({
+                label: 'Dashboard RFID Reject',
+                isActive: true,
+            });
+        } else if (path.startsWith('/list-rfid-reject')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Reject Room',
+                path: '/reject-room',
+            });
+            breadcrumbs.push({
+                label: 'List RFID Reject',
+                isActive: true,
+            });
         }
 
         return breadcrumbs;

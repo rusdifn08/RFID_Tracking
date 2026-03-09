@@ -21,6 +21,8 @@ const ListRFID: React.FC = memo(() => {
         error,
         searchTerm,
         setSearchTerm,
+        searchWO,
+        setSearchWO,
         filterWO,
         setFilterWO,
         filterBuyer,
@@ -147,6 +149,8 @@ const ListRFID: React.FC = memo(() => {
                     <ListRFIDFilters
                         searchTerm={searchTerm}
                         onSearchChange={setSearchTerm}
+                        searchWO={searchWO}
+                        onSearchWOChange={setSearchWO}
                         filterWO={filterWO}
                         onFilterWOChange={setFilterWO}
                         filterBuyer={filterBuyer}

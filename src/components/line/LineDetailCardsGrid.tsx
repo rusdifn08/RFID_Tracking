@@ -13,9 +13,11 @@ interface Card {
 
 interface LineDetailCardsGridProps {
  cards: Card[];
+ /** Optional: grid columns class (e.g. "md:grid-cols-2" untuk 2 kolom) */
+ gridColsClass?: string;
 }
 
-const LineDetailCardsGrid = memo(({ cards }: LineDetailCardsGridProps) => {
+const LineDetailCardsGrid = memo(({ cards, gridColsClass = 'md:grid-cols-3' }: LineDetailCardsGridProps) => {
  const [hoveredCardId, setHoveredCardId] = useState<number | null>(null);
 
  const handleMouseEnter = useCallback((id: number) => {
@@ -28,7 +30,7 @@ const LineDetailCardsGrid = memo(({ cards }: LineDetailCardsGridProps) => {
 
  return (
   <div className="max-w-6xl mx-auto">
-   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+   <div className={`grid grid-cols-1 gap-4 mt-6 ${gridColsClass}`}>
     {cards.map((card) => (
      <LineDetailCard
       key={card.id}

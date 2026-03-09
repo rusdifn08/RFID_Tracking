@@ -759,7 +759,7 @@ async function proxyRequest(endpoint, req, res, options = {}) {
             }
         }
 
-        // Forward response dengan status code yang sama
+        // Forward response dengan status code yang sama (404 = RFID tidak ditemukan → tetap 404)
         res.status(response.status).json(data);
     } catch (error) {
         if (shouldLogProxyError(endpoint, error)) {
@@ -2430,6 +2430,7 @@ const REJECT_ROOM_INOUT_URL = 'http://10.5.0.106:7000';
 /**
  * POST /garment/reject/in - Reject Room check in → 10.5.0.106:7000
  * Query: ?rfid_garment=xxx
+ * Jika RFID tidak ada di history movement: 404 + { success: false, message: "RFID tidak ditemukan dalam history movement." }
  */
 app.post('/garment/reject/in', async (req, res) => {
     return await proxyRequest('/garment/reject/in', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
@@ -2438,17 +2439,19 @@ app.post('/garment/reject/in', async (req, res) => {
 /**
  * POST /garment/reject/out - Reject Room check out → 10.5.0.106:7000
  * Query: ?rfid_garment=xxx
+ * Jika RFID tidak ada di history movement: 404 + { success: false, message: "RFID tidak ditemukan dalam history movement." }
  */
 app.post('/garment/reject/out', async (req, res) => {
     return await proxyRequest('/garment/reject/out', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
 });
 
 /**
- * POST /garment/reject/scrap - Reject Room reject mati (scrap)
+ * POST /garment/reject/scrap - Reject Room reject mati (scrap) → 10.5.0.106:7000
  * Query: ?rfid_garment=xxx
+ * Jika RFID tidak ada di history movement: 404 + { success: false, message: "RFID tidak ditemukan dalam history movement." }
  */
 app.post('/garment/reject/scrap', async (req, res) => {
-    return await proxyRequest('/garment/reject/scrap', req, res);
+    return await proxyRequest('/garment/reject/scrap', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
 });
 
 /**

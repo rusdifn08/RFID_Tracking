@@ -4,6 +4,8 @@ import { Search, Filter, FileText, Activity, MapPin } from 'lucide-react';
 interface ListRFIDFiltersProps {
     searchTerm: string;
     onSearchChange: (value: string) => void;
+    searchWO: string;
+    onSearchWOChange: (value: string) => void;
     filterWO: string;
     onFilterWOChange: (value: string) => void;
     filterBuyer: string;
@@ -21,6 +23,8 @@ interface ListRFIDFiltersProps {
 const ListRFIDFilters = memo(({
     searchTerm,
     onSearchChange,
+    searchWO,
+    onSearchWOChange,
     filterWO,
     onFilterWOChange,
     filterBuyer,
@@ -51,7 +55,18 @@ const ListRFIDFilters = memo(({
                     />
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-1 md:pb-0">
-                    {/* All WO Filter */}
+                    {/* Search WO - filter by nomor WO (partial match) */}
+                    <div className="relative min-w-[160px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                            type="text"
+                            placeholder="Search WO..."
+                            value={searchWO}
+                            onChange={(e) => onSearchWOChange(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        />
+                    </div>
+                    {/* All WO Filter (dropdown exact) */}
                     <div className="relative min-w-[140px]">
                         <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <select

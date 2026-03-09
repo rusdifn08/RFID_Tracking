@@ -2,7 +2,7 @@ import { memo, useMemo, useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { QrCode, Calendar, ListChecks, XCircle, Edit, ChevronDown, Building2 } from 'lucide-react';
+import { QrCode, Calendar, ListChecks, XCircle, Edit, ChevronDown, Building2, Search } from 'lucide-react';
 
 // Global variable untuk mengontrol visibility tombol reject
 const REJECT_ENABLED = false;
@@ -123,22 +123,38 @@ const RegistrationForm = memo(({
     const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
     const branchDropdownRef = useRef<HTMLDivElement>(null);
 
+    // State untuk dropdown Work Order dengan search
+    const [showWoDropdown, setShowWoDropdown] = useState(false);
+    const [woSearchTerm, setWoSearchTerm] = useState('');
+    const woDropdownRef = useRef<HTMLDivElement>(null);
+
+    const woOptions = useMemo(() => Object.keys(workOrderData), [workOrderData]);
+    const filteredWOOptions = useMemo(() => {
+        if (!woSearchTerm.trim()) return woOptions;
+        const term = woSearchTerm.trim().toLowerCase();
+        return woOptions.filter(wo => wo.toLowerCase().includes(term));
+    }, [woOptions, woSearchTerm]);
+
     // Handler untuk menutup dropdown saat klik di luar
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target as Node)) {
                 setIsBranchDropdownOpen(false);
             }
+            if (woDropdownRef.current && !woDropdownRef.current.contains(event.target as Node)) {
+                setShowWoDropdown(false);
+                setWoSearchTerm('');
+            }
         };
 
-        if (isBranchDropdownOpen) {
+        if (isBranchDropdownOpen || showWoDropdown) {
             document.addEventListener('mousedown', handleClickOutside);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isBranchDropdownOpen]);
+    }, [isBranchDropdownOpen, showWoDropdown]);
 
     // Handler untuk memilih branch
     const handleBranchSelect = (selectedBranch: string) => {
@@ -147,6 +163,13 @@ const RegistrationForm = memo(({
     };
 
     const branchOptions = ['CJL', 'MJ1', 'MJ2'];
+
+    const handleWOSelect = (wo: string) => {
+        setValue('workOrder', wo);
+        onInputChange({ target: { name: 'workOrder', value: wo } } as React.ChangeEvent<HTMLSelectElement>);
+        setShowWoDropdown(false);
+        setWoSearchTerm('');
+    };
 
     // Sync form values dengan props formData
     useEffect(() => {
@@ -424,6 +447,60 @@ const RegistrationForm = memo(({
                                                 : 'border-orange-300 focus:ring-orange-200 focus:border-orange-500 hover:border-orange-400'
                                                 }`}
                                         />
+                                    ) : field.name === 'workOrder' ? (
+                                        <div className="relative" ref={woDropdownRef}>
+                                            <button
+                                                type="button"
+                                                id={field.name}
+                                                onFocus={() => onFocus(field.name)}
+                                                onBlur={onBlur}
+                                                onClick={() => !field.disabled && setShowWoDropdown(v => !v)}
+                                                disabled={field.disabled}
+                                                className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 pr-8 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 text-left flex items-center justify-between ${fieldError
+                                                    ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
+                                                    : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-gray-400'
+                                                    }`}
+                                            >
+                                                <span className={formData.workOrder ? 'text-gray-800 font-medium' : 'text-gray-400'}>
+                                                    {loading ? 'Loading...' : formData.workOrder || (Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')}
+                                                </span>
+                                                <ChevronDown size={14} className={`flex-shrink-0 text-gray-500 transition-transform ${showWoDropdown ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {showWoDropdown && (
+                                                <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                                                    <div className="p-1.5 border-b border-gray-100">
+                                                        <div className="relative">
+                                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Search WO..."
+                                                                value={woSearchTerm}
+                                                                onChange={(e) => setWoSearchTerm(e.target.value)}
+                                                                onKeyDown={(e) => e.stopPropagation()}
+                                                                className="w-full pl-8 pr-3 py-2 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto p-0.5">
+                                                        {filteredWOOptions.length === 0 ? (
+                                                            <div className="px-3 py-4 text-center text-gray-500 text-xs sm:text-sm">Tidak ada WO</div>
+                                                        ) : (
+                                                            filteredWOOptions.map((wo) => (
+                                                                <button
+                                                                    key={wo}
+                                                                    type="button"
+                                                                    onClick={() => handleWOSelect(wo)}
+                                                                    className={`w-full px-3 py-2 text-left text-[10px] xs:text-xs sm:text-sm font-medium transition-colors rounded-md flex items-center justify-between ${formData.workOrder === wo ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+                                                                >
+                                                                    {wo}
+                                                                    {formData.workOrder === wo && <span className="text-blue-600 font-bold">✓</span>}
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <select
                                             id={field.name}
@@ -438,14 +515,11 @@ const RegistrationForm = memo(({
                                             disabled={field.disabled}
                                             className={`w-full h-8 xs:h-9 sm:h-10 md:h-11 px-2 xs:px-2.5 sm:px-3 text-[10px] xs:text-xs sm:text-sm md:text-base border-2 rounded-lg focus:ring-2 outline-none transition-all duration-300 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 ${fieldError
                                                 ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
-                                                : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-blue-400'
+                                                : 'border-gray-300 focus:ring-blue-200 focus:border-blue-500 hover:border-gray-400'
                                                 }`}
                                         >
                                             <option value="">
-                                                {field.name === 'workOrder'
-                                                    ? (loading ? 'Loading...' : Object.keys(workOrderData).length === 0 ? 'Tidak ada data' : 'Pilih Work Order')
-                                                    : (selectedWorkOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu')
-                                                }
+                                                {selectedWorkOrder ? `Pilih ${field.label}` : 'Pilih Work Order dulu'}
                                             </option>
                                             {field.options.map(option => (
                                                 <option key={option} value={option}>{option}</option>

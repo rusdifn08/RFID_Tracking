@@ -861,15 +861,19 @@ export const getCardWaiting = async (): Promise<ApiResponse<CardResponse>> => {
 };
 
 /**
- * Detail data per status & line (untuk modal Detail di Dashboard RFID).
- * Contoh: GET /wira/detail?status=output_sewing&line=1
- * Response: { status: "success", filter_applied: { line, status }, count, data: [...] }
+ * Detail data per status & line (untuk modal Detail dan Output per Jam).
+ * Contoh: GET /wira/detail?status=output_sewing&line=1&tanggal_from=2026-03-06&tanggal_to=2026-03-06
+ * Response (output_sewing): { status, data: { summary_per_jam: [...], raw_data: [...] } }
  */
 export const getWiraDetail = async (
     status: string,
-    line: string | number
-): Promise<ApiResponse<{ status: string; filter_applied?: Record<string, string>; count?: number; data?: any[] }>> => {
-    return await apiGet('/wira/detail', { status, line: String(line) });
+    line: string | number,
+    options?: { tanggal_from?: string; tanggal_to?: string }
+): Promise<ApiResponse<{ status: string; filter_applied?: Record<string, string>; count?: number; data?: any }>> => {
+    const params: Record<string, string> = { status, line: String(line) };
+    if (options?.tanggal_from) params.tanggal_from = options.tanggal_from;
+    if (options?.tanggal_to) params.tanggal_to = options.tanggal_to;
+    return await apiGet('/wira/detail', params);
 };
 
 // ============================================
