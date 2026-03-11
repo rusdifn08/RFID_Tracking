@@ -29,12 +29,12 @@ const AllProductionLineDashboard = lazy(() => import('../pages/AllProductionLine
 const ProductionTrackingTime = lazy(() => import('../pages/ProductionTrackingTime.tsx'));
 const FormData = lazy(() => import('../pages/FormData.tsx'));
 
-// Loading component untuk Suspense
+// Loading component untuk Suspense (ringan agar paint cepat)
 const PageLoader = () => (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="flex items-center justify-center min-h-screen bg-slate-50" aria-busy="true">
         <div className="text-center">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600 font-medium">Memuat halaman...</p>
+            <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-500 text-sm">Memuat halaman...</p>
         </div>
     </div>
 );

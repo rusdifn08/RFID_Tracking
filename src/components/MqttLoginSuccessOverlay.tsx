@@ -13,12 +13,13 @@ import MqttInfoAnimation from './MqttInfoAnimation';
 export default function MqttLoginSuccessOverlay() {
     const location = useLocation();
 
+    // Hanya ambil line ID di halaman Dashboard RFID. Jangan di /line/:id (Production Line overview)
+    // agar API mqtt-login-success & mqtt-info hanya di-request di Dashboard RFID, tidak di pages lain.
     const currentLineId = useMemo(() => {
         const path = decodeURIComponent(location.pathname);
         const match =
             path.match(/\/dashboard-rfid\/(\d+)/i) ||
-            path.match(/\/dashboard-rfid\/LINE[% ]*(\d+)/i) ||
-            path.match(/\/line\/(\d+)/);
+            path.match(/\/dashboard-rfid\/LINE[% ]*(\d+)/i);
         return match ? match[1] : null;
     }, [location.pathname]);
 

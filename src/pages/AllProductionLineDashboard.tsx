@@ -3,7 +3,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
-import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
 import { Clock } from 'lucide-react';
 
@@ -30,50 +30,6 @@ interface LineData {
     reject: number;
     wira: number;
 }
-
-const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
-    // Deteksi environment berdasarkan port sebagai fallback
-    const currentPort = window.location.port;
-    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
-
-    if (currentPort === '5174') {
-        fallbackEnv = 'MJL2';
-    } else if (currentPort === '5173') {
-        fallbackEnv = 'MJL';
-    } else {
-        fallbackEnv = 'CLN';
-    }
-
-    try {
-        // Fetch dari API untuk memastikan environment yang benar
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
-            headers: getDefaultHeaders(),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-            const data = await response.json();
-            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
-            setBackendEnvironment(env);
-            return env;
-        }
-    } catch (error) {
-        console.error('Error fetching environment config:', error);
-        // Jika error, gunakan fallback berdasarkan port
-        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-        setBackendEnvironment(fallbackEnv);
-        return fallbackEnv;
-    }
-    // Default berdasarkan port jika tidak ada response
-    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-    setBackendEnvironment(fallbackEnv);
-    return fallbackEnv;
-};
 
 export default function AllProductionLineDashboard() {
     const { isOpen } = useSidebar();
@@ -134,56 +90,43 @@ export default function AllProductionLineDashboard() {
         }
     }, [environment, filteredProductionLinesCLN, filteredProductionLinesMJL, filteredProductionLinesMJL2]);
 
-    // Fetch environment dan set state - PRIORITAS TINGGI (harus selesai sebelum fetch data)
+    // Fetch environment (1x shared request), re-check setiap 5 detik (dari cache)
     useEffect(() => {
         let isMounted = true;
-
         const fetchEnvironment = async () => {
             if (!isMounted) return;
             setEnvLoading(true);
-            const env = await getEnvironment();
+            const env = await getEnvironmentFromAPI();
             if (isMounted) {
                 setEnvironment(env);
                 setEnvLoading(false);
             }
         };
-
-        // Fetch environment segera saat mount - WAIT untuk selesai
         fetchEnvironment();
-
-        // Re-check environment setiap 5 detik untuk memastikan konsistensi
         const envInterval = setInterval(fetchEnvironment, 5000);
-
         return () => {
             isMounted = false;
             clearInterval(envInterval);
         };
     }, []);
 
-    // Fetch supervisor data dan startTimes
+    // Fetch supervisor data (1x shared request per env; refresh 30s dengan invalidate)
     useEffect(() => {
+        if (envLoading) return;
         const fetchSupervisorData = async () => {
-            if (envLoading) return;
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/supervisor-data?environment=${environment}`, {
-                    headers: getDefaultHeaders()
+            const data = await getSupervisorDataFromAPI(environment);
+            if (data) {
+                setSupervisorData({
+                    supervisors: data.supervisors || {},
+                    startTimes: data.startTimes || {}
                 });
-                if (response.ok) {
-                    const result = await response.json();
-                    if (result.success && result.data) {
-                        setSupervisorData({
-                            supervisors: result.data.supervisors || {},
-                            startTimes: result.data.startTimes || {}
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching supervisor data:', error);
             }
         };
         fetchSupervisorData();
-        // Refresh setiap 30 detik
-        const interval = setInterval(fetchSupervisorData, 30000);
+        const interval = setInterval(() => {
+            invalidateSupervisorDataCache(environment);
+            fetchSupervisorData();
+        }, 30000);
         return () => clearInterval(interval);
     }, [environment, envLoading]);
 

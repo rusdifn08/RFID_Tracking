@@ -5,6 +5,7 @@ import { Home, LogOut } from 'lucide-react';
 import headerIcon from '../assets/header.svg';
 import rfidIcon from '../assets/rfid.webp';
 import { logoutUser } from '../config/api';
+import { preloadLineDetail } from '../utils/preload';
 
 const Sidebar = memo(() => {
     const location = useLocation();
@@ -339,6 +340,7 @@ const Sidebar = memo(() => {
                                                 fontWeight: 'bold'
                                             }}
                                             onMouseEnter={(e) => {
+                                                preloadLineDetail();
                                                 if (location.pathname !== `/line/${currentLineId}`) {
                                                     e.currentTarget.style.color = '#f7f9fa';
                                                 }

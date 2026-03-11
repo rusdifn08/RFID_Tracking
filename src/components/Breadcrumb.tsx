@@ -1,46 +1,8 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Settings, X, Target } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment, getInitialEnvironment } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders, getInitialEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
-
-// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
-const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
-    // Deteksi environment berdasarkan port sebagai fallback
-    const currentPort = window.location.port;
-    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
-    
-    if (currentPort === '5174') {
-        fallbackEnv = 'MJL2';
-    } else if (currentPort === '5173') {
-        fallbackEnv = 'MJL';
-    } else {
-        fallbackEnv = 'CLN';
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
-            headers: getDefaultHeaders()
-        });
-        if (response.ok) {
-            const data = await response.json();
-            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
-            // Cache environment untuk digunakan oleh getDefaultHeaders()
-            setBackendEnvironment(env);
-            return env;
-        }
-    } catch (error) {
-        console.error('Error fetching environment config:', error);
-        // Jika error, gunakan fallback berdasarkan port
-        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-        setBackendEnvironment(fallbackEnv);
-        return fallbackEnv;
-    }
-    // Default berdasarkan port jika tidak ada response
-    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-    setBackendEnvironment(fallbackEnv);
-    return fallbackEnv;
-};
 
 interface BreadcrumbItem {
     label: string;
@@ -62,11 +24,9 @@ export default function Breadcrumb() {
     const [isLoading, setIsLoading] = useState(false);
     const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>(getInitialEnvironment);
 
-    // Fetch environment saat component mount
+    // Fetch environment (1x shared request)
     useEffect(() => {
-        getEnvironment().then(env => {
-            setEnvironment(env);
-        });
+        getEnvironmentFromAPI().then(env => setEnvironment(env));
     }, []);
 
     // Mapping route ke breadcrumb
@@ -255,41 +215,20 @@ export default function Breadcrumb() {
     // Cek apakah di halaman Production Lines (/monitoring-rfid)
     const isProductionLinesPage = location.pathname.startsWith('/monitoring-rfid');
 
-    // Load supervisor data
+    // Load supervisor data (pakai cache shared, 1x request per env)
     const loadSupervisorData = async () => {
         try {
             setIsLoading(true);
-            // Pastikan environment sudah ter-load, jika belum tunggu sebentar
-            let currentEnv = environment;
-            if (!currentEnv || currentEnv === 'CLN') {
-                // Coba fetch environment lagi jika belum ter-load
-                currentEnv = await getEnvironment();
-                setEnvironment(currentEnv);
+            const currentEnv = environment || await getEnvironmentFromAPI();
+            if (currentEnv !== environment) setEnvironment(currentEnv);
+            const data = await getSupervisorDataFromAPI(currentEnv);
+            if (data) {
+                setSupervisorData(data.supervisors || {});
+                setStartTimesData(data.startTimes || {});
+                setTargetsData(data.targets || {});
             }
-            
-            // Pass environment sebagai query parameter
-            const url = `${API_BASE_URL}/api/supervisor-data?environment=${currentEnv}`;
-            
-            const response = await fetch(url, {
-                headers: getDefaultHeaders()
-            });
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.data) {
-                    setSupervisorData(data.data.supervisors || {});
-                    setStartTimesData(data.data.startTimes || {});
-                    const targets: Record<string, number> = {};
-                    if (data.data.targets && typeof data.data.targets === 'object') {
-                        Object.keys(data.data.targets).forEach(key => {
-                            const v = data.data.targets[key];
-                            targets[key] = typeof v === 'number' && v >= 0 ? v : 0;
-                        });
-                    }
-                    setTargetsData(targets);
-                }
-            }
-        } catch (error) {
-            // Silent error handling
+        } catch {
+            // silent
         } finally {
             setIsLoading(false);
         }
@@ -327,9 +266,8 @@ export default function Breadcrumb() {
                     setEditingSupervisor('');
                     setEditingStartTime('07:30');
                     setEditingTarget(0);
-                    // Reload data agar tampilan di modal ini juga fresh
+                    invalidateSupervisorDataCache(environment);
                     await loadSupervisorData();
-                    
                     // Dispatch custom event agar RFIDLineContent & device lain refetch (real-time)
                     window.dispatchEvent(new CustomEvent('supervisorUpdated', {
                         detail: { lineId, supervisor, environment }
@@ -434,15 +372,9 @@ export default function Breadcrumb() {
                         <button
                             onClick={async () => {
                                 setIsSettingsModalOpen(true);
-                                // Pastikan environment sudah ter-load sebelum load supervisor data
-                                if (environment) {
-                                    await loadSupervisorData();
-                                } else {
-                                    // Jika environment belum ter-load, tunggu sebentar
-                                    const env = await getEnvironment();
-                                    setEnvironment(env);
-                                    await loadSupervisorData();
-                                }
+                                const env = environment || await getEnvironmentFromAPI();
+                                if (env !== environment) setEnvironment(env);
+                                await loadSupervisorData();
                             }}
                             className="group flex items-center justify-center px-2 xs:px-3 py-1.5 xs:py-2 rounded-md bg-gray-100 hover:bg-blue-50 text-gray-600 hover:text-blue-600 transition-all duration-300 border border-gray-200 hover:border-blue-300"
                             title="Pengaturan Supervisor"

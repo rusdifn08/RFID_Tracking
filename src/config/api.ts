@@ -157,6 +157,92 @@ export const setBackendEnvironment = (env: 'CLN' | 'MJL' | 'MJL2'): void => {
 // Getter untuk environment yang sudah di-cache (bisa dipakai untuk conditional logic)
 export const getBackendEnvironment = (): 'CLN' | 'MJL' | 'MJL2' | null => cachedEnvironment;
 
+// -----------------------------------------------
+// Single-request cache: /api/config/environment (1x per refresh)
+// -----------------------------------------------
+let environmentFetchPromise: Promise<'CLN' | 'MJL' | 'MJL2'> | null = null;
+
+/**
+ * Ambil environment dari API. Hanya 1x request per session; pemanggil berikutnya dapat promise yang sama.
+ * Gunakan ini di komponen agar /api/config/environment tidak dipanggil berulang (Breadcrumb, LineDetail, dll).
+ */
+export async function getEnvironmentFromAPI(): Promise<'CLN' | 'MJL' | 'MJL2'> {
+    if (environmentFetchPromise) return environmentFetchPromise;
+    const currentPort = typeof window !== 'undefined' ? window.location.port : '';
+    const fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = currentPort === '5174' ? 'MJL2' : currentPort === '5173' ? 'MJL' : 'CLN';
+    environmentFetchPromise = (async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/config/environment`, { headers: getDefaultHeaders() });
+            if (response.ok) {
+                const data = await response.json();
+                const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
+                setBackendEnvironment(env);
+                return env;
+            }
+        } catch (e) {
+            console.warn('[ENV] Fetch failed, using fallback:', fallbackEnv);
+        }
+        setBackendEnvironment(fallbackEnv);
+        return fallbackEnv;
+    })();
+    return environmentFetchPromise;
+}
+
+// -----------------------------------------------
+// Single-request cache: /api/supervisor-data?environment=X (1x per env per refresh)
+// -----------------------------------------------
+export interface SupervisorDataPayload {
+    supervisors: Record<string, string>;
+    startTimes: Record<string, string>;
+    targets?: Record<string, number>;
+}
+
+const supervisorDataCache: Partial<Record<'CLN' | 'MJL' | 'MJL2', SupervisorDataPayload>> = {};
+const supervisorDataPromise: Partial<Record<'CLN' | 'MJL' | 'MJL2', Promise<SupervisorDataPayload | null>>> = {};
+
+/**
+ * Ambil supervisor data dari API. Satu request per environment; pemanggil berikutnya dapat cache/promise yang sama.
+ * Panggil invalidateSupervisorDataCache(env) setelah POST update agar data segar.
+ */
+export async function getSupervisorDataFromAPI(environment: 'CLN' | 'MJL' | 'MJL2'): Promise<SupervisorDataPayload | null> {
+    if (supervisorDataCache[environment]) return supervisorDataCache[environment];
+    if (supervisorDataPromise[environment]) return supervisorDataPromise[environment]!;
+    const prom = (async (): Promise<SupervisorDataPayload | null> => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/supervisor-data?environment=${environment}`, {
+                headers: getDefaultHeaders(),
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!data?.success || !data?.data) return null;
+            const payload: SupervisorDataPayload = {
+                supervisors: data.data.supervisors || {},
+                startTimes: data.data.startTimes || {},
+                targets: undefined,
+            };
+            if (data.data.targets && typeof data.data.targets === 'object') {
+                payload.targets = {};
+                Object.keys(data.data.targets).forEach(key => {
+                    const v = data.data.targets[key];
+                    payload.targets![key] = typeof v === 'number' && v >= 0 ? v : 0;
+                });
+            }
+            supervisorDataCache[environment] = payload;
+            return payload;
+        } catch {
+            return null;
+        }
+    })();
+    supervisorDataPromise[environment] = prom;
+    return prom;
+}
+
+/** Invalidasi cache supervisor data (panggil setelah simpan/edit) agar refetch berikutnya dapat data terbaru. */
+export function invalidateSupervisorDataCache(environment: 'CLN' | 'MJL' | 'MJL2'): void {
+    delete supervisorDataCache[environment];
+    delete supervisorDataPromise[environment];
+}
+
 // Fungsi untuk mendapatkan default branch berdasarkan environment
 export const getDefaultBranch = (): string => {
     const storedEnv = localStorage.getItem('backend_environment');

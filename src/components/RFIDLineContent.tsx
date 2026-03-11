@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, User, Sun, Moon, Edit, Tag } from 'lucide-react';
-import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment, getInitialEnvironment } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders, getInitialEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache } from '../config/api';
 import type { ProductionLine } from '../data/production_line';
 import {
     productionLinesCLN,
@@ -9,6 +9,7 @@ import {
     productionLinesMJL2,
 } from '../data/production_line';
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
+import { preloadLineDetail } from '../utils/preload';
 
 // Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
 const formatTime12Hour = (time24: string): { time: string; period: string } => {
@@ -22,44 +23,6 @@ const formatTime12Hour = (time24: string): { time: string; period: string } => {
         time: `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
         period: period
     };
-};
-
-// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
-const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
-    // Deteksi environment berdasarkan port sebagai fallback
-    const currentPort = window.location.port;
-    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
-    
-    if (currentPort === '5174') {
-        fallbackEnv = 'MJL2';
-    } else if (currentPort === '5173') {
-        fallbackEnv = 'MJL';
-    } else {
-        fallbackEnv = 'CLN';
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
-            headers: getDefaultHeaders()
-        });
-        if (response.ok) {
-            const data = await response.json();
-            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
-            // Cache environment untuk digunakan oleh getDefaultHeaders()
-            setBackendEnvironment(env);
-            return env;
-        }
-    } catch (error) {
-        console.error('Error fetching environment config:', error);
-        // Jika error, gunakan fallback berdasarkan port
-        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-        setBackendEnvironment(fallbackEnv);
-        return fallbackEnv;
-    }
-    // Default berdasarkan port jika tidak ada response
-    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-    setBackendEnvironment(fallbackEnv);
-    return fallbackEnv;
 };
 
 export default function ProductionLine() {
@@ -85,11 +48,15 @@ export default function ProductionLine() {
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedLine, setSelectedLine] = useState<ProductionLine | null>(null);
 
-    // Fetch environment saat component mount
+    // Fetch environment (1x shared request)
     useEffect(() => {
-        getEnvironment().then(env => {
-            setEnvironment(env);
-        });
+        getEnvironmentFromAPI().then(env => setEnvironment(env));
+    }, []);
+
+    // Preload LineDetail chunk setelah halaman idle (user kemungkinan akan klik salah satu line)
+    useEffect(() => {
+        const t = setTimeout(preloadLineDetail, 800);
+        return () => clearTimeout(t);
     }, []);
 
     // Pilih data berdasarkan environment
@@ -104,33 +71,14 @@ export default function ProductionLine() {
     }, [environment]);
 
 
-    // Load supervisor data dan startTimes dari API (dipanggil untuk polling)
+    // Load supervisor data (1x shared request per env via getSupervisorDataFromAPI)
     const loadSupervisorData = async () => {
         if (!environment) return;
-
-        try {
-            const url = `${API_BASE_URL}/api/supervisor-data?environment=${environment}`;
-            const response = await fetch(url, {
-                headers: getDefaultHeaders()
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.data) {
-                    setSupervisorData(data.data.supervisors || {});
-                    setStartTimesData(data.data.startTimes || {});
-                    const targets: Record<string, number> = {};
-                    if (data.data.targets && typeof data.data.targets === 'object') {
-                        Object.keys(data.data.targets).forEach(key => {
-                            const v = data.data.targets[key];
-                            targets[key] = typeof v === 'number' && v >= 0 ? v : 0;
-                        });
-                    }
-                    setTargetsData(targets);
-                }
-            }
-        } catch (error) {
-            // Silent error handling
+        const data = await getSupervisorDataFromAPI(environment);
+        if (data) {
+            setSupervisorData(data.supervisors || {});
+            setStartTimesData(data.startTimes || {});
+            setTargetsData(data.targets || {});
         }
     };
 
@@ -254,11 +202,11 @@ export default function ProductionLine() {
         setEditModalOpen(true);
     };
 
-    // Handler untuk update setelah edit
+    // Handler untuk update setelah edit (invalidate cache agar data segar)
     const handleUpdate = () => {
+        invalidateSupervisorDataCache(environment);
         loadSupervisorData();
         loadShiftData();
-        // Dispatch event untuk update di device lain
         window.dispatchEvent(new CustomEvent('supervisorUpdated'));
     };
 
@@ -535,7 +483,10 @@ export default function ProductionLine() {
                                     navigate(`/line/${targetLine}`);
                                 }
                             }}
-                            onMouseEnter={() => setHoveredCard(line.id)}
+                            onMouseEnter={() => {
+                                setHoveredCard(line.id);
+                                preloadLineDetail();
+                            }}
                             onMouseLeave={() => setHoveredCard(null)}
                             style={{
                                 backgroundColor: isHovered ? '#0073ee' : 'white',

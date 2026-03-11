@@ -105,7 +105,7 @@ function getMqttLineNumbers() {
 }
 
 // API Key untuk MJL dan CLN (sama untuk semua environment)
-const API_KEY = '6lYZkryM.j50CVZgnpBl8X7Nx6sy5KRyY6ET7k3Cb';
+const API_KEY = 'wctYP9rF.metiGwTOSEoqVs0Zz3eu3mxOc4nPvtYR';
 const API_KEY_HEADER = 'X-Api-Key';
 // Alias untuk backward compatibility
 const MJL_API_KEY = API_KEY;
@@ -4384,7 +4384,7 @@ let lastMqttInfoEvent = null;
 
 function startMqttClient() {
     if (mqttClient) {
-        try { mqttClient.end(true); } catch (_) {}
+        try { mqttClient.end(true); } catch (_) { }
         mqttClient = null;
     }
 

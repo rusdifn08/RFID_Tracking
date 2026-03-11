@@ -8,48 +8,11 @@ import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailHeader from '../components/line/LineDetailHeader';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
-import { API_BASE_URL, getDefaultHeaders, setBackendEnvironment, getInitialEnvironment } from '../config/api';
+import { getInitialEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2 } from '../data/production_line';
 import daftarRfidIcon from '../assets/daftarrfid.webp';
 import dashboardRfidIcon from '../assets/dashboardrfid.webp';
 import listRfidIcon from '../assets/listrfid.webp';
-
-// Fungsi untuk mendapatkan environment dari API atau berdasarkan port
-const getEnvironment = async (): Promise<'CLN' | 'MJL' | 'MJL2'> => {
-    // Deteksi environment berdasarkan port sebagai fallback
-    const currentPort = window.location.port;
-    let fallbackEnv: 'CLN' | 'MJL' | 'MJL2' = 'CLN';
-    
-    if (currentPort === '5174') {
-        fallbackEnv = 'MJL2';
-    } else if (currentPort === '5173') {
-        fallbackEnv = 'MJL';
-    } else {
-        fallbackEnv = 'CLN';
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/config/environment`, {
-            headers: getDefaultHeaders()
-        });
-        if (response.ok) {
-            const data = await response.json();
-            const env = data.environment === 'MJL2' ? 'MJL2' : data.environment === 'MJL' ? 'MJL' : 'CLN';
-            setBackendEnvironment(env);
-            return env;
-        }
-    } catch (error) {
-        console.error('Error fetching environment config:', error);
-        // Jika error, gunakan fallback berdasarkan port
-        console.log(`⚠️ [ENV] Using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-        setBackendEnvironment(fallbackEnv);
-        return fallbackEnv;
-    }
-    // Default berdasarkan port jika tidak ada response
-    console.log(`⚠️ [ENV] No response from API, using fallback environment based on port ${currentPort}: ${fallbackEnv}`);
-    setBackendEnvironment(fallbackEnv);
-    return fallbackEnv;
-};
 
 const LineDetail = memo(() => {
     const { id } = useParams<{ id: string }>();
@@ -57,35 +20,27 @@ const LineDetail = memo(() => {
     const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>(getInitialEnvironment);
     const [supervisorFromAPI, setSupervisorFromAPI] = useState<string | null>(null);
 
-    // Fetch environment saat component mount
+    // Fetch environment (1x shared request via getEnvironmentFromAPI)
     useEffect(() => {
-        getEnvironment().then(env => {
-            setEnvironment(env);
-        });
+        getEnvironmentFromAPI().then(env => setEnvironment(env));
     }, []);
 
-    // Fetch supervisor dari API (sama sumber dengan monitoring-rfid) agar nama supervisor konsisten
+    // Fetch supervisor dari API (1x shared request via getSupervisorDataFromAPI)
     useEffect(() => {
         if (!environment || !id) return;
-        const fetchSupervisor = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/supervisor-data?environment=${environment}`, {
-                    headers: getDefaultHeaders(),
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data?.success && data?.data?.supervisors) {
-                    const lineKey = id.trim();
-                    const num = parseInt(lineKey, 10);
-                    const name = data.data.supervisors[lineKey] ?? data.data.supervisors[String(num)] ?? null;
-                    setSupervisorFromAPI(name ?? null);
-                }
-            } catch {
+        const applySupervisor = async () => {
+            const data = await getSupervisorDataFromAPI(environment);
+            if (data?.supervisors) {
+                const lineKey = id.trim();
+                const num = parseInt(lineKey, 10);
+                const name = data.supervisors[lineKey] ?? data.supervisors[String(num)] ?? null;
+                setSupervisorFromAPI(name ?? null);
+            } else {
                 setSupervisorFromAPI(null);
             }
         };
-        fetchSupervisor();
-        const onSupervisorUpdated = () => fetchSupervisor();
+        applySupervisor();
+        const onSupervisorUpdated = () => applySupervisor();
         window.addEventListener('supervisorUpdated', onSupervisorUpdated);
         return () => window.removeEventListener('supervisorUpdated', onSupervisorUpdated);
     }, [environment, id]);
