@@ -31,6 +31,7 @@ const FormData = lazy(() => import('../pages/FormData.tsx'));
 const Cutting = lazy(() => import('../pages/Cutting.tsx'));
 const DashboardCutting = lazy(() => import('../pages/DashboardCutting.tsx'));
 const SewingLine = lazy(() => import('../pages/SewingLine.tsx'));
+const DashboardSewingLine = lazy(() => import('../pages/DashboardSewingLine.tsx'));
 
 // Loading component untuk Suspense (ringan agar paint cepat)
 const PageLoader = () => (
@@ -136,6 +137,16 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <SewingLine />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-sewing-line',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardSewingLine />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

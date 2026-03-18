@@ -43613,6 +43613,58 @@
           "environment": "MJL"
         }
       ]
+    },
+    "2026-03-17": {
+      "1": [
+        {
+          "id": 1773732858000,
+          "rfid": "0013539130",
+          "wo": "187055",
+          "style": "1106687",
+          "item": "ULTRA LIGHT SHEL HOODED JK W'S",
+          "buyer": "HEXAPOLE COMPANY LIMITED",
+          "color": "LTSV",
+          "size": "XL",
+          "status": "Shipment",
+          "timestamp": "2026-03-17T07:34:17.993Z",
+          "line": "1",
+          "nik_operator": "01",
+          "is_done": "done",
+          "environment": "MJL"
+        },
+        {
+          "id": 1773732851242,
+          "rfid": "0013505955",
+          "wo": "186808",
+          "style": "1128733",
+          "item": "STORM CRUISER JACKET M'S",
+          "buyer": "HEXAPOLE COMPANY LIMITED",
+          "color": "RD",
+          "size": "M",
+          "status": "Shipment",
+          "timestamp": "2026-03-17T07:34:11.234Z",
+          "line": "1",
+          "nik_operator": "01",
+          "is_done": "done",
+          "environment": "MJL"
+        },
+        {
+          "id": 1773732848970,
+          "rfid": "0008609599",
+          "wo": "186771",
+          "style": "1106560",
+          "item": "LIGHT SHELL VEST W'S",
+          "buyer": "HEXAPOLE COMPANY LIMITED",
+          "color": "LGY",
+          "size": "S",
+          "status": "Shipment",
+          "timestamp": "2026-03-17T07:34:08.914Z",
+          "line": "1",
+          "nik_operator": "01",
+          "is_done": "done",
+          "environment": "MJL"
+        }
+      ]
     }
   },
   "MJL2": {

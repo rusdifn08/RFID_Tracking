@@ -1227,7 +1227,7 @@
     "ipAddress": "10.5.2.159",
     "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
     "loginTime": "2026-03-11T02:48:31.946Z",
-    "logoutTime": null,
+    "logoutTime": "2026-03-17T17:00:00.009Z",
     "backendIP": "10.5.0.106",
     "environment": "MJL",
     "timestamp": "2026-03-11T02:48:31.946Z"
@@ -1327,5 +1327,37 @@
     "backendIP": "10.5.0.106",
     "environment": "MJL",
     "timestamp": "2026-03-12T01:48:22.049Z"
+  },
+  {
+    "nik": "01",
+    "name": "FO_1",
+    "jabatan": "FOLDING",
+    "bagian": "FOLDING",
+    "role": "user",
+    "rfid_user": "01",
+    "line": "1",
+    "ipAddress": "10.5.1.55",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+    "loginTime": "2026-03-17T00:31:01.397Z",
+    "logoutTime": "2026-03-17T17:00:00.009Z",
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-03-17T00:31:01.397Z"
+  },
+  {
+    "nik": "92400689",
+    "name": "RUSDI FADLI NURYUDA",
+    "jabatan": "ROBOTIC",
+    "bagian": "ROBOTIC",
+    "role": "user",
+    "rfid_user": "0009510568",
+    "line": "26",
+    "ipAddress": "10.5.0.2",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    "loginTime": "2026-03-17T07:34:01.908Z",
+    "logoutTime": null,
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-03-17T07:34:01.908Z"
   }
 ]

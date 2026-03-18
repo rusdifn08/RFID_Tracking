@@ -75,7 +75,7 @@ const ChartCard = memo(forwardRef<HTMLDivElement, ChartCardProps>(({ children, t
                 </div>
             )}
         </div>
-        <div className="flex-1 min-h-0 relative overflow-visible">{children}</div>
+        <div className="flex-1 min-h-0 relative overflow-visible flex flex-col">{children}</div>
     </div>
 )));
 

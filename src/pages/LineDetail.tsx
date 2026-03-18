@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { memo, useMemo, useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -16,6 +16,7 @@ import listRfidIcon from '../assets/listrfid.webp';
 
 const LineDetail = memo(() => {
     const { id } = useParams<{ id: string }>();
+    const location = useLocation();
     const { isOpen } = useSidebar();
     const [environment, setEnvironment] = useState<'CLN' | 'MJL' | 'MJL2'>(getInitialEnvironment);
     const [supervisorFromAPI, setSupervisorFromAPI] = useState<string | null>(null);
@@ -109,32 +110,36 @@ const LineDetail = memo(() => {
         };
     }, [productionLines, id]);
 
-    const cards = useMemo(() => [
-        {
-            id: 1,
-            title: 'Daftar RFID',
-            subtitle: 'Registrasi Tag Baru',
-            icon: null,
-            iconImage: daftarRfidIcon,
-            path: '/daftar-rfid',
-        },
-        {
-            id: 2,
-            title: 'Dashboard RFID',
-            subtitle: 'Monitoring Real-Time',
-            icon: null,
-            iconImage: dashboardRfidIcon,
-            path: `/dashboard-rfid/${id}`,
-        },
-        {
-            id: 3,
-            title: 'List RFID',
-            subtitle: 'Database & Log',
-            icon: null,
-            iconImage: listRfidIcon,
-            path: `/list-rfid/${id}`,
-        },
-    ], [id]);
+    const cards = useMemo(() => {
+        const isSewingLineDetail = location.pathname.startsWith('/sewing/line/');
+
+        return [
+            {
+                id: 1,
+                title: 'Daftar RFID',
+                subtitle: 'Registrasi Tag Baru',
+                icon: null,
+                iconImage: daftarRfidIcon,
+                path: '/daftar-rfid',
+            },
+            {
+                id: 2,
+                title: isSewingLineDetail ? 'Dashboard Sewing' : 'Dashboard RFID',
+                subtitle: isSewingLineDetail ? 'Monitoring Sewing Line' : 'Monitoring Real-Time',
+                icon: null,
+                iconImage: dashboardRfidIcon,
+                path: isSewingLineDetail ? '/dashboard-sewing-line' : `/dashboard-rfid/${id}`,
+            },
+            {
+                id: 3,
+                title: 'List RFID',
+                subtitle: 'Database & Log',
+                icon: null,
+                iconImage: listRfidIcon,
+                path: `/list-rfid/${id}`,
+            },
+        ];
+    }, [id, location.pathname]);
 
     return (
         <div className="flex min-h-screen w-full h-screen font-sans text-slate-800 overflow-hidden fixed inset-0 m-0 p-0"
