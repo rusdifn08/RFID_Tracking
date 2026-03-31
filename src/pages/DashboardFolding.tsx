@@ -49,6 +49,9 @@ interface TableDistributionData {
 export default function DashboardFolding() {
   const { isOpen } = useSidebar();
   const { user } = useAuth(); // Get current logged in user
+  const userPart = String(user?.bagian || user?.jabatan || '').toUpperCase().trim();
+  const canAccessFoldingCheckIn = ['FOLDING', 'ROBOTIC'].includes(userPart);
+  const canViewFoldingCheckoutTable = ['FOLDING', 'ROBOTIC'].includes(userPart);
   const queryClient = useQueryClient();
   const [hoveredTable, setHoveredTable] = useState<number | null>(null);
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
@@ -545,8 +548,8 @@ export default function DashboardFolding() {
       // Jika tidak ada user login, tidak bisa akses
       if (!user) return false;
 
-      // Cek bagian/jabatan - hanya FOLDING, IT, ROBOTIC, dan MANAGER yang bisa akses
-      const allowedParts = ['FOLDING', 'IT', 'ROBOTIC', 'MANAGER'];
+      // Cek bagian/jabatan - hanya FOLDING dan ROBOTIC yang bisa akses table checkout
+      const allowedParts = ['FOLDING', 'ROBOTIC'];
       const userPart = (user.bagian || user.jabatan || '').toUpperCase();
       if (!allowedParts.includes(userPart)) {
         return false;
@@ -554,7 +557,7 @@ export default function DashboardFolding() {
 
       // Jika mode all-users aktif, semua user dengan bagian yang diizinkan bisa akses semua table
       if (isAllUsersMode()) {
-        return true; // Semua user dengan bagian FOLDING, IT, ROBOTIC, MANAGER bisa akses semua table
+        return true; // Semua user dengan bagian FOLDING/ROBOTIC bisa akses semua table
       }
 
       // Mode user-specific: cek apakah NIK dan line sesuai dengan table
@@ -577,7 +580,7 @@ export default function DashboardFolding() {
         return nikMatch && lineMatch;
       }
 
-      // Untuk IT, ROBOTIC, dan MANAGER, bisa akses semua table (baik mode all-users atau user-specific)
+      // Untuk ROBOTIC, bisa akses semua table (baik mode all-users atau user-specific)
       return true;
     };
   }, [user, activeUsersMap]);
@@ -955,8 +958,13 @@ export default function DashboardFolding() {
                 <Card title="Hourly Shipment Table Folding" icon={TrendingUp}
                   action={
                     <button
-                      onClick={() => setShowFoldingScanModal(true)}
-                      className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white bg-sky-500 hover:bg-sky-700 transition-all shadow-sm hover:scale-105"
+                      onClick={() => canAccessFoldingCheckIn && setShowFoldingScanModal(true)}
+                      disabled={!canAccessFoldingCheckIn}
+                      title={!canAccessFoldingCheckIn ? 'Akses hanya untuk FOLDING / ROBOTIC' : 'Check In'}
+                      className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-all shadow-sm ${canAccessFoldingCheckIn
+                        ? 'bg-sky-500 hover:bg-sky-700 hover:scale-105'
+                        : 'bg-slate-300 cursor-not-allowed grayscale'
+                        }`}
                     >
                       <Scan className="w-5 h-5" />
                       <span>Check In</span>
@@ -1025,10 +1033,17 @@ export default function DashboardFolding() {
               {/* BAGIAN BAWAH: TABLE CARDS - Full width di mobile */}
               <div className="flex-none w-full min-h-[400px]">
                 <Card title="Shipment Station Folding" icon={Layers} iconImage={{ src: foldingIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}>
-                  <div className="flex-1 min-h-0 overflow-hidden relative rounded-xl border border-slate-200 mt-1 bg-white">
-                    <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent p-2">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 h-full">
-                        {checkOutStations.map((station) => {
+                  {!canViewFoldingCheckoutTable ? (
+                    <div className="flex-1 min-h-0 mt-1 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-center p-4">
+                      <div className="text-slate-500 text-sm font-semibold">
+                        Akses Shipment Station hanya untuk bagian FOLDING / ROBOTIC
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 min-h-0 overflow-hidden relative rounded-xl border border-slate-200 mt-1 bg-white">
+                      <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent p-2">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 h-full">
+                          {checkOutStations.map((station) => {
                           const isHighlighted = hoveredTable === station.tableNumber || selectedTable === station.tableNumber;
 
                           const hexToRgba = (hex: string, alpha: number) => {
@@ -1138,10 +1153,11 @@ export default function DashboardFolding() {
                               </span>
                             </div>
                           );
-                        })}
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </Card>
               </div>
             </div>
@@ -1243,8 +1259,13 @@ export default function DashboardFolding() {
                   <Card title="Hourly Shipment Table Folding" icon={TrendingUp}
                     action={
                       <button
-                        onClick={() => setShowFoldingScanModal(true)}
-                        className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white bg-sky-500 hover:bg-sky-700 transition-all shadow-sm hover:scale-105"
+                        onClick={() => canAccessFoldingCheckIn && setShowFoldingScanModal(true)}
+                        disabled={!canAccessFoldingCheckIn}
+                        title={!canAccessFoldingCheckIn ? 'Akses hanya untuk FOLDING / ROBOTIC' : 'Check In'}
+                        className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-all shadow-sm ${canAccessFoldingCheckIn
+                          ? 'bg-sky-500 hover:bg-sky-700 hover:scale-105'
+                          : 'bg-slate-300 cursor-not-allowed grayscale'
+                          }`}
                       >
                         <Scan className="w-5 h-5" />
                         <span>Check In</span>
@@ -1315,10 +1336,17 @@ export default function DashboardFolding() {
                 {/* RIGHT: TABLE CARDS */}
                 <div className="col-span-12 md:col-span-6 min-h-0 flex flex-col">
                   <Card title="Shipment Station Folding" icon={Layers} iconImage={{ src: foldingIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}>
-                    <div className="flex-1 min-h-0 overflow-hidden relative rounded-xl border border-slate-200 mt-1 bg-white">
-                      <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent p-2">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 h-full">
-                          {checkOutStations.map((station) => {
+                    {!canViewFoldingCheckoutTable ? (
+                      <div className="flex-1 min-h-0 mt-1 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-center p-4">
+                        <div className="text-slate-500 text-sm font-semibold">
+                          Akses Shipment Station hanya untuk bagian FOLDING / ROBOTIC
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 min-h-0 overflow-hidden relative rounded-xl border border-slate-200 mt-1 bg-white">
+                        <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent p-2">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 h-full">
+                            {checkOutStations.map((station) => {
                             const isHighlighted = hoveredTable === station.tableNumber || selectedTable === station.tableNumber;
 
                             // Convert hex to rgba for soft background
@@ -1436,10 +1464,11 @@ export default function DashboardFolding() {
                                 </span>
                               </div>
                             );
-                          })}
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </Card>
                 </div>
 

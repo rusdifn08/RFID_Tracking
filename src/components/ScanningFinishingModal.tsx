@@ -128,6 +128,22 @@ export default function ScanningFinishingModal({
                 headerGradient: 'linear-gradient(135deg, #991B1B 0%, #DC2626 100%)',
             };
 
+    // Akses scan Dryroom dibatasi hanya untuk bagian DRYROOM dan ROBOTIC
+    const userPart = (() => {
+        try {
+            const userRaw = localStorage.getItem('user');
+            if (!userRaw) return '';
+            const user = JSON.parse(userRaw);
+            return String(user?.bagian || user?.jabatan || '').toUpperCase().trim();
+        } catch {
+            return '';
+        }
+    })();
+    const hasDryroomAccess = type !== 'dryroom' || ['DRYROOM', 'ROBOTIC'].includes(userPart);
+    const hasFoldingCheckInAccess = !(type === 'folding' && defaultAction === 'checkin') || ['FOLDING', 'ROBOTIC'].includes(userPart);
+    const hasScanAccess = hasDryroomAccess && hasFoldingCheckInAccess;
+    const isScanDisabled = isProcessing || !hasScanAccess;
+
     // Update selectedAction saat defaultAction berubah
     useEffect(() => {
         setSelectedAction(defaultAction);
@@ -337,6 +353,25 @@ export default function ScanningFinishingModal({
 
     // Handle RFID input dan proses check in/out
     const handleRfidSubmit = async (rfid: string) => {
+        if (!hasScanAccess) {
+            const timestamp = new Date();
+            playSound('error');
+            const accessMessage = type === 'dryroom'
+                ? 'Akses ditolak. Hanya bagian DRYROOM atau ROBOTIC yang bisa Check In/Check Out Dryroom.'
+                : 'Akses ditolak. Hanya bagian FOLDING atau ROBOTIC yang bisa Check In Folding.';
+            setScannedItems(prev => {
+                const newItems: ScannedItem[] = [...prev, {
+                    rfid: rfid.trim() || '-',
+                    timestamp,
+                    status: 'error',
+                    message: accessMessage,
+                    action: selectedActionRef.current
+                }];
+                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            });
+            return;
+        }
+
         if (!rfid.trim()) return;
 
         const trimmedRfid = rfid.trim();
@@ -530,7 +565,7 @@ export default function ScanningFinishingModal({
 
     // Handle Enter key
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && rfidInput.trim() && !isProcessing) {
+        if (e.key === 'Enter' && rfidInput.trim() && !isScanDisabled) {
             e.preventDefault();
             handleRfidSubmit(rfidInput);
         }
@@ -649,18 +684,23 @@ export default function ScanningFinishingModal({
                     <div className="mb-2 flex flex-wrap gap-2 xs:gap-2.5 sm:gap-3">
                         <button
                             onClick={() => updateSelectedAction('checkin')}
-                            disabled={isProcessing}
+                            disabled={isScanDisabled}
                             className={`flex-1 min-w-[120px] xs:min-w-[140px] py-2 xs:py-2.5 sm:py-3 px-3 xs:px-4 sm:px-5 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base transition-all ${selectedAction === 'checkin' ? 'text-white' : 'text-gray-600 bg-gray-100'
                                 }`}
                             style={{
-                                background: selectedAction === 'checkin'
+                                background: isScanDisabled
+                                    ? 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%)'
+                                    : selectedAction === 'checkin'
                                     ? theme.primaryGradient
                                     : 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
-                                border: `2px solid ${selectedAction === 'checkin' ? theme.primaryColor : '#E2E8F0'}`,
-                                boxShadow: selectedAction === 'checkin'
+                                border: `2px solid ${isScanDisabled ? '#CBD5E1' : selectedAction === 'checkin' ? theme.primaryColor : '#E2E8F0'}`,
+                                boxShadow: isScanDisabled
+                                    ? 'none'
+                                    : selectedAction === 'checkin'
                                     ? `0 4px 12px ${theme.primaryColor}35`
                                     : '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                opacity: isProcessing ? 0.5 : 1
+                                opacity: isScanDisabled ? 0.6 : 1,
+                                cursor: isScanDisabled ? 'not-allowed' : 'pointer'
                             }}
                         >
                             <LogIn className="w-4 h-4 inline-block mr-2" />
@@ -669,18 +709,23 @@ export default function ScanningFinishingModal({
                         {(type === 'dryroom' || type === 'reject' || (type === 'folding' && defaultAction === 'checkout')) && (
                             <button
                                 onClick={() => updateSelectedAction('checkout')}
-                                disabled={isProcessing}
+                                disabled={isScanDisabled}
                                 className={`flex-1 min-w-[120px] xs:min-w-[140px] py-2 xs:py-2.5 sm:py-3 px-3 xs:px-4 sm:px-5 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base transition-all ${selectedAction === 'checkout' ? 'text-white' : 'text-gray-600 bg-gray-100'
                                     }`}
                                 style={{
-                                    background: selectedAction === 'checkout'
+                                    background: isScanDisabled
+                                        ? 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%)'
+                                        : selectedAction === 'checkout'
                                         ? theme.primaryGradient
                                         : 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
-                                    border: `2px solid ${selectedAction === 'checkout' ? theme.primaryColor : '#E2E8F0'}`,
-                                    boxShadow: selectedAction === 'checkout'
+                                    border: `2px solid ${isScanDisabled ? '#CBD5E1' : selectedAction === 'checkout' ? theme.primaryColor : '#E2E8F0'}`,
+                                    boxShadow: isScanDisabled
+                                        ? 'none'
+                                        : selectedAction === 'checkout'
                                         ? `0 4px 12px ${theme.primaryColor}35`
                                         : '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                    opacity: isProcessing ? 0.5 : 1
+                                    opacity: isScanDisabled ? 0.6 : 1,
+                                    cursor: isScanDisabled ? 'not-allowed' : 'pointer'
                                 }}
                             >
                                 <LogOut className="w-4 h-4 inline-block mr-2" />
@@ -692,9 +737,9 @@ export default function ScanningFinishingModal({
 
                 {/* Scan Area */}
                 <div
-                    className="mb-2 relative cursor-text"
+                    className={`mb-2 relative ${isScanDisabled ? 'cursor-not-allowed' : 'cursor-text'}`}
                     onClick={() => {
-                        if (inputRef.current && !isProcessing) {
+                        if (inputRef.current && !isScanDisabled) {
                             inputRef.current.focus();
                         }
                     }}
@@ -786,6 +831,16 @@ export default function ScanningFinishingModal({
                         )}
                     </div>
                 </div>
+                {!hasDryroomAccess && type === 'dryroom' && (
+                    <div className="mb-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-md px-2 py-1.5">
+                        Akses hanya untuk bagian DRYROOM / ROBOTIC
+                    </div>
+                )}
+                {!hasFoldingCheckInAccess && type === 'folding' && defaultAction === 'checkin' && (
+                    <div className="mb-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-md px-2 py-1.5">
+                        Akses hanya untuk bagian FOLDING / ROBOTIC
+                    </div>
+                )}
 
                 {/* Input Field - Hidden, langsung aktif tanpa click dan tanpa keyboard */}
                 <input
@@ -798,7 +853,7 @@ export default function ScanningFinishingModal({
                         // Pastikan semua key press diterima, termasuk dari RFID scanner
                         // Tidak ada blocking untuk memastikan input dari scanner bisa masuk
                     }}
-                    disabled={isProcessing}
+                    disabled={isScanDisabled}
                     className="sr-only"
                     autoFocus
                     autoComplete="off"
@@ -1101,21 +1156,26 @@ export default function ScanningFinishingModal({
 
                     {/* Action Selection Buttons - Hidden jika autoSubmit aktif */}
                     {!autoSubmit && (
-                        <div className="mb-2 flex flex-wrap gap-2 xs:gap-2.5 sm:gap-3">
+                    <div className="mb-2 flex flex-wrap gap-2 xs:gap-2.5 sm:gap-3">
                             <button
                                 onClick={() => updateSelectedAction('checkin')}
-                                disabled={isProcessing}
+                            disabled={isScanDisabled}
                                 className={`flex-1 min-w-[120px] xs:min-w-[140px] py-2 xs:py-2.5 sm:py-3 px-3 xs:px-4 sm:px-5 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base transition-all ${selectedAction === 'checkin' ? 'text-white' : 'text-gray-600 bg-gray-100'
                                     }`}
                                 style={{
-                                    background: selectedAction === 'checkin'
+                                    background: isScanDisabled
+                                        ? 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%)'
+                                        : selectedAction === 'checkin'
                                         ? theme.primaryGradient
                                         : 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
-                                    border: `2px solid ${selectedAction === 'checkin' ? theme.primaryColor : '#E2E8F0'}`,
-                                    boxShadow: selectedAction === 'checkin'
+                                    border: `2px solid ${isScanDisabled ? '#CBD5E1' : selectedAction === 'checkin' ? theme.primaryColor : '#E2E8F0'}`,
+                                    boxShadow: isScanDisabled
+                                        ? 'none'
+                                        : selectedAction === 'checkin'
                                         ? `0 4px 12px ${theme.primaryColor}35`
                                         : '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                    opacity: isProcessing ? 0.5 : 1
+                                    opacity: isScanDisabled ? 0.6 : 1,
+                                    cursor: isScanDisabled ? 'not-allowed' : 'pointer'
                                 }}
                             >
                                 <LogIn className="w-4 h-4 inline-block mr-2" />
@@ -1124,18 +1184,23 @@ export default function ScanningFinishingModal({
                             {(type === 'dryroom' || type === 'reject' || (type === 'folding' && defaultAction === 'checkout')) && (
                                 <button
                                     onClick={() => updateSelectedAction('checkout')}
-                                    disabled={isProcessing}
+                                    disabled={isScanDisabled}
                                     className={`flex-1 min-w-[120px] xs:min-w-[140px] py-2 xs:py-2.5 sm:py-3 px-3 xs:px-4 sm:px-5 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base transition-all ${selectedAction === 'checkout' ? 'text-white' : 'text-gray-600 bg-gray-100'
                                         }`}
                                     style={{
-                                        background: selectedAction === 'checkout'
+                                        background: isScanDisabled
+                                            ? 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%)'
+                                            : selectedAction === 'checkout'
                                             ? theme.primaryGradient
                                             : 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
-                                        border: `2px solid ${selectedAction === 'checkout' ? theme.primaryColor : '#E2E8F0'}`,
-                                        boxShadow: selectedAction === 'checkout'
+                                        border: `2px solid ${isScanDisabled ? '#CBD5E1' : selectedAction === 'checkout' ? theme.primaryColor : '#E2E8F0'}`,
+                                        boxShadow: isScanDisabled
+                                            ? 'none'
+                                            : selectedAction === 'checkout'
                                             ? `0 4px 12px ${theme.primaryColor}35`
                                             : '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                        opacity: isProcessing ? 0.5 : 1
+                                        opacity: isScanDisabled ? 0.6 : 1,
+                                        cursor: isScanDisabled ? 'not-allowed' : 'pointer'
                                     }}
                                 >
                                     <LogOut className="w-4 h-4 inline-block mr-2" />
@@ -1147,9 +1212,9 @@ export default function ScanningFinishingModal({
 
                     {/* Scan Area */}
                     <div
-                        className="mb-2 relative cursor-text"
+                        className={`mb-2 relative ${isScanDisabled ? 'cursor-not-allowed' : 'cursor-text'}`}
                         onClick={() => {
-                            if (inputRef.current && !isProcessing) {
+                            if (inputRef.current && !isScanDisabled) {
                                 inputRef.current.focus();
                             }
                         }}
@@ -1241,6 +1306,16 @@ export default function ScanningFinishingModal({
                             )}
                         </div>
                     </div>
+                    {!hasDryroomAccess && type === 'dryroom' && (
+                        <div className="mb-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-md px-2 py-1.5">
+                            Akses hanya untuk bagian DRYROOM / ROBOTIC
+                        </div>
+                    )}
+                    {!hasFoldingCheckInAccess && type === 'folding' && defaultAction === 'checkin' && (
+                        <div className="mb-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-md px-2 py-1.5">
+                            Akses hanya untuk bagian FOLDING / ROBOTIC
+                        </div>
+                    )}
 
                     {/* Input Field - Hidden, langsung aktif tanpa click dan tanpa keyboard */}
                     <input
@@ -1268,7 +1343,7 @@ export default function ScanningFinishingModal({
                                 e.preventDefault();
                             }
                         }}
-                        disabled={isProcessing}
+                        disabled={isScanDisabled}
                         className="sr-only"
                         autoFocus={false}
                         autoComplete="off"

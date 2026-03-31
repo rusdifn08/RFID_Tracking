@@ -2636,10 +2636,9 @@ app.post('/garment/folding/out', async (req, res) => {
 
 /**
  * GET /finishing - Get finishing data (dryroom, folding, reject_room statistics)
+ * Query (optional): ?line=1&wo=xxx&tanggalfrom=YYYY-MM-DD&tanggalto=YYYY-MM-DD
  */
 app.get('/finishing', async (req, res) => {
-    // Log removed for successful requests
-    // Log removed for successful requests
     return await proxyRequest('/finishing', req, res);
 });
 

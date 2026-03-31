@@ -357,7 +357,7 @@ export const useListRFIDQuery = () => {
             Rework: filteredData.filter(item => item.status === 'Rework').length,
             Reject: filteredData.filter(item => item.status === 'Reject').length,
             OUTPUT: filteredData.filter(item => item.status === 'OUTPUT').length,
-            Unknown: filteredData.filter(item => !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(item.status)).length
+            Unknown: filteredData.filter(item => !['Good', 'Rework', 'Reject', 'OUTPUT'].includes(item.status ?? '')).length
         };
 
         const lokasiCounts: Record<string, number> = {};
@@ -379,7 +379,12 @@ export const useListRFIDQuery = () => {
             })
         };
 
-        await exportListRFIDToExcel(filteredData, lineId, format, summary);
+        const exportData = filteredData.map(item => ({
+            ...item,
+            status: item.status ?? 'Unknown'
+        }));
+
+        await exportListRFIDToExcel(exportData, lineId, format, summary);
     }, [filteredData, currentLine]);
     
     return {

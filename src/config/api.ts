@@ -996,7 +996,10 @@ export const getFinishingData = async (): Promise<ApiResponse<FinishingData>> =>
 export interface GetFinishingDataParams {
     date_from?: string;
     date_to?: string;
+    tanggalfrom?: string;
+    tanggalto?: string;
     wo?: string;
+    line?: string;
 }
 
 /**
@@ -1005,13 +1008,18 @@ export interface GetFinishingDataParams {
  * @param params - Optional filter: date_from (YYYY-MM-DD), date_to (YYYY-MM-DD), wo
  */
 export const getFinishingDataWithFilter = async (params?: GetFinishingDataParams): Promise<ApiResponse<FinishingData>> => {
-    if (!params?.date_from && !params?.date_to && !params?.wo) {
+    const tanggalFrom = params?.tanggalfrom || params?.date_from;
+    const tanggalTo = params?.tanggalto || params?.date_to;
+
+    if (!tanggalFrom && !tanggalTo && !params?.wo && !params?.line) {
         return await apiGet<FinishingData>('/finishing');
     }
+
     const search = new URLSearchParams();
-    if (params.date_from) search.set('date_from', params.date_from);
-    if (params.date_to) search.set('date_to', params.date_to);
+    if (tanggalFrom) search.set('tanggalfrom', tanggalFrom);
+    if (tanggalTo) search.set('tanggalto', tanggalTo);
     if (params.wo) search.set('wo', params.wo);
+    if (params.line) search.set('line', params.line);
     const query = search.toString();
     return await apiGet<FinishingData>(`/finishing${query ? `?${query}` : ''}`);
 };
@@ -1021,8 +1029,14 @@ export const getFinishingDataWithFilter = async (params?: GetFinishingDataParams
  * @param lineId - Line ID (e.g., "3")
  * @returns Finishing data (dryroom, folding, reject_room) for specific line
  */
-export const getFinishingDataByLine = async (lineId: string): Promise<ApiResponse<FinishingData>> => {
-    return await apiGet<FinishingData>(`/finishing?line=${encodeURIComponent(lineId)}`);
+export const getFinishingDataByLine = async (
+    lineId: string,
+    options?: { tanggalfrom?: string; tanggalto?: string }
+): Promise<ApiResponse<FinishingData>> => {
+    const query = new URLSearchParams({ line: lineId });
+    if (options?.tanggalfrom) query.set('tanggalfrom', options.tanggalfrom);
+    if (options?.tanggalto) query.set('tanggalto', options.tanggalto);
+    return await apiGet<FinishingData>(`/finishing?${query.toString()}`);
 };
 
 /**

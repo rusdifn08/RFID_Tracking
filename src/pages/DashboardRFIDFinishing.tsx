@@ -29,7 +29,7 @@ import dryroomIcon from '../assets/dryroom_icon.webp';
 import foldingIcon from '../assets/folding_icon.webp';
 import ExportModal from '../components/ExportModal';
 import { exportFinishingAllToExcel } from '../utils/exportFinishingAllToExcel';
-import { getFinishingData, getFinishingDataByLine, API_BASE_URL, getDefaultHeaders } from '../config/api';
+import { getFinishingData, getFinishingDataByLine, getFinishingDataWithFilter, API_BASE_URL, getDefaultHeaders } from '../config/api';
 import ScanningFinishingModal from '../components/ScanningFinishingModal';
 import { productionLinesMJL } from '../data/production_line';
 import { Card, MetricCard } from '../components/finishing';
@@ -49,6 +49,17 @@ const COLORS = {
 
 export default function DashboardRFIDFinishing() {
     const { isOpen } = useSidebar();
+    const currentUser = useMemo(() => {
+        try {
+            const raw = localStorage.getItem('user');
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }, []);
+    const userPart = String(currentUser?.bagian || currentUser?.jabatan || '').toUpperCase().trim();
+    const canAccessDryroomScan = ['DRYROOM', 'ROBOTIC'].includes(userPart);
+    const canAccessFoldingCheckIn = ['FOLDING', 'ROBOTIC'].includes(userPart);
 
     // --- STATE ---
     const [isLoaded, setIsLoaded] = useState(false); // For entrance animation
@@ -64,6 +75,7 @@ export default function DashboardRFIDFinishing() {
     const [detailModalType, setDetailModalType] = useState<FinishingMetricType>('waiting');
     const [detailModalSection, setDetailModalSection] = useState<FinishingSection>('all');
     const [detailSearchQuery, setDetailSearchQuery] = useState('');
+    const hasDateFilter = !!(filterDateFrom || filterDateTo);
 
     // Initial load animation trigger
     useEffect(() => {
@@ -77,9 +89,14 @@ export default function DashboardRFIDFinishing() {
         refetch: refetchFinishingData,
         isRefetching
     } = useQuery({
-        queryKey: ['finishing-data'],
+        queryKey: ['finishing-data', filterDateFrom, filterDateTo],
         queryFn: async () => {
-            const response = await getFinishingData();
+            const response = hasDateFilter
+                ? await getFinishingDataWithFilter({
+                    tanggalfrom: filterDateFrom || undefined,
+                    tanggalto: filterDateTo || undefined
+                })
+                : await getFinishingData();
             if (!response.success || !response.data) throw new Error(response.error || 'Fetch Error');
             return response.data;
         },
@@ -131,7 +148,7 @@ export default function DashboardRFIDFinishing() {
     const productionLines = productionLinesMJL.filter(line => line.id !== 111 && line.id <= 15);
 
     const { data: allLineFinishingData, isLoading: isLoadingTableData } = useQuery({
-        queryKey: ['finishing-data-all-lines'],
+        queryKey: ['finishing-data-all-lines', filterDateFrom, filterDateTo],
         queryFn: async () => {
             const results: Record<string, any> = {};
 
@@ -140,7 +157,10 @@ export default function DashboardRFIDFinishing() {
                 const lineNumber = line.line || line.id.toString();
                 try {
                     // Fetch finishing data per line
-                    const finishingResponse = await getFinishingDataByLine(lineNumber);
+                    const finishingResponse = await getFinishingDataByLine(lineNumber, {
+                        tanggalfrom: filterDateFrom || undefined,
+                        tanggalto: filterDateTo || undefined
+                    });
                     const finishingData = finishingResponse.success ? finishingResponse.data : null;
 
                     // Fetch WO data dari monitoring/line
@@ -364,7 +384,7 @@ export default function DashboardRFIDFinishing() {
                                     iconImage={{ src: dryroomIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}
                                     className="w-full h-full min-h-[180px] border-l-4 border-l-cyan-400"
                                     iconColor="text-cyan-600"
-                                    action={<ScanButton onClick={() => setShowDryroomScanModal(true)} color="cyan" />}
+                                    action={<ScanButton onClick={() => setShowDryroomScanModal(true)} color="cyan" disabled={!canAccessDryroomScan} />}
                                     compactBody
                                 >
                                     <div className="grid grid-cols-3 gap-2 p-2 h-full items-stretch">
@@ -416,7 +436,7 @@ export default function DashboardRFIDFinishing() {
                                     iconImage={{ src: foldingIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}
                                     className="w-full h-full min-h-[180px] border-l-4 border-l-teal-400"
                                     iconColor="text-teal-600"
-                                    action={<ScanButton onClick={() => setShowFoldingScanModal(true)} color="teal" />}
+                                    action={<ScanButton onClick={() => setShowFoldingScanModal(true)} color="teal" disabled={!canAccessFoldingCheckIn} />}
                                     compactBody
                                 >
                                     <div className="grid grid-cols-3 gap-2 p-2 h-full items-stretch">
@@ -677,7 +697,7 @@ export default function DashboardRFIDFinishing() {
                                     iconImage={{ src: dryroomIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}
                                     className="flex-[0.3] min-h-0 border-l-4 border-l-cyan-400"
                                     iconColor="text-cyan-600"
-                                    action={<ScanButton onClick={() => setShowDryroomScanModal(true)} color="cyan" />}
+                                    action={<ScanButton onClick={() => setShowDryroomScanModal(true)} color="cyan" disabled={!canAccessDryroomScan} />}
                                     compactBody
                                 >
                                     <div className="grid grid-cols-3 gap-1.5 lg:gap-2 p-1 lg:p-2 h-full items-stretch">
@@ -727,7 +747,7 @@ export default function DashboardRFIDFinishing() {
                                     iconImage={{ src: foldingIcon, filter: 'brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1000%) hue-rotate(166deg) brightness(96%) contrast(101%)' }}
                                     className="flex-[0.3] min-h-0 border-l-4 border-l-teal-400"
                                     iconColor="text-teal-600"
-                                    action={<ScanButton onClick={() => setShowFoldingScanModal(true)} color="teal" />}
+                                    action={<ScanButton onClick={() => setShowFoldingScanModal(true)} color="teal" disabled={!canAccessFoldingCheckIn} />}
                                     compactBody
                                 >
                                     <div className="grid grid-cols-3 gap-1.5 lg:gap-2 p-1 lg:p-2 h-full items-stretch">
@@ -1008,19 +1028,20 @@ export default function DashboardRFIDFinishing() {
 
 const Skeleton = ({ className }: { className?: string }) => <div className={`animate-pulse bg-slate-100 rounded ${className}`} />;
 
-function ScanButton({ onClick, color }: any) {
+function ScanButton({ onClick, color, disabled = false }: any) {
     const bg = color === 'cyan'
         ? 'from-cyan-500 to-sky-600 shadow-cyan-200/50 hover:shadow-cyan-300/60'
         : 'from-teal-500 to-emerald-600 shadow-teal-200/50 hover:shadow-teal-300/60';
 
     return (
-        <button onClick={onClick} className={`
+        <button onClick={() => !disabled && onClick()} disabled={disabled} className={`
             group relative flex items-center gap-2 px-3 py-1.5 rounded-lg 
             text-[clamp(10px,0.9vw,12px)] font-bold text-white shadow-lg 
             bg-gradient-to-r ${bg} transition-all duration-300 hover:scale-105 active:scale-95 overflow-hidden ring-offset-2 focus:ring-2
-        `}>
-            <div className="absolute inset-0 bg-white/30 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500 ease-out" />
-            <Scan className="w-3.5 h-3.5 md:w-4 md:h-4 group-hover:rotate-12 transition-transform" />
+            ${disabled ? 'opacity-50 cursor-not-allowed grayscale hover:scale-100' : ''}
+        `} title={disabled ? 'Akses hanya untuk DRYROOM / ROBOTIC' : 'Scan'}>
+            <div className={`absolute inset-0 bg-white/30 translate-x-[-100%] transition-transform duration-500 ease-out ${disabled ? '' : 'group-hover:translate-x-[100%]'}`} />
+            <Scan className={`w-3.5 h-3.5 md:w-4 md:h-4 transition-transform ${disabled ? '' : 'group-hover:rotate-12'}`} />
             <span className="tracking-wide">SCAN</span>
         </button>
     );
