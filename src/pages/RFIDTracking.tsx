@@ -15,6 +15,7 @@ import backgroundImage from '../assets/background.jpg';
 // Ikon dari src/assets (Vite resolve path)
 import cuttingIcon from '../assets/cutting.webp';
 import sewingIcon from '../assets/sewing.webp';
+import reportIcon from '../assets/report.webp';
 // Path string - akan mencari di public/assets/ saat runtime
 const productionIcon = '/assets/production.webp';
 const rejectIcon = '/assets/reject.webp';
@@ -92,6 +93,17 @@ export default function RFIDTracking() {
             bgEnd: 'to-indigo-700',
             shadow: 'shadow-indigo-200',
             onClick: () => navigate('/production-tracking-time')
+        },
+        {
+            id: 'form-report',
+            title: 'Form Report',
+            subtitle: 'Form pelaporan dan monitoring data',
+            icon: null,
+            iconImage: reportIcon,
+            bgStart: 'from-sky-500',
+            bgEnd: 'to-blue-700',
+            shadow: 'shadow-sky-200',
+            onClick: () => navigate('/form-report')
         }
     ];
 

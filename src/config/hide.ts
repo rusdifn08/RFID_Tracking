@@ -5,13 +5,13 @@
  */
 
 /** Room Status card (Dryroom, Folding, Reject Room, Hourly Data) di Dashboard RFID */
-export const HIDE_ROOM_STATUS_CARD = true;
+export const HIDE_ROOM_STATUS_CARD = false;
 
 /** Kartu Cutting Proses di halaman RFID Tracking (dashboard utama) */
 export const HIDE_CARD_CUTTING_PROSES = false;
 
 /** Kartu Sewing Proses di halaman RFID Tracking (dashboard utama) */
-export const HIDE_CARD_SEWING_PROSES = false;
+export const HIDE_CARD_SEWING_PROSES = true;
 
 /** Ikon shift (matahari/bulan) di kartu Production Line dan Sewing Line. true = disembunyikan, false = ditampilkan */
 export const HIDE_SHIFT_ICON = false;

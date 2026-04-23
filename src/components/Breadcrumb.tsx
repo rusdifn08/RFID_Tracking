@@ -41,7 +41,30 @@ export default function Breadcrumb() {
         });
 
         // Mapping untuk berbagai route
-        if (path.startsWith('/rfid-tracking')) {
+        if (path === '/needel-manager' || path === '/needel-manager/') {
+            breadcrumbs.push({
+                label: 'Needel Manager',
+                isActive: true,
+            });
+        } else if (path.startsWith('/needel-manager/monitoring')) {
+            breadcrumbs.push({
+                label: 'Needel Manager',
+                path: '/needel-manager',
+            });
+            breadcrumbs.push({
+                label: 'Monitoring needle',
+                isActive: true,
+            });
+        } else if (path.startsWith('/needel-manager/mesin-kolam')) {
+            breadcrumbs.push({
+                label: 'Needel Manager',
+                path: '/needel-manager',
+            });
+            breadcrumbs.push({
+                label: 'Dashboard Mesin Kolam',
+                isActive: true,
+            });
+        } else if (path.startsWith('/rfid-tracking')) {
             breadcrumbs.push({
                 label: 'RFID Tracking',
                 isActive: true,
@@ -68,10 +91,6 @@ export default function Breadcrumb() {
             breadcrumbs.push({
                 label: 'RFID Tracking',
                 path: '/rfid-tracking',
-            });
-            breadcrumbs.push({
-                label: 'Cutting Proses',
-                path: '/cutting',
             });
             breadcrumbs.push({
                 label: 'Dashboard Cutting Proses',

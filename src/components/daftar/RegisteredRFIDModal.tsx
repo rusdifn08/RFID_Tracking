@@ -9,7 +9,7 @@ interface RegisteredRFIDModalProps {
     filterStatus: string;
     filterColor: string;
     filterSize: string;
-    uniqueColors: string[];
+    uniqueColors: string[];     
     uniqueSizes: string[];
     onClose: () => void;
     onSearchChange: (value: string) => void;

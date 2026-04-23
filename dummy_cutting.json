@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "bundle": {
+    "count": 3,
+    "history": [
+      {
+        "rfid_garment": "0006063838",
+        "wo": "186762",
+        "style": "1128723",
+        "buyer": "HEXAPOLE COMPANY LIMITED",
+        "item": "TEMPEST JACKET W'S",
+        "color": "LGN",
+        "size": "XL                  ",
+        "qty": 25,
+        "current_location": "bundle",
+        "created_at": "2026-04-20T10:50:21.035Z",
+        "updated_at": "2026-04-20T10:50:21.035Z",
+        "timeline": [
+          {
+            "location": "bundle",
+            "at": "2026-04-20T10:50:21.035Z"
+          }
+        ],
+        "at": "2026-04-20T10:50:21.035Z"
+      },
+      {
+        "rfid_garment": "0013552890",
+        "wo": "186762",
+        "style": "1128723",
+        "buyer": "HEXAPOLE COMPANY LIMITED",
+        "item": "TEMPEST JACKET W'S",
+        "color": "LGN",
+        "size": "XL                  ",
+        "qty": 25,
+        "current_location": "bundle",
+        "created_at": "2026-04-20T10:49:09.199Z",
+        "updated_at": "2026-04-20T10:49:09.199Z",
+        "timeline": [
+          {
+            "location": "bundle",
+            "at": "2026-04-20T10:49:09.199Z"
+          }
+        ],
+        "at": "2026-04-20T10:49:09.199Z"
+      },
+      {
+        "rfid_garment": "0006816371",
+        "wo": "185035",
+        "style": "61805-5",
+        "buyer": "RED WING SHOE COMPANY LLC",
+        "item": "COVERALL UNLINED,6180557",
+        "color": "ORANGE",
+        "size": "38               ",
+        "qty": 20,
+        "current_location": "bundle",
+        "created_at": "2026-04-20T09:28:43.691Z",
+        "updated_at": "2026-04-20T09:28:43.691Z",
+        "timeline": [
+          {
+            "location": "bundle",
+            "at": "2026-04-20T09:28:43.691Z"
+          }
+        ],
+        "at": "2026-04-20T09:28:43.691Z"
+      }
+    ]
+  },
+  "quality_control": {
+    "count": 2,
+    "goodTotal": 45,
+    "repairTotal": 0,
+    "rejectTotal": 0,
+    "history": [
+      {
+        "rfid_garment": "0006063838",
+        "qty": 25,
+        "good": 25,
+        "repair": 0,
+        "reject": 0,
+        "wo": "186762",
+        "style": "1128723",
+        "buyer": "HEXAPOLE COMPANY LIMITED",
+        "item": "TEMPEST JACKET W'S",
+        "color": "LGN",
+        "size": "XL                  ",
+        "location": "quality_control",
+        "at": "2026-04-20T10:56:04.164Z"
+      },
+      {
+        "rfid_garment": "0006816371",
+        "qty": 20,
+        "good": 20,
+        "repair": 0,
+        "reject": 0,
+        "wo": "185035",
+        "style": "61805-5",
+        "buyer": "RED WING SHOE COMPANY LLC",
+        "item": "COVERALL UNLINED,6180557",
+        "color": "ORANGE",
+        "size": "38               ",
+        "location": "quality_control",
+        "at": "2026-04-20T09:28:57.474Z"
+      }
+    ]
+  },
+  "supermarket": {
+    "count": 2,
+    "history": [
+      {
+        "rfid_garment": "0006063838",
+        "wo": "186762",
+        "qty": 25,
+        "style": "1128723",
+        "buyer": "HEXAPOLE COMPANY LIMITED",
+        "item": "TEMPEST JACKET W'S",
+        "color": "LGN",
+        "size": "XL                  ",
+        "location": "supermarket",
+        "at": "2026-04-20T10:59:23.818Z"
+      },
+      {
+        "rfid_garment": "0006816371",
+        "wo": "185035",
+        "qty": 20,
+        "style": "61805-5",
+        "buyer": "RED WING SHOE COMPANY LLC",
+        "item": "COVERALL UNLINED,6180557",
+        "color": "ORANGE",
+        "size": "38               ",
+        "location": "supermarket",
+        "at": "2026-04-20T09:29:03.796Z"
+      }
+    ]
+  },
+  "supply_sewing": {
+    "count": 2,
+    "history": [
+      {
+        "rfid_garment": "0006063838",
+        "wo": "186762",
+        "qty": 25,
+        "style": "1128723",
+        "buyer": "HEXAPOLE COMPANY LIMITED",
+        "item": "TEMPEST JACKET W'S",
+        "color": "LGN",
+        "size": "XL                  ",
+        "line": "l1",
+        "location": "supply_sewing",
+        "at": "2026-04-20T11:02:16.021Z"
+      },
+      {
+        "rfid_garment": "0006816371",
+        "wo": "185035",
+        "qty": 20,
+        "style": "61805-5",
+        "buyer": "RED WING SHOE COMPANY LLC",
+        "item": "COVERALL UNLINED,6180557",
+        "color": "ORANGE",
+        "size": "38               ",
+        "line": "5",
+        "location": "supply_sewing",
+        "at": "2026-04-20T09:29:17.546Z"
+      }
+    ]
+  },
+  "rfid_index": {
+    "0006816371": {
+      "rfid_garment": "0006816371",
+      "wo": "185035",
+      "style": "61805-5",
+      "buyer": "RED WING SHOE COMPANY LLC",
+      "item": "COVERALL UNLINED,6180557",
+      "color": "ORANGE",
+      "size": "38               ",
+      "qty": 20,
+      "current_location": "supply_sewing",
+      "created_at": "2026-04-20T09:28:43.691Z",
+      "updated_at": "2026-04-20T09:29:17.546Z",
+      "timeline": [
+        {
+          "location": "bundle",
+          "at": "2026-04-20T09:28:43.691Z"
+        },
+        {
+          "location": "quality_control",
+          "at": "2026-04-20T09:28:57.474Z",
+          "good": 20,
+          "repair": 0,
+          "reject": 0
+        },
+        {
+          "location": "supermarket",
+          "at": "2026-04-20T09:29:03.796Z"
+        },
+        {
+          "location": "supply_sewing",
+          "line": "5",
+          "at": "2026-04-20T09:29:17.546Z"
+        }
+      ],
+      "qc": {
+        "good": 20,
+        "repair": 0,
+        "reject": 0,
+        "at": "2026-04-20T09:28:57.474Z"
+      },
+      "line": "5"
+    },
+    "0013552890": {
+      "rfid_garment": "0013552890",
+      "wo": "186762",
+      "style": "1128723",
+      "buyer": "HEXAPOLE COMPANY LIMITED",
+      "item": "TEMPEST JACKET W'S",
+      "color": "LGN",
+      "size": "XL                  ",
+      "qty": 25,
+      "current_location": "bundle",
+      "created_at": "2026-04-20T10:49:09.199Z",
+      "updated_at": "2026-04-20T10:49:09.199Z",
+      "timeline": [
+        {
+          "location": "bundle",
+          "at": "2026-04-20T10:49:09.199Z"
+        }
+      ]
+    },
+    "0006063838": {
+      "rfid_garment": "0006063838",
+      "wo": "186762",
+      "style": "1128723",
+      "buyer": "HEXAPOLE COMPANY LIMITED",
+      "item": "TEMPEST JACKET W'S",
+      "color": "LGN",
+      "size": "XL                  ",
+      "qty": 25,
+      "current_location": "supply_sewing",
+      "created_at": "2026-04-20T10:50:21.035Z",
+      "updated_at": "2026-04-20T11:02:16.021Z",
+      "timeline": [
+        {
+          "location": "bundle",
+          "at": "2026-04-20T10:50:21.035Z"
+        },
+        {
+          "location": "quality_control",
+          "at": "2026-04-20T10:56:04.164Z",
+          "good": 25,
+          "repair": 0,
+          "reject": 0
+        },
+        {
+          "location": "supermarket",
+          "at": "2026-04-20T10:59:23.818Z"
+        },
+        {
+          "location": "supply_sewing",
+          "line": "l1",
+          "at": "2026-04-20T11:02:16.021Z"
+        }
+      ],
+      "qc": {
+        "good": 25,
+        "repair": 0,
+        "reject": 0,
+        "at": "2026-04-20T10:56:04.164Z"
+      },
+      "line": "l1"
+    }
+  }
+}

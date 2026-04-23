@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import rfidIcon from '../assets/rfid.webp';
+import needleIcon from '../assets/needle.webp';
 
 export default function HomeContent() {
     const navigate = useNavigate();
@@ -19,11 +20,24 @@ export default function HomeContent() {
             shadow: 'shadow-blue-200',
             lightBg: 'bg-blue-50'
         },
+        {
+            id: 2,
+            title: 'Needel Manager',
+            subtitle: 'Monitoring picking and putting needle',
+            location: 'Needle Module',
+            icon: needleIcon,
+            color: 'text-[#7C3AED]',
+            bgStart: 'from-violet-400',
+            bgEnd: 'to-purple-700',
+            shadow: 'shadow-purple-200',
+            lightBg: 'bg-purple-50'
+        },
        
     ];
 
     const handleModuleClick = (moduleId: number) => {
         if (moduleId === 1) navigate('/rfid-tracking');
+        if (moduleId === 2) navigate('/needel-manager');
     };
 
     return (

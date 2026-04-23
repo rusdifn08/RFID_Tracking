@@ -123,7 +123,7 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
         };
 
         // Handler untuk mencegah keyboard muncul saat focus
-        const handleFocus = (e: FocusEvent) => {
+        const handleFocus = (_e: FocusEvent) => {
             if (isMobile) {
                 // Blur segera untuk mencegah keyboard
                 setTimeout(() => {

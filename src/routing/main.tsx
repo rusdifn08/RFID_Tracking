@@ -28,6 +28,9 @@ const ListRFIDReject = lazy(() => import('../pages/ListRFIDReject.tsx'));
 const AllProductionLineDashboard = lazy(() => import('../pages/AllProductionLineDashboard.tsx'));
 const ProductionTrackingTime = lazy(() => import('../pages/ProductionTrackingTime.tsx'));
 const FormData = lazy(() => import('../pages/FormData.tsx'));
+const NeedelManagerHub = lazy(() => import('../pages/NeedelManagerHub.tsx'));
+const NeedelManager = lazy(() => import('../pages/NeedelManager.tsx'));
+const DashboardMesinKolam = lazy(() => import('../pages/DashboardMesinKolam.tsx'));
 const Cutting = lazy(() => import('../pages/Cutting.tsx'));
 const DashboardCutting = lazy(() => import('../pages/DashboardCutting.tsx'));
 const SewingLine = lazy(() => import('../pages/SewingLine.tsx'));
@@ -367,6 +370,46 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <FormData />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/form-report',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <FormData />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/needel-manager',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <NeedelManagerHub />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/needel-manager/monitoring',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <NeedelManager />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/needel-manager/mesin-kolam',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardMesinKolam />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

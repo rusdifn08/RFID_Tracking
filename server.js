@@ -49,6 +49,7 @@ let BACKEND_IP = process.env.BACKEND_IP || '10.8.0.104';
 
 // Variabel untuk menyimpan environment (CLN, MJL, atau MJL2)
 let CURRENT_ENV = 'CLN';
+const ENV_OVERRIDE = (process.env.BACKEND_ENV || '').toUpperCase();
 
 // Cek command line argument untuk menentukan IP
 // Format: node server.js cln atau node server.js mjl atau node server.js mjl2
@@ -65,6 +66,8 @@ if (args.includes('cln')) {
 } else if (args.includes('gcc')) {
     BACKEND_IP = '10.5.0.201';
     CURRENT_ENV = 'GCC';
+} else if (ENV_OVERRIDE === 'MJL' || ENV_OVERRIDE === 'MJL2' || ENV_OVERRIDE === 'CLN' || ENV_OVERRIDE === 'GCC') {
+    CURRENT_ENV = ENV_OVERRIDE;
 } else if (process.env.BACKEND_IP) {
     BACKEND_IP = process.env.BACKEND_IP;
     CURRENT_ENV = BACKEND_IP === '10.5.0.106' ? 'MJL' : 'CLN';
@@ -91,6 +94,8 @@ const BACKEND_PORT = 7000;
 
 // Backend API URL - menggunakan IP yang sudah dikonfigurasi dengan port yang sesuai
 const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${BACKEND_PORT}`;
+// Backend khusus Needle Manager (dipisah dari backend environment utama agar tidak mengubah flow existing).
+const NEEDLE_BACKEND_BASE_URL = process.env.NEEDLE_BACKEND_BASE_URL || 'http://10.5.0.8:8080';
 
 // MQTT Broker - sama untuk semua environment (MJL, MJL2, CLN)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883';
@@ -159,6 +164,8 @@ const DRYROOM_HOURLY_FILE = path.join(__dirname, 'dryroom_hourly_data.json');
 const SHIFT_DATA_FILE = path.join(__dirname, 'shift_data.json');
 // Path file untuk menyimpan data supervisor per line
 const SUPERVISOR_DATA_FILE = path.join(__dirname, 'supervisor_data.json');
+/** Master target/hari, target/jam, SPV, NIK per line (Form Report — db target) */
+const LINE_PRODUCTION_TARGETS_FILE = path.join(__dirname, 'line_production_targets.json');
 /** Operator + detail scan terakhir per mode (check in / check out terpisah) — sinkron via proxy */
 const SCANNING_DRYROOM_FILE = path.join(__dirname, 'scanning_dryroom.json');
 
@@ -1104,6 +1111,327 @@ function handleScanningDryroomOperatorGet(req, res) {
 app.get('/api/scanning/dryroom/operator', handleScanningDryroomOperatorGet);
 app.get('/api/scanning/dryroom/operator/', handleScanningDryroomOperatorGet);
 app.get('/api/scanning-dryroom-operator', handleScanningDryroomOperatorGet);
+
+// ============================================
+// CUTTING PROSES — dummy lokal (Bundle -> QC -> Supermarket -> Supply Sewing)
+// ============================================
+const CUTTING_SCAN_FILE = path.join(__dirname, 'dummy_cutting.json');
+const CUTTING_HISTORY_LIMIT = 300;
+
+function emptyCuttingScanDoc() {
+    return {
+        version: 1,
+        bundle: { count: 0, history: [] },
+        quality_control: { count: 0, goodTotal: 0, repairTotal: 0, rejectTotal: 0, history: [] },
+        supermarket: { count: 0, history: [] },
+        supply_sewing: { count: 0, history: [] },
+        rfid_index: {},
+    };
+}
+
+function pushCuttingHistory(arr, entry) {
+    arr.unshift(entry);
+    if (arr.length > CUTTING_HISTORY_LIMIT) arr.length = CUTTING_HISTORY_LIMIT;
+}
+
+function normalizeCuttingDoc(doc) {
+    const d = doc && typeof doc === 'object' ? doc : {};
+    if (!d.bundle || !Array.isArray(d.bundle.history)) d.bundle = { count: 0, history: [] };
+    if (!d.quality_control || !Array.isArray(d.quality_control.history)) {
+        d.quality_control = { count: 0, goodTotal: 0, repairTotal: 0, rejectTotal: 0, history: [] };
+    }
+    if (!d.supermarket || !Array.isArray(d.supermarket.history)) d.supermarket = { count: 0, history: [] };
+    if (!d.supply_sewing || !Array.isArray(d.supply_sewing.history)) d.supply_sewing = { count: 0, history: [] };
+    if (!d.rfid_index || typeof d.rfid_index !== 'object') d.rfid_index = {};
+    if (typeof d.bundle.count !== 'number') d.bundle.count = d.bundle.history.length;
+    if (typeof d.quality_control.count !== 'number') d.quality_control.count = d.quality_control.history.length;
+    if (typeof d.quality_control.goodTotal !== 'number') d.quality_control.goodTotal = 0;
+    if (typeof d.quality_control.repairTotal !== 'number') d.quality_control.repairTotal = 0;
+    if (typeof d.quality_control.rejectTotal !== 'number') d.quality_control.rejectTotal = 0;
+    if (typeof d.supermarket.count !== 'number') d.supermarket.count = d.supermarket.history.length;
+    if (typeof d.supply_sewing.count !== 'number') d.supply_sewing.count = d.supply_sewing.history.length;
+    if (typeof d.version !== 'number') d.version = 1;
+    return d;
+}
+
+function loadCuttingScanDoc() {
+    try {
+        const raw = fs.readFileSync(CUTTING_SCAN_FILE, 'utf8');
+        const j = JSON.parse(raw);
+        return normalizeCuttingDoc(j);
+    } catch {
+        return emptyCuttingScanDoc();
+    }
+}
+
+function saveCuttingScanDoc(doc) {
+    fs.writeFileSync(CUTTING_SCAN_FILE, JSON.stringify(normalizeCuttingDoc(doc), null, 2), 'utf8');
+}
+
+function mapCuttingScanState(doc) {
+    return {
+        bundle: {
+            count: doc.bundle.count,
+            history: doc.bundle.history,
+        },
+        qc: {
+            goodTotal: doc.quality_control.goodTotal,
+            rejectTotal: doc.quality_control.rejectTotal,
+            repairTotal: doc.quality_control.repairTotal,
+            history: doc.quality_control.history,
+        },
+        store: {
+            count: doc.supermarket.count,
+            history: doc.supermarket.history,
+        },
+        supply: {
+            count: doc.supply_sewing.count,
+            history: doc.supply_sewing.history,
+        },
+    };
+}
+
+app.get('/api/cutting/scan-state', (req, res) => {
+    try {
+        const doc = loadCuttingScanDoc();
+        return res.json({
+            success: true,
+            data: mapCuttingScanState(doc),
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [CUTTING scan-state]', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/cutting/bundle-scan', (req, res) => {
+    try {
+        const body = req.body || {};
+        const rid = String(body.rfid_garment || '').trim();
+        if (!rid) return res.status(400).json({ success: false, message: 'rfid_garment wajib diisi' });
+        const qty = Math.max(1, parseInt(String(body.qty), 10) || 1);
+        const doc = loadCuttingScanDoc();
+        const existing = doc.rfid_index[rid];
+        if (existing && existing.current_location !== 'bundle') {
+            return res.status(400).json({
+                success: false,
+                message: `RFID ${rid} sudah di lokasi ${existing.current_location}. Tidak bisa input ulang ke Bundle.`,
+            });
+        }
+        if (existing && existing.current_location === 'bundle') {
+            return res.status(400).json({ success: false, message: `RFID ${rid} sudah ada di Bundle.` });
+        }
+        const now = new Date().toISOString();
+        const record = {
+            rfid_garment: rid,
+            wo: String(body.wo || ''),
+            style: String(body.style || ''),
+            buyer: String(body.buyer || ''),
+            item: String(body.item || ''),
+            color: String(body.color || ''),
+            size: String(body.size || ''),
+            qty,
+            current_location: 'bundle',
+            created_at: now,
+            updated_at: now,
+            timeline: [{ location: 'bundle', at: now }],
+        };
+        doc.rfid_index[rid] = record;
+        doc.bundle.count += 1;
+        pushCuttingHistory(doc.bundle.history, { ...record, at: now });
+        saveCuttingScanDoc(doc);
+        return res.json({
+            success: true,
+            message: 'RFID tersimpan di Bundle (dummy)',
+            data: record,
+            timestamp: now,
+        });
+    } catch (error) {
+        console.error('❌ [CUTTING bundle-scan]', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/cutting/qc-scan', (req, res) => {
+    try {
+        const { rfid_garment, good, repair, reject } = req.body || {};
+        const rid = String(rfid_garment || '').trim();
+        if (!rid) return res.status(400).json({ success: false, message: 'rfid_garment wajib diisi' });
+        const doc = loadCuttingScanDoc();
+        const row = doc.rfid_index[rid];
+        if (!row) return res.status(404).json({ success: false, message: 'RFID tidak ditemukan di dummy_cutting.json' });
+        if (row.current_location !== 'bundle') {
+            return res.status(400).json({
+                success: false,
+                message: `Urutan scan tidak valid. RFID ${rid} saat ini di ${row.current_location}. Harus dari Bundle -> Quality Control.`,
+            });
+        }
+        const hasQcValues = good !== undefined || repair !== undefined || reject !== undefined;
+        if (!hasQcValues) {
+            return res.json({
+                success: true,
+                requires_input: true,
+                message: 'RFID valid. Lanjut isi Good/Repair/Reject.',
+                data: {
+                    rfid_garment: rid,
+                    qty: Math.max(1, parseInt(String(row.qty), 10) || 1),
+                    wo: row.wo || null,
+                    style: row.style || null,
+                    buyer: row.buyer || null,
+                    item: row.item || null,
+                    color: row.color || null,
+                    size: row.size || null,
+                },
+                timestamp: new Date().toISOString(),
+            });
+        }
+        const q = Math.max(1, parseInt(String(row.qty), 10) || 1);
+        const g = Math.max(0, parseInt(String(good), 10) || 0);
+        const rep = Math.max(0, parseInt(String(repair), 10) || 0);
+        const rej = Math.max(0, parseInt(String(reject), 10) || 0);
+        if (g + rep + rej !== q) {
+            return res.status(400).json({
+                success: false,
+                message: `Total Good + Repair + Reject harus sama dengan qty bundle (${q}).`,
+            });
+        }
+        const now = new Date().toISOString();
+        row.current_location = 'quality_control';
+        row.updated_at = now;
+        row.qc = { good: g, repair: rep, reject: rej, at: now };
+        row.timeline = Array.isArray(row.timeline) ? row.timeline : [];
+        row.timeline.push({ location: 'quality_control', at: now, good: g, repair: rep, reject: rej });
+        doc.quality_control.count += 1;
+        doc.quality_control.goodTotal += g;
+        doc.quality_control.repairTotal += rep;
+        doc.quality_control.rejectTotal += rej;
+        pushCuttingHistory(doc.quality_control.history, {
+            rfid_garment: rid,
+            qty: q,
+            good: g,
+            repair: rep,
+            reject: rej,
+            wo: row.wo || null,
+            style: row.style || null,
+            buyer: row.buyer || null,
+            item: row.item || null,
+            color: row.color || null,
+            size: row.size || null,
+            location: 'quality_control',
+            at: now,
+        });
+        saveCuttingScanDoc(doc);
+        return res.json({
+            success: true,
+            message: 'Quality Control tercatat',
+            data: {
+                rfid_garment: rid,
+                qty: q,
+                good: g,
+                repair: rep,
+                reject: rej,
+                location: row.current_location,
+            },
+            timestamp: now,
+        });
+    } catch (error) {
+        console.error('❌ [CUTTING qc-scan]', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/cutting/store-scan', (req, res) => {
+    try {
+        const rid = String(req.body?.rfid_garment || '').trim();
+        if (!rid) return res.status(400).json({ success: false, message: 'rfid_garment wajib diisi' });
+        const doc = loadCuttingScanDoc();
+        const row = doc.rfid_index[rid];
+        if (!row) return res.status(404).json({ success: false, message: 'RFID tidak ditemukan di dummy_cutting.json' });
+        if (row.current_location !== 'quality_control') {
+            return res.status(400).json({
+                success: false,
+                message: `Urutan scan tidak valid. RFID ${rid} harus dari Quality Control sebelum Supermarket.`,
+            });
+        }
+        const now = new Date().toISOString();
+        row.current_location = 'supermarket';
+        row.updated_at = now;
+        row.timeline = Array.isArray(row.timeline) ? row.timeline : [];
+        row.timeline.push({ location: 'supermarket', at: now });
+        doc.supermarket.count += 1;
+        pushCuttingHistory(doc.supermarket.history, {
+            rfid_garment: rid,
+            wo: row.wo || null,
+            qty: row.qty || 1,
+            style: row.style || null,
+            buyer: row.buyer || null,
+            item: row.item || null,
+            color: row.color || null,
+            size: row.size || null,
+            location: 'supermarket',
+            at: now,
+        });
+        saveCuttingScanDoc(doc);
+        return res.json({
+            success: true,
+            message: 'RFID masuk Supermarket',
+            data: { rfid_garment: rid, location: row.current_location },
+            timestamp: now,
+        });
+    } catch (error) {
+        console.error('❌ [CUTTING store-scan]', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/cutting/supply-sewing-scan', (req, res) => {
+    try {
+        const rid = String(req.body?.rfid_garment || '').trim();
+        const line = String(req.body?.line || '').trim();
+        if (!rid) return res.status(400).json({ success: false, message: 'rfid_garment wajib diisi' });
+        if (!line) return res.status(400).json({ success: false, message: 'line wajib diisi untuk Supply Sewing' });
+        const doc = loadCuttingScanDoc();
+        const row = doc.rfid_index[rid];
+        if (!row) return res.status(404).json({ success: false, message: 'RFID tidak ditemukan di dummy_cutting.json' });
+        if (row.current_location !== 'supermarket') {
+            return res.status(400).json({
+                success: false,
+                message: `Urutan scan tidak valid. RFID ${rid} harus dari Supermarket sebelum Supply Sewing.`,
+            });
+        }
+        const now = new Date().toISOString();
+        row.current_location = 'supply_sewing';
+        row.updated_at = now;
+        row.line = line;
+        row.timeline = Array.isArray(row.timeline) ? row.timeline : [];
+        row.timeline.push({ location: 'supply_sewing', line, at: now });
+        doc.supply_sewing.count += 1;
+        pushCuttingHistory(doc.supply_sewing.history, {
+            rfid_garment: rid,
+            wo: row.wo || null,
+            qty: row.qty || 1,
+            style: row.style || null,
+            buyer: row.buyer || null,
+            item: row.item || null,
+            color: row.color || null,
+            size: row.size || null,
+            line,
+            location: 'supply_sewing',
+            at: now,
+        });
+        saveCuttingScanDoc(doc);
+        return res.json({
+            success: true,
+            message: 'RFID masuk Supply Sewing',
+            data: { rfid_garment: rid, location: row.current_location, line },
+            timestamp: now,
+        });
+    } catch (error) {
+        console.error('❌ [CUTTING supply-sewing-scan]', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 // ============================================
 // CONNECTION HEALTH CHECK
@@ -2608,161 +2936,12 @@ app.get('/monitoring/line', async (req, res) => {
     return await proxyRequest('/monitoring/line', req, res);
 });
 
-// --- GCC: dashboard memakai GET /output/gcc (bukan /wira); disatukan lewat /wira agar frontend tetap sama ---
-const GCC_LINE_COUNT = 21;
-const GCC_OUTPUT_PATH = '/output/gcc';
-
-function gccTodayYmd() {
-    return new Date().toISOString().split('T')[0];
-}
-
-async function fetchGccOutputJson(lineNum, tanggalfrom, tanggalto) {
-    const tf = tanggalfrom || gccTodayYmd();
-    const tt = tanggalto || tf;
-    const qs = `line=${encodeURIComponent(lineNum)}&tanggalfrom=${encodeURIComponent(tf)}&tanggalto=${encodeURIComponent(tt)}`;
-    const url = `${BACKEND_API_URL}${GCC_OUTPUT_PATH}?${qs}`;
-    const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        [API_KEY_HEADER]: API_KEY,
-    };
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 30000);
-    const response = await fetch(url, { headers, signal: controller.signal }).finally(() => clearTimeout(tid));
-    const text = await response.text();
-    return text ? JSON.parse(text) : {};
-}
-
-function gccResumeToWiraRow(lineNum, resume) {
-    if (!resume || typeof resume !== 'object') return null;
-    const L = String(lineNum);
-    return {
-        Line: L,
-        line: L,
-        LINE: L,
-        Good: Number(resume.total_qty_good) || 0,
-        Rework: Number(resume.total_qty_rework) || 0,
-        Reject: Number(resume.total_qty_reject) || 0,
-        WIRA: Number(resume.total_qty_wira) || 0,
-        'PQC Good': Number(resume.total_qty_pqc_good) || 0,
-        'PQC Rework': Number(resume.total_qty_pqc_rework) || 0,
-        'PQC Reject': Number(resume.total_qty_pqc_reject) || 0,
-        'PQC WIRA': Number(resume.total_qty_pqc_wira) || 0,
-        'Output Sewing': Number(resume.total_qty_output) || 0,
-    };
-}
-
-function gccDataRowToWiraWoRow(row, lineNum) {
-    const L = String(lineNum);
-    return {
-        WO: row.wo,
-        wo: row.wo,
-        Style: row.style,
-        style: row.style,
-        Buyer: row.buyer,
-        buyer: row.buyer,
-        Item: row.item,
-        item: row.item,
-        Good: Number(row.qty_good) || 0,
-        Rework: Number(row.qty_rework) || 0,
-        Reject: Number(row.qty_reject) || 0,
-        WIRA: Number(row.qty_wira) || 0,
-        'PQC Good': Number(row.qty_pqc_good) || 0,
-        'PQC Rework': Number(row.qty_pqc_rework) || 0,
-        'PQC Reject': Number(row.qty_pqc_reject) || 0,
-        'PQC WIRA': Number(row.qty_pqc_wira) || 0,
-        'Output Sewing': Number(row.qty_output) || 0,
-        line: L,
-        Line: L,
-    };
-}
-
 /**
  * GET /wira?line=1 - WIRA data untuk Dashboard RFID
- * Environment GCC: proxy ke /output/gcc dan normalisasi ke bentuk mirip /wira
+ * Termasuk GCC: selalu proxy ke backend GET /wira (sama dengan http://BACKEND_IP:7000/wira) agar
+ * dashboard konsisten. Data khusus resume/output GCC tetap lewat GET /output/gcc.
  */
 app.get('/wira', async (req, res) => {
-    if (CURRENT_ENV === 'GCC') {
-        const q = req.query;
-        const tanggalfrom = (q.tanggalfrom || q.tanggal_from || '').toString() || gccTodayYmd();
-        const tanggalto = (q.tanggalto || q.tanggal_to || '').toString() || tanggalfrom;
-        const lineParam = q.LINE || q.line || q.Line;
-        const woFilter = (q.wo || q.WO || '').toString().trim();
-        try {
-            if (woFilter && !lineParam) {
-                const rows = await Promise.all(
-                    Array.from({ length: GCC_LINE_COUNT }, (_, i) => i + 1).map(async (ln) => {
-                        try {
-                            const raw = await fetchGccOutputJson(ln, tanggalfrom, tanggalto);
-                            const dataRows = Array.isArray(raw.data) ? raw.data : [];
-                            const hit = dataRows.find((r) => String(r.wo) === woFilter);
-                            return hit ? gccDataRowToWiraWoRow(hit, ln) : null;
-                        } catch {
-                            return null;
-                        }
-                    })
-                );
-                const found = rows.find(Boolean);
-                if (found) {
-                    return res.json({ success: true, data: [found], tanggal: tanggalfrom, source: 'gcc-output' });
-                }
-                return res.json({ success: true, data: [], tanggal: tanggalfrom, source: 'gcc-output' });
-            }
-            if (lineParam) {
-                const lineNum = parseInt(String(lineParam), 10);
-                if (Number.isNaN(lineNum) || lineNum < 1 || lineNum > GCC_LINE_COUNT) {
-                    return res.status(400).json({ success: false, message: `Invalid line for GCC (1-${GCC_LINE_COUNT})` });
-                }
-                const raw = await fetchGccOutputJson(lineNum, tanggalfrom, tanggalto);
-                if (woFilter && Array.isArray(raw.data)) {
-                    const hit = raw.data.find((r) => String(r.wo) === woFilter);
-                    if (hit) {
-                        return res.json({
-                            success: true,
-                            data: [gccDataRowToWiraWoRow(hit, lineNum)],
-                            tanggal: raw.tanggal || tanggalfrom,
-                            source: 'gcc-output',
-                        });
-                    }
-                    return res.json({ success: true, data: [], tanggal: raw.tanggal || tanggalfrom, source: 'gcc-output' });
-                }
-                const resume = raw.resume_qty_gcc;
-                const row = gccResumeToWiraRow(lineNum, resume);
-                if (row) {
-                    return res.json({
-                        success: true,
-                        data: [row],
-                        tanggal: raw.tanggal || tanggalfrom,
-                        line: lineNum,
-                        resume_qty_gcc: resume,
-                        source: 'gcc-output',
-                    });
-                }
-                return res.json({ success: true, data: [], tanggal: raw.tanggal || tanggalfrom, source: 'gcc-output' });
-            }
-            const results = await Promise.all(
-                Array.from({ length: GCC_LINE_COUNT }, (_, i) => i + 1).map(async (ln) => {
-                    try {
-                        const raw = await fetchGccOutputJson(ln, tanggalfrom, tanggalto);
-                        return gccResumeToWiraRow(ln, raw.resume_qty_gcc);
-                    } catch {
-                        return null;
-                    }
-                })
-            );
-            const data = results.filter(Boolean);
-            return res.json({ success: true, data, tanggal: tanggalfrom, source: 'gcc-output' });
-        } catch (error) {
-            console.error('❌ [GCC /wira]', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Error fetching GCC output data',
-                error: error.message,
-                backend: `${BACKEND_IP}:${BACKEND_PORT}`,
-                timestamp: new Date().toISOString()
-            });
-        }
-    }
     try {
         await proxyRequest('/wira', req, res);
     } catch (error) {
@@ -2798,6 +2977,261 @@ app.get('/wira/detail', async (req, res) => {
  */
 app.get('/report/wira', async (req, res) => {
     return await proxyRequest('/report/wira', req, res);
+});
+
+/**
+ * GET /daily-output?tanggalfrom=YYYY-M-D&tanggalto=YYYY-M-D
+ * Proxy ke backend daily output report.
+ */
+app.get('/daily-output', async (req, res) => {
+    return await proxyRequest('/daily-output', req, res);
+});
+
+/**
+ * GET /api/needle/pickings?tanggalfrom=YYYY-MM-DD&tanggalto=YYYY-MM-DD
+ * Proxy ke backend Needle Manager terpisah (10.5.0.8:8080).
+ * Tidak mempengaruhi backend utama per environment (MJL/MJL2/CLN/GCC).
+ */
+app.get('/api/needle/pickings', async (req, res) => {
+    try {
+        const queryParams = new URLSearchParams();
+        if (req.query.tanggalfrom) queryParams.append('tanggalfrom', String(req.query.tanggalfrom));
+        if (req.query.tanggalto) queryParams.append('tanggalto', String(req.query.tanggalto));
+
+        const url = `${NEEDLE_BACKEND_BASE_URL}/api/needle/pickings${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const textData = await response.text();
+        let backendData = {};
+        try {
+            backendData = textData ? JSON.parse(textData) : {};
+        } catch (parseError) {
+            return res.status(502).json({
+                success: false,
+                message: 'Invalid JSON response from needle backend',
+                error: parseError.message,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                message: backendData?.message || 'Needle backend error',
+                error: backendData,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        // Bungkus response agar kompatibel dengan helper frontend apiGet/apiRequest.
+        // apiRequest akan mengambil `data.data`, sehingga frontend menerima object `{ count, data: [...] }` utuh.
+        return res.json({
+            success: true,
+            data: backendData,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        const isAbort = error?.name === 'AbortError';
+        return res.status(isAbort ? 504 : 500).json({
+            success: false,
+            message: isAbort ? 'Request timeout ke needle backend' : 'Error connecting to needle backend',
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * GET /api/needle/putting?tanggalfrom=YYYY-MM-DD&tanggalto=YYYY-MM-DD
+ * Proxy ke backend Needle Manager (sama host/port dengan pickings).
+ */
+app.get('/api/needle/putting', async (req, res) => {
+    try {
+        const queryParams = new URLSearchParams();
+        if (req.query.tanggalfrom) queryParams.append('tanggalfrom', String(req.query.tanggalfrom));
+        if (req.query.tanggalto) queryParams.append('tanggalto', String(req.query.tanggalto));
+
+        const url = `${NEEDLE_BACKEND_BASE_URL}/api/needle/putting${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const textData = await response.text();
+        let backendData = {};
+        try {
+            backendData = textData ? JSON.parse(textData) : {};
+        } catch (parseError) {
+            return res.status(502).json({
+                success: false,
+                message: 'Invalid JSON response from needle backend',
+                error: parseError.message,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                message: backendData?.message || 'Needle backend error',
+                error: backendData,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: backendData,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        const isAbort = error?.name === 'AbortError';
+        return res.status(isAbort ? 504 : 500).json({
+            success: false,
+            message: isAbort ? 'Request timeout ke needle backend' : 'Error connecting to needle backend',
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * GET /api/needle/stockneedle
+ * Proxy master data needle + gambar mesin.
+ */
+app.get('/api/needle/stockneedle', async (req, res) => {
+    try {
+        const url = `${NEEDLE_BACKEND_BASE_URL}/api/needle/stockneedle`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const textData = await response.text();
+        let backendData = {};
+        try {
+            backendData = textData ? JSON.parse(textData) : {};
+        } catch (parseError) {
+            return res.status(502).json({
+                success: false,
+                message: 'Invalid JSON response from needle backend',
+                error: parseError.message,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                message: backendData?.message || 'Needle backend error',
+                error: backendData,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: backendData,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        const isAbort = error?.name === 'AbortError';
+        return res.status(isAbort ? 504 : 500).json({
+            success: false,
+            message: isAbort ? 'Request timeout ke needle backend' : 'Error connecting to needle backend',
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * GET /api/needle/image-proxy?url=<encoded>
+ * Proxy binary image needle (photo/machine image) agar frontend dapat mengakses tanpa masalah CORS.
+ */
+app.get('/api/needle/image-proxy', async (req, res) => {
+    try {
+        const rawUrl = req.query.url ? String(req.query.url) : '';
+        if (!rawUrl) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing image url',
+                timestamp: new Date().toISOString(),
+            });
+        }
+        let parsed;
+        try {
+            parsed = new URL(rawUrl);
+        } catch {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid image url',
+                timestamp: new Date().toISOString(),
+            });
+        }
+        // Batasi hanya host needle backend yang diset.
+        if (!parsed.href.startsWith(NEEDLE_BACKEND_BASE_URL)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Image host not allowed',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const upstream = await fetch(parsed.href, {
+            method: 'GET',
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!upstream.ok) {
+            return res.status(upstream.status).json({
+                success: false,
+                message: 'Failed to fetch image from needle backend',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        const arrayBuffer = await upstream.arrayBuffer();
+        const contentType = upstream.headers.get('content-type') || 'image/png';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.status(200).send(Buffer.from(arrayBuffer));
+    } catch (error) {
+        const isAbort = error?.name === 'AbortError';
+        return res.status(isAbort ? 504 : 500).json({
+            success: false,
+            message: isAbort ? 'Request timeout ke needle backend image' : 'Error fetching needle image',
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
 });
 
 /**
@@ -4536,6 +4970,54 @@ app.get('/api/supervisor-data', (req, res) => {
 });
 
 /**
+ * GET /api/line-production-targets — target/hari & target/jam per line + SPV & NIK (file line_production_targets.json)
+ */
+function loadLineProductionTargets() {
+    try {
+        if (!fs.existsSync(LINE_PRODUCTION_TARGETS_FILE)) {
+            return { rows: [], description: '', lastUpdated: null };
+        }
+        const parsed = JSON.parse(fs.readFileSync(LINE_PRODUCTION_TARGETS_FILE, 'utf-8'));
+        const rows = Array.isArray(parsed.rows)
+            ? parsed.rows
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+        return {
+            rows,
+            description: typeof parsed.description === 'string' ? parsed.description : '',
+            lastUpdated: parsed.lastUpdated || null,
+        };
+    } catch (e) {
+        console.error('❌ [LINE PRODUCTION TARGETS] Read error:', e.message);
+        return { rows: [], description: '', lastUpdated: null };
+    }
+}
+
+app.get('/api/line-production-targets', (req, res) => {
+    try {
+        const doc = loadLineProductionTargets();
+        return res.json({
+            success: true,
+            data: {
+                rows: doc.rows,
+                description: doc.description,
+                lastUpdated: doc.lastUpdated,
+            },
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [LINE PRODUCTION TARGETS] GET Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error fetching line production targets',
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
  * GET /api/target-data - Get target data untuk semua line (sumber: supervisor_data.json, system sama)
  * Query: ?environment=CLN|MJL|MJL2 (optional)
  * Response: { success, data: { targets: { "1": 170, "2": 195, ... } }, environment, lastUpdated, timestamp }
@@ -5078,7 +5560,8 @@ app.listen(PORT, HOST, () => {
     console.log(`   Backend Port: ${BACKEND_PORT}`);
     console.log(`   Backend URL: ${BACKEND_API_URL}`);
     console.log(`   Proxy Server: http://${LOCAL_IP}:${PORT}`);
-    console.log(`   Scanning dryroom: GET /api/scanning/dryroom/operator → scanning_dryroom.json\n`);
+    console.log(`   Scanning dryroom: GET /api/scanning/dryroom/operator → scanning_dryroom.json`);
+    console.log(`   Cutting scan: GET/POST /api/cutting/* → dummy_cutting.json\n`);
 
     // Test koneksi MySQL saat server start
     checkMySQLConnection().then(result => {

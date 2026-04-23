@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../hooks/useAuth';
 import { Menu, Bell, Radio, X, Maximize2, Minimize2 } from 'lucide-react';
@@ -8,12 +8,27 @@ import handIcon from '../assets/hand.svg';
 import NotificationModal from './notification/NotificationModal';
 import NotificationDetailModal from './notification/NotificationDetailModal';
 import { useNotifications } from '../hooks/useNotifications';
+import { getInitialEnvironment, getEnvironmentFromAPI, type BackendEnvironment } from '../config/api';
+
+const ENV_LABEL: Record<BackendEnvironment, string> = {
+    CLN: 'CLN',
+    MJL: 'MJL',
+    MJL2: 'MJL2',
+    GCC: 'GCC',
+};
 
 const Header = memo(() => {
     const { isOpen, toggleSidebar } = useSidebar();
     const { user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const hideCheckingRfid = location.pathname === '/dashboard-cutting';
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [environment, setEnvironment] = useState<BackendEnvironment>(getInitialEnvironment);
+
+    useEffect(() => {
+        getEnvironmentFromAPI().then(setEnvironment);
+    }, []);
 
     // Notification hooks
     const {
@@ -113,32 +128,42 @@ const Header = memo(() => {
                 <img src={logo} alt="Gistex Logo" className="w-11 xs:w-13 sm:w-15 md:w-18 lg:w-20 xl:w-25 h-12 xs:h-14 sm:h-16 md:h-20 lg:h-24 xl:h-28 object-contain mr-2" />
 
                 {/* System Title */}
-                <h1 className="text-lg tracking-normal text-zinc-500" style={{ textTransform: 'capitalize', fontFamily: 'Poppins, sans-serif' }}>
-                    <span className="hidden sm:inline">
-                        <span style={{ fontWeight: 600 }}>  Gistex Command Center</span>
+                <div className="flex items-baseline gap-1.5 sm:gap-2 min-w-0">
+                    <h1 className="text-lg tracking-normal text-zinc-500 truncate" style={{ textTransform: 'capitalize', fontFamily: 'Poppins, sans-serif' }}>
+                        <span className="hidden sm:inline">
+                            <span style={{ fontWeight: 600 }}>  Gistex Command Center</span>
+                        </span>
+                        <span className="sm:hidden" style={{ fontWeight: 600 }}>Gistex</span>
+                    </h1>
+                    <span
+                        className="shrink-0 text-[9px] xs:text-[10px] sm:text-[11px] font-semibold tracking-wide text-zinc-400 uppercase tabular-nums"
+                        title={`Environment: ${ENV_LABEL[environment]}`}
+                        aria-label={`Environment aktif ${ENV_LABEL[environment]}`}
+                    >
+                        {ENV_LABEL[environment]}
                     </span>
-                    <span className="sm:hidden" style={{ fontWeight: 600 }}>Gistex</span>
-                </h1>
+                </div>
             </div>
 
             {/* --- RIGHT SECTION: Checking RFID Button, User, Notification --- */}
             <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
 
-                {/* Checking RFID Button - Professional & Elegant */}
-                <button
-                    onClick={() => navigate('/checking-rfid')}
-                    className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 px-4 xs:px-4.5 sm:px-5 md:px-6 py-1.5 xs:py-2 sm:py-2.5 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 text-blue-700 hover:from-blue-100 hover:to-blue-200 hover:border-blue-300 hover:text-blue-800 font-semibold rounded-lg shadow-sm hover:shadow-md transition-all duration-300 ease-in-out group text-xs sm:text-sm relative overflow-hidden"
-                    style={{
-                        fontFamily: 'Poppins, sans-serif'
-                    }}
-                >
-                    {/* Shine effect on hover */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                {/* Checking RFID — disembunyikan di Dashboard Cutting agar fokus proses & grafik */}
+                {!hideCheckingRfid && (
+                    <button
+                        onClick={() => navigate('/checking-rfid')}
+                        className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 px-4 xs:px-4.5 sm:px-5 md:px-6 py-1.5 xs:py-2 sm:py-2.5 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 text-blue-700 hover:from-blue-100 hover:to-blue-200 hover:border-blue-300 hover:text-blue-800 font-semibold rounded-lg shadow-sm hover:shadow-md transition-all duration-300 ease-in-out group text-xs sm:text-sm relative overflow-hidden"
+                        style={{
+                            fontFamily: 'Poppins, sans-serif'
+                        }}
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
 
-                    <Radio className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-blue-600 group-hover:text-blue-700 transition-all duration-300 group-hover:scale-110 relative z-10" strokeWidth={2.5} />
-                    <span className="tracking-wide hidden sm:inline relative z-10">CHECKING RFID</span>
-                    <span className="tracking-wide sm:hidden relative z-10">CHECK</span>
-                </button>
+                        <Radio className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-blue-600 group-hover:text-blue-700 transition-all duration-300 group-hover:scale-110 relative z-10" strokeWidth={2.5} />
+                        <span className="tracking-wide hidden sm:inline relative z-10">CHECKING RFID</span>
+                        <span className="tracking-wide sm:hidden relative z-10">CHECK</span>
+                    </button>
+                )}
 
                 {/* Fullscreen Toggle Button - Kotak di samping Checking RFID */}
                 <button

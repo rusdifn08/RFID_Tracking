@@ -1,0 +1,17 @@
+{
+  "description": "Target produksi per line (referensi db target.xlsx): target/hari, target/jam, SPV, NIK",
+  "lastUpdated": "2026-04-21T00:00:00.000Z",
+  "rows": [
+    { "line": 1, "target_hari": 160, "target_jam": 20, "spv": "DATI", "nik": "92200513" },
+    { "line": 2, "target_hari": 200, "target_jam": 25, "spv": "DALENA", "nik": "92400023" },
+    { "line": 3, "target_hari": 150, "target_jam": 18.75, "spv": "DEDE ROSIAH", "nik": "920194" },
+    { "line": 5, "target_hari": 170, "target_jam": 21.25, "spv": "HAWA", "nik": "92200051" },
+    { "line": 6, "target_hari": 200, "target_jam": 25, "spv": "IYAH", "nik": "950651" },
+    { "line": 11, "target_hari": 160, "target_jam": 20, "spv": "TATAN", "nik": "92300048" },
+    { "line": 12, "target_hari": 180, "target_jam": 22.5, "spv": "SITI", "nik": "160113" },
+    { "line": 13, "target_hari": 155, "target_jam": 19.375, "spv": "DEDE WINDY", "nik": "92200056" },
+    { "line": 14, "target_hari": 170, "target_jam": 21.25, "spv": "TINI", "nik": "92156822" },
+    { "line": 15, "target_hari": 195, "target_jam": 24.375, "spv": "LINA", "nik": "92400552" },
+    { "line": 16, "target_hari": 200, "target_jam": 25, "spv": "WIDIA", "nik": "930744" }
+  ]
+}

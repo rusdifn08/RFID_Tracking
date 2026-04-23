@@ -22,7 +22,7 @@
     "dev:all:mjl2": "concurrently \"npm run server:mjl2\" \"npm run dev:mjl2\"",
     "dev:all:gcc": "concurrently \"npm run server:gcc\" \"npm run dev:gcc\"",
     "devLall:gcc": "concurrently \"npm run server:gcc\" \"npm run dev:gcc\"",
-    "server:test": "cross-env BACKEND_API_URL=http://10.5.188.158:7000 REJECT_ROOM_INOUT_URL=http://10.5.188.158:7000 BACKEND_IP=10.5.188.158 node -r ./set-no-debug.cjs server.js",
+    "server:test": "cross-env BACKEND_API_URL=http://10.5.0.201:7000 REJECT_ROOM_INOUT_URL=http://10.5.0.201:7000 BACKEND_IP=10.5.0.201 BACKEND_ENV=MJL node -r ./set-no-debug.cjs server.js",
     "dev:test": "vite --mode test",
     "dev:all:test": "concurrently \"npm run server:test\" \"npm run dev:test\"",
     "test:websocket": "node test-websocket.cjs",

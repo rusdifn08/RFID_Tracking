@@ -5,7 +5,6 @@ import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
-import BaseCard from '../components/dashboard/BaseCard';
 import ChartCard from '../components/dashboard/ChartCard';
 import { LayoutGrid, UserCircle2, ActivitySquare } from 'lucide-react';
 

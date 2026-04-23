@@ -47,7 +47,7 @@ export const useWiraDashboardWebSocket = (
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMountedRef = useRef(true);
     const reconnectAttemptsRef = useRef(0);
     const maxReconnectAttempts = 10;
@@ -142,7 +142,7 @@ export const useWiraDashboardWebSocket = (
                 }
             };
 
-            ws.onerror = (event) => {
+            ws.onerror = () => {
                 const err = new Error('WebSocket connection error');
                 setError(err);
                 setIsConnected(false);

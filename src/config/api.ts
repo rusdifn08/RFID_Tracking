@@ -373,6 +373,7 @@ export interface LoginResponse {
         nik: string;
         no_hp: string;
         pwd_md5: string; // MD5 hash password dari database
+        password_hash?: string; // Beberapa backend mengirim hash di level user
         rfid_user: string;
         telegram: string;
         // Untuk backward compatibility
@@ -814,8 +815,16 @@ export const login = async (nik: string, password?: string): Promise<ApiResponse
             // Hash password input dengan MD5
             const passwordHash = CryptoJS.MD5(password).toString();
 
-            // Bandingkan dengan pwd_md5 dari database
-            const dbPasswordHash = response.data.user.pwd_md5 || '';
+            // Backend berbeda environment:
+            // - GCC: hash di response.password_hash
+            // - Env lain: hash di response.user.pwd_md5
+            // Fallback ke beberapa kemungkinan field agar login tidak false negative.
+            const dbPasswordHash = (
+                response.data.password_hash ||
+                response.data.user.pwd_md5 ||
+                response.data.user.password_hash ||
+                ''
+            ).toString().trim();
 
 
             if (passwordHash.toLowerCase() === dbPasswordHash.toLowerCase()) {
@@ -999,6 +1008,79 @@ export const getWiraDetail = async (
     if (options?.tanggal_from) params.tanggal_from = options.tanggal_from;
     if (options?.tanggal_to) params.tanggal_to = options.tanggal_to;
     return await apiGet('/wira/detail', params);
+};
+
+export interface NeedlePickingItem {
+    tanggal: string;
+    needle_pick_time: string;
+    needle_putting_time?: string;
+    nama_operator: string;
+    /** API terbaru memakai `nik`; `account` tetap opsional untuk kompatibilitas lama. */
+    nik?: string;
+    account?: string;
+    line?: string;
+    needle_parameter: string;
+    model: string;
+    qty?: number;
+    location: string;
+    operator_picture_path?: string;
+    operator_picture_url?: string;
+}
+
+export interface NeedlePickingsResponse {
+    count: number;
+    data: NeedlePickingItem[];
+}
+
+export interface NeedleStockItem {
+    nama_mesin?: string;
+    name_machine?: string;
+    needle_parameter: string;
+    producer?: string;
+    needle_type?: string;
+    needle_size?: string;
+    needle_style?: string;
+    stock?: number;
+    machine_picture_file?: string;
+    machine_picture_url?: string;
+}
+
+export interface NeedleStockResponse {
+    count: number;
+    data: NeedleStockItem[];
+}
+
+/**
+ * Needle Manager - daftar pengambilan needle.
+ * Proxy path: /api/needle/pickings (server.js -> http://10.5.0.8:8080).
+ * Query backend memakai tanggalfrom & tanggalto.
+ */
+export const getNeedlePickings = async (params: {
+    tanggalfrom: string;
+    tanggalto: string;
+}): Promise<ApiResponse<NeedlePickingsResponse>> => {
+    return await apiGet<NeedlePickingsResponse>('/api/needle/pickings', {
+        tanggalfrom: params.tanggalfrom,
+        tanggalto: params.tanggalto,
+    });
+};
+
+/**
+ * Needle Manager — data putting (proxy: /api/needle/putting).
+ */
+export const getNeedlePutting = async (params: {
+    tanggalfrom: string;
+    tanggalto: string;
+}): Promise<ApiResponse<NeedlePickingsResponse>> => {
+    return await apiGet<NeedlePickingsResponse>('/api/needle/putting', {
+        tanggalfrom: params.tanggalfrom,
+        tanggalto: params.tanggalto,
+    });
+};
+
+/** Needle Manager — master stock + machine image. */
+export const getNeedleStock = async (): Promise<ApiResponse<NeedleStockResponse>> => {
+    return await apiGet<NeedleStockResponse>('/api/needle/stockneedle');
 };
 
 // ============================================
@@ -1395,5 +1477,108 @@ export const getWOBreakdown = async (
             status: 500
         };
     }
+};
+
+// ============================================
+// CUTTING PROSES — Bundle (inputRFID) + scan state lokal (proxy server.js)
+// ============================================
+
+export interface InputRfidCuttingBody {
+    rfid_garment: string;
+    item: string;
+    buyer: string;
+    style: string;
+    wo: string;
+    color: string;
+    size: string;
+    /** Jumlah pcs per bundle (opsional; dikirim juga sebagai `wty` untuk kompatibilitas backend) */
+    qty?: number;
+    wty?: number;
+}
+
+export const inputRfidCuttingBundle = async (body: InputRfidCuttingBody): Promise<ApiResponse<unknown>> => {
+    const q = body.qty != null && !Number.isNaN(Number(body.qty)) ? Number(body.qty) : undefined;
+    const payload: Record<string, unknown> = { ...body };
+    if (q != null) {
+        payload.qty = q;
+        payload.wty = q;
+    }
+    return await apiPost('/api/cutting/bundle-scan', payload);
+};
+
+export interface CuttingScanHistoryEntry {
+    rfid_garment: string;
+    at: string;
+    qty?: number;
+    good?: number;
+    repair?: number;
+    reject?: number;
+    wo?: string | null;
+    style?: string | null;
+    buyer?: string | null;
+    item?: string | null;
+    color?: string | null;
+    size?: string | null;
+    location?: string | null;
+    line?: string | null;
+}
+
+export interface CuttingScanStateDoc {
+    bundle: { count: number; history: CuttingScanHistoryEntry[] };
+    qc: { goodTotal: number; repairTotal?: number; rejectTotal: number; history: CuttingScanHistoryEntry[] };
+    store: { count: number; history: CuttingScanHistoryEntry[] };
+    supply: { count: number; history: CuttingScanHistoryEntry[] };
+}
+
+export const getCuttingScanState = async (): Promise<ApiResponse<CuttingScanStateDoc>> => {
+    return await apiGet<CuttingScanStateDoc>('/api/cutting/scan-state');
+};
+
+export interface CuttingQcScanResponse {
+    requires_input?: boolean;
+    message?: string;
+    rfid_garment?: string;
+    qty?: number;
+    wo?: string | null;
+    style?: string | null;
+    buyer?: string | null;
+    item?: string | null;
+    color?: string | null;
+    size?: string | null;
+    good?: number;
+    repair?: number;
+    reject?: number;
+    location?: string;
+    data?: {
+        rfid_garment: string;
+        qty: number;
+        wo?: string | null;
+        style?: string | null;
+        buyer?: string | null;
+        item?: string | null;
+        color?: string | null;
+        size?: string | null;
+        good?: number;
+        repair?: number;
+        reject?: number;
+        location?: string;
+    };
+}
+
+export const postCuttingQcScan = async (body: {
+    rfid_garment: string;
+    good?: number;
+    repair?: number;
+    reject?: number;
+}): Promise<ApiResponse<CuttingQcScanResponse>> => {
+    return await apiPost<CuttingQcScanResponse>('/api/cutting/qc-scan', body);
+};
+
+export const postCuttingStoreScan = async (body: { rfid_garment: string }): Promise<ApiResponse<unknown>> => {
+    return await apiPost('/api/cutting/store-scan', body);
+};
+
+export const postCuttingSupplySewingScan = async (body: { rfid_garment: string; line: string }): Promise<ApiResponse<unknown>> => {
+    return await apiPost('/api/cutting/supply-sewing-scan', body);
 };
 
