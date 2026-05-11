@@ -1,17 +1,33 @@
-﻿import { useMemo } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, CheckCircle2, CircleX, ClipboardCheck, Layers, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, CircleX, ClipboardCheck, Layers, Wrench } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import ChartCard from '../components/dashboard/ChartCard';
 import { COLORS } from '../components/dashboard/constants';
-import { getCuttingScanState, getGccCuttingQcDashboardData, type CuttingScanHistoryEntry } from '../config/api';
+import { getCuttingScanState, getGccCuttingQcDashboardData, type CuttingScanHistoryEntry, type GccQcDashboardItem } from '../config/api';
 
 const QUERY_CUTTING_QC = ['cutting-qc-dashboard'] as const;
-const QUERY_CUTTING_QC_GCC = ['cutting-qc-dashboard-gcc'] as const;
+const QUERY_CUTTING_QC_GCC_BASE = 'cutting-qc-dashboard-gcc' as const;
+
+function ymdTodayLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatYmdIdLabel(ymd: string): string {
+  const [y, mo, da] = ymd.split('-').map((x) => Number(x));
+  if (!y || !mo || !da) return ymd;
+  const d = new Date(y, mo - 1, da);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 const SHIFT_HOURS = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 
 const QC_CHART = {
@@ -55,7 +71,7 @@ function formatIsoShort(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString('id-ID', {
     day: '2-digit',
-    month: 'short',
+    month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -124,6 +140,47 @@ export default function DashboardQualityControlCutting() {
   const { isOpen } = useSidebar();
   const sidebarWidth = isOpen ? '18%' : '5rem';
 
+  const [qcRangeFrom, setQcRangeFrom] = useState(ymdTodayLocal);
+  const [qcRangeTo, setQcRangeTo] = useState(ymdTodayLocal);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(ymdTodayLocal);
+  const [draftTo, setDraftTo] = useState(ymdTodayLocal);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = filterPanelRef.current;
+      if (el && !el.contains(e.target as Node)) setFilterOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [filterOpen]);
+
+  const openFilterPanel = () => {
+    setDraftFrom(qcRangeFrom);
+    setDraftTo(qcRangeTo);
+    setFilterOpen(true);
+  };
+
+  const applyQcDateFilter = () => {
+    let a = draftFrom;
+    let b = draftTo;
+    if (a > b) [a, b] = [b, a];
+    setQcRangeFrom(a);
+    setQcRangeTo(b);
+    setFilterOpen(false);
+  };
+
+  const resetQcDateFilterToday = () => {
+    const t = ymdTodayLocal();
+    setDraftFrom(t);
+    setDraftTo(t);
+    setQcRangeFrom(t);
+    setQcRangeTo(t);
+    setFilterOpen(false);
+  };
+
   const scanQuery = useQuery({
     queryKey: QUERY_CUTTING_QC,
     queryFn: async () => {
@@ -135,14 +192,22 @@ export default function DashboardQualityControlCutting() {
   });
 
   const gccDashboardQuery = useQuery({
-    queryKey: QUERY_CUTTING_QC_GCC,
+    queryKey: [QUERY_CUTTING_QC_GCC_BASE, qcRangeFrom, qcRangeTo] as const,
     queryFn: async () => {
-      const r = await getGccCuttingQcDashboardData();
+      const r = await getGccCuttingQcDashboardData({
+        tanggal_from: `${qcRangeFrom}T00:00:00`,
+        tanggal_to: `${qcRangeTo}T23:59:59`,
+      });
       if (!r.success || !r.data) throw new Error(r.error || 'Gagal memuat data dashboard QC GCC');
       return r.data;
     },
-    refetchInterval: 12000,
+    refetchInterval: 12_000,
   });
+
+  const qcFilterSummaryLabel =
+    qcRangeFrom === qcRangeTo
+      ? formatYmdIdLabel(qcRangeFrom)
+      : `${formatYmdIdLabel(qcRangeFrom)} – ${formatYmdIdLabel(qcRangeTo)}`;
 
   const qcRows = useMemo(() => {
     const rows = scanQuery.data?.qc.history ?? [];
@@ -167,23 +232,22 @@ export default function DashboardQualityControlCutting() {
 
   const bundleUnique = useMemo(() => uniqueBundleCount(qcRows), [qcRows]);
 
-  const kpiFromApi = useMemo(() => {
-    const d = gccDashboardQuery.data?.data;
-    if (!d) return null;
-    return {
-      bundle: safeNum(d.bundle),
-      good: safeNum(d.good),
-      repair: safeNum(d.repair),
-      reject: safeNum(d.reject),
-    };
-  }, [gccDashboardQuery.data]);
+  const gccPayload = gccDashboardQuery.data?.data;
 
-  const kpiDisplay = {
-    bundle: kpiFromApi?.bundle ?? bundleUnique,
-    good: kpiFromApi?.good ?? kpi.good,
-    repair: kpiFromApi?.repair ?? kpi.repair,
-    reject: kpiFromApi?.reject ?? kpi.reject,
-  };
+  const kpiFromApi = useMemo(() => {
+    const s = gccPayload?.summary;
+    if (!s) return null;
+    return {
+      bundle: safeNum(s.jumlah_bundle),
+      good: safeNum(s.total_good),
+      repair: safeNum(s.total_repair),
+      reject: safeNum(s.total_reject),
+    };
+  }, [gccPayload]);
+
+  const kpiDisplay = kpiFromApi ?? { bundle: bundleUnique, ...kpi };
+
+  const useGccDashboard = gccDashboardQuery.isSuccess && gccPayload != null;
 
   /** Agregasi per jam lokal (shift 06–18): good, repair, reject dari riwayat QC. */
   const qcPerHour = useMemo(() => {
@@ -204,6 +268,32 @@ export default function DashboardQualityControlCutting() {
       return { jam, good: b.good, repair: b.repair, reject: b.reject };
     });
   }, [qcRows]);
+
+  const qcPerHourFromApi = useMemo(() => {
+    if (gccPayload == null || !Array.isArray(gccPayload.data_per_jam)) return null;
+    const rows = gccPayload.data_per_jam;
+    const byJam = new Map<string, { good: number; repair: number; reject: number }>();
+    for (const r of rows) {
+      const jam = String(r.jam || '').trim();
+      if (!jam) continue;
+      byJam.set(jam, {
+        good: safeNum(r.good),
+        repair: safeNum(r.repair),
+        reject: safeNum(r.reject),
+      });
+    }
+    return SHIFT_HOURS.map((jam) => {
+      const v = byJam.get(jam);
+      return v ? { jam, ...v } : { jam, good: 0, repair: 0, reject: 0 };
+    });
+  }, [gccPayload]);
+
+  const chartRows = qcPerHourFromApi ?? qcPerHour;
+
+  const tableItemsFromApi: GccQcDashboardItem[] | null = useMemo(() => {
+    if (!useGccDashboard) return null;
+    return gccPayload?.items ?? [];
+  }, [useGccDashboard, gccPayload]);
 
   return (
     <div className="flex h-screen w-full font-sans text-slate-800 bg-slate-50 overflow-hidden selection:bg-sky-100 selection:text-sky-900">
@@ -268,7 +358,7 @@ export default function DashboardQualityControlCutting() {
                 >
                   <div className="w-full flex-1 min-h-0 min-w-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={qcPerHour} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+                      <LineChart data={chartRows} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis dataKey="jam" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: QC_TYPO.chartTick }} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: QC_TYPO.chartTick }} width={34} domain={[0, 'auto']} />
@@ -324,18 +414,88 @@ export default function DashboardQualityControlCutting() {
                   </div>
                 </ChartCard>
 
-                <ChartCard title="Tabel Quality Control" icon={ClipboardCheck} iconColor={COLORS.blue} iconBgColor={COLORS.blueSoft} className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2">
-                  <div className="flex items-center justify-between gap-2 px-1 pb-1 text-slate-500" style={{ fontSize: QC_TYPO.tableMeta }}>
-                    <span className="truncate">{scanQuery.isFetching ? 'Memuat…' : `${qcRows.length} baris`}</span>
-                    {scanQuery.error ? (
-                      <span className="text-rose-700 truncate" title={(scanQuery.error as Error).message}>
-                        {(scanQuery.error as Error).message}
-                      </span>
-                    ) : (
-                      <span className="truncate">Sumber: scan-state QC</span>
-                    )}
-                  </div>
-
+                <ChartCard
+                  title="Tabel Quality Control"
+                  icon={ClipboardCheck}
+                  iconColor={COLORS.blue}
+                  iconBgColor={COLORS.blueSoft}
+                  headerAction={
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {gccDashboardQuery.error ? (
+                        <span
+                          className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
+                          title={(gccDashboardQuery.error as Error).message}
+                        >
+                          {(gccDashboardQuery.error as Error).message}
+                        </span>
+                      ) : scanQuery.error ? (
+                        <span
+                          className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
+                          title={(scanQuery.error as Error).message}
+                        >
+                          {(scanQuery.error as Error).message}
+                        </span>
+                      ) : null}
+                      <div className="relative" ref={filterPanelRef}>
+                        <button
+                          type="button"
+                          onClick={() => (filterOpen ? setFilterOpen(false) : openFilterPanel())}
+                          className="inline-flex items-center gap-2 rounded-xl border border-sky-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-sky-800 shadow-sm ring-1 ring-slate-900/5 transition hover:border-sky-400 hover:bg-sky-50/80 hover:text-sky-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
+                          title="Filter rentang tanggal (GET /api/gcc/cutting/qc/data)"
+                        >
+                          <CalendarRange className="h-3.5 w-3.5 text-sky-600 shrink-0" aria-hidden />
+                          <span className="whitespace-nowrap">{qcFilterSummaryLabel}</span>
+                        </button>
+                        {filterOpen ? (
+                          <div
+                            className="absolute right-0 top-full z-[60] mt-1.5 w-[min(100vw-1.5rem,17.5rem)] rounded-xl border border-slate-200/90 bg-white p-3 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5"
+                            role="dialog"
+                            aria-label="Filter tanggal dashboard QC"
+                          >
+                            <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400 mb-2">Rentang tanggal</p>
+                            <div className="space-y-2">
+                              <label className="block">
+                                <span className="text-[0.7rem] font-medium text-slate-600">Dari</span>
+                                <input
+                                  type="date"
+                                  value={draftFrom}
+                                  onChange={(e) => setDraftFrom(e.target.value)}
+                                  className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-sm text-slate-800 shadow-inner focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-[0.7rem] font-medium text-slate-600">Sampai</span>
+                                <input
+                                  type="date"
+                                  value={draftTo}
+                                  onChange={(e) => setDraftTo(e.target.value)}
+                                  className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-sm text-slate-800 shadow-inner focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                                />
+                              </label>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={applyQcDateFilter}
+                                className="flex-1 min-w-[5rem] rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                              >
+                                Terapkan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={resetQcDateFilterToday}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
+                              >
+                                Hari ini
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  }
+                  className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2"
+                >
                   <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-100 bg-white/70">
                     <table className="min-w-full" style={{ fontSize: QC_TYPO.table }}>
                       <thead className="sticky top-0 bg-white border-b border-slate-100">
@@ -350,7 +510,31 @@ export default function DashboardQualityControlCutting() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {qcRows.length === 0 ? (
+                        {tableItemsFromApi ? (
+                          tableItemsFromApi.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                                Belum ada data scan QC (API).
+                              </td>
+                            </tr>
+                          ) : (
+                            tableItemsFromApi.map((it, idx) => (
+                              <tr key={`${it.rfid_bundles || 'x'}-${it.id_bundles ?? ''}-${idx}`} className="hover:bg-sky-50/40">
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                  {it.rfid_bundles?.trim() || '—'}
+                                </td>
+                                <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap max-w-[10rem] truncate" title={it.wo || undefined}>
+                                  {it.wo?.trim() ? it.wo.trim() : '—'}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">{safeNum(it.qty_output)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-semibold">{safeNum(it.qty_good)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums text-amber-700 font-semibold">{safeNum(it.qty_repair)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums text-rose-700 font-semibold">{safeNum(it.qty_reject)}</td>
+                                <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{formatIsoShort(it.tanggal || '')}</td>
+                              </tr>
+                            ))
+                          )
+                        ) : qcRows.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
                               Belum ada data scan QC.

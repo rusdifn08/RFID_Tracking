@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, CheckCircle2, ClipboardList, Layers, Package, Truck, Warehouse } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ClipboardList, Layers, Package, Truck } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import ChartCard from '../components/dashboard/ChartCard';
@@ -9,9 +9,26 @@ import { COLORS } from '../components/dashboard/constants';
 import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import { getCuttingScanState, getGccCuttingSmarketDashboardData } from '../config/api';
+import type { GccSmarketDashboardItem } from '../config/api';
 
 const QUERY_SUPERMARKET_CUTTING = ['supermarket-cutting-dashboard'] as const;
-const QUERY_SUPERMARKET_CUTTING_GCC = ['supermarket-cutting-dashboard-gcc'] as const;
+const QUERY_SUPERMARKET_CUTTING_GCC_BASE = 'supermarket-cutting-dashboard-gcc' as const;
+
+function ymdTodayLocal(): string {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function formatYmdIdLabel(ymd: string): string {
+    const [y, mo, da] = ymd.split('-').map((x) => Number(x));
+    if (!y || !mo || !da) return ymd;
+    const d = new Date(y, mo - 1, da);
+    if (Number.isNaN(d.getTime())) return ymd;
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 const SHIFT_HOURS = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 const CHECKIN_ICON = '/assets/good.png';
 const CHECKOUT_ICON = '/assets/reject.webp';
@@ -28,7 +45,6 @@ const MARKET_TYPO = {
     stationTitle: 'clamp(0.78rem, 4.2cqw, 1.28rem)',
     stationValue: 'clamp(2.1rem, 21cqw, 6.4rem)',
     table: 'clamp(0.7rem, 0.56rem + 0.42vmin, 1.02rem)',
-    tableMeta: 'clamp(0.64rem, 0.52rem + 0.32vmin, 0.88rem)',
     chartTick: 'clamp(9px, 6px + 0.55vmin, 13px)',
     chartTooltip: 'clamp(10px, 8px + 0.45vmin, 13px)',
 } as const;
@@ -50,11 +66,18 @@ function formatIsoShort(iso: string): string {
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleString('id-ID', {
         day: '2-digit',
-        month: 'short',
+        month: 'long',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
     });
+}
+
+function lokasiFromLastStatus(last?: string | null): string {
+    if (!last?.trim()) return '—';
+    const u = last.trim().toUpperCase();
+    if (u === 'IN_SMARKET') return 'supermarket';
+    return last.replace(/_/g, ' ');
 }
 
 function StationStatusCard({
@@ -119,6 +142,52 @@ export default function DashboardSupermarketCutting() {
     const { isOpen } = useSidebar();
     const sidebarWidth = isOpen ? '18%' : '5rem';
 
+    const [smarketRangeFrom, setSmarketRangeFrom] = useState(ymdTodayLocal);
+    const [smarketRangeTo, setSmarketRangeTo] = useState(ymdTodayLocal);
+    const [filterOpen, setFilterOpen] = useState(false);
+    const [draftFrom, setDraftFrom] = useState(ymdTodayLocal);
+    const [draftTo, setDraftTo] = useState(ymdTodayLocal);
+    const filterPanelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!filterOpen) return;
+        const onDoc = (e: MouseEvent) => {
+            const el = filterPanelRef.current;
+            if (el && !el.contains(e.target as Node)) setFilterOpen(false);
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [filterOpen]);
+
+    const openFilterPanel = () => {
+        setDraftFrom(smarketRangeFrom);
+        setDraftTo(smarketRangeTo);
+        setFilterOpen(true);
+    };
+
+    const applySmarketDateFilter = () => {
+        let a = draftFrom;
+        let b = draftTo;
+        if (a > b) [a, b] = [b, a];
+        setSmarketRangeFrom(a);
+        setSmarketRangeTo(b);
+        setFilterOpen(false);
+    };
+
+    const resetSmarketDateFilterToday = () => {
+        const t = ymdTodayLocal();
+        setDraftFrom(t);
+        setDraftTo(t);
+        setSmarketRangeFrom(t);
+        setSmarketRangeTo(t);
+        setFilterOpen(false);
+    };
+
+    const smarketFilterSummaryLabel =
+        smarketRangeFrom === smarketRangeTo
+            ? formatYmdIdLabel(smarketRangeFrom)
+            : `${formatYmdIdLabel(smarketRangeFrom)} – ${formatYmdIdLabel(smarketRangeTo)}`;
+
     const scanQuery = useQuery({
         queryKey: QUERY_SUPERMARKET_CUTTING,
         queryFn: async () => {
@@ -130,9 +199,12 @@ export default function DashboardSupermarketCutting() {
     });
 
     const gccDashboardQuery = useQuery({
-        queryKey: QUERY_SUPERMARKET_CUTTING_GCC,
+        queryKey: [QUERY_SUPERMARKET_CUTTING_GCC_BASE, smarketRangeFrom, smarketRangeTo] as const,
         queryFn: async () => {
-            const r = await getGccCuttingSmarketDashboardData();
+            const r = await getGccCuttingSmarketDashboardData({
+                tanggal_from: `${smarketRangeFrom}T00:00:00`,
+                tanggal_to: `${smarketRangeTo}T23:59:59`,
+            });
             if (!r.success || !r.data) throw new Error(r.error || 'Gagal memuat data dashboard Supermarket GCC');
             return r.data;
         },
@@ -172,18 +244,22 @@ export default function DashboardSupermarketCutting() {
         return { bundle: bundleSet.size, checkin, checkout, urgent };
     }, [storeRows]);
 
+    const gccPayload = gccDashboardQuery.data?.data;
+
     const metricsFromApi = useMemo(() => {
-        const d = gccDashboardQuery.data?.data;
-        if (!d) return null;
+        const s = gccPayload?.summary;
+        if (!s) return null;
         return {
-            bundle: safeNum(d.bundle),
-            checkin: safeNum(d.in),
-            checkout: safeNum(d.out),
-            urgent: safeNum(d.urgent),
+            bundle: safeNum(s.jumlah_bundle),
+            checkin: safeNum(s.check_in),
+            checkout: safeNum(s.check_out),
+            urgent: safeNum(s.supply_urgent),
         };
-    }, [gccDashboardQuery.data]);
+    }, [gccPayload]);
 
     const metricsDisplay = metricsFromApi ?? metrics;
+
+    const useGccDashboard = gccDashboardQuery.isSuccess && gccPayload != null;
 
     const perHourRows = useMemo(() => {
         const empty = () => ({ checkin: 0, checkout: 0, urgent: 0 });
@@ -204,6 +280,32 @@ export default function DashboardSupermarketCutting() {
         }
         return SHIFT_HOURS.map((jam) => ({ jam, ...buckets[jam] }));
     }, [storeRows]);
+
+    const perHourFromApi = useMemo(() => {
+        if (gccPayload == null || !Array.isArray(gccPayload.data_per_jam)) return null;
+        const rows = gccPayload.data_per_jam;
+        const byJam = new Map<string, { checkin: number; checkout: number; urgent: number }>();
+        for (const r of rows) {
+            const jam = String(r.jam || '').trim();
+            if (!jam) continue;
+            byJam.set(jam, {
+                checkin: safeNum(r.check_in),
+                checkout: safeNum(r.check_out),
+                urgent: safeNum(r.supply_urgent),
+            });
+        }
+        return SHIFT_HOURS.map((jam) => {
+            const v = byJam.get(jam);
+            return v ? { jam, ...v } : { jam, checkin: 0, checkout: 0, urgent: 0 };
+        });
+    }, [gccPayload]);
+
+    const chartRows = perHourFromApi ?? perHourRows;
+
+    const tableItemsFromApi: GccSmarketDashboardItem[] | null = useMemo(() => {
+        if (!useGccDashboard) return null;
+        return gccPayload?.items ?? [];
+    }, [useGccDashboard, gccPayload]);
 
     return (
         <div className="flex h-screen w-full font-sans text-slate-800 bg-slate-50 overflow-hidden selection:bg-sky-100 selection:text-sky-900">
@@ -268,7 +370,7 @@ export default function DashboardSupermarketCutting() {
                                 >
                                     <div className="w-full flex-1 min-h-0 min-w-0">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={perHourRows} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+                                            <LineChart data={chartRows} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                 <XAxis dataKey="jam" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: MARKET_TYPO.chartTick }} />
                                                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: MARKET_TYPO.chartTick }} width={34} domain={[0, 'auto']} />
@@ -291,18 +393,88 @@ export default function DashboardSupermarketCutting() {
                                     </div>
                                 </ChartCard>
 
-                                <ChartCard title="Tabel Supermarket Cutting" icon={ClipboardList} iconColor={COLORS.blue} iconBgColor={COLORS.blueSoft} className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2">
-                                    <div className="flex items-center justify-between gap-2 px-1 pb-1 text-slate-500" style={{ fontSize: MARKET_TYPO.tableMeta }}>
-                                        <span className="truncate">{scanQuery.isFetching ? 'Memuat...' : `${storeRows.length} baris`}</span>
-                                        {scanQuery.error ? (
-                                            <span className="text-rose-700 truncate" title={(scanQuery.error as Error).message}>
-                                                {(scanQuery.error as Error).message}
-                                            </span>
-                                        ) : (
-                                            <span className="truncate">Sumber: scan-state Supermarket</span>
-                                        )}
-                                    </div>
-
+                                <ChartCard
+                                    title="Tabel Supermarket Cutting"
+                                    icon={ClipboardList}
+                                    iconColor={COLORS.blue}
+                                    iconBgColor={COLORS.blueSoft}
+                                    headerAction={
+                                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                                            {gccDashboardQuery.error ? (
+                                                <span
+                                                    className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
+                                                    title={(gccDashboardQuery.error as Error).message}
+                                                >
+                                                    {(gccDashboardQuery.error as Error).message}
+                                                </span>
+                                            ) : scanQuery.error ? (
+                                                <span
+                                                    className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
+                                                    title={(scanQuery.error as Error).message}
+                                                >
+                                                    {(scanQuery.error as Error).message}
+                                                </span>
+                                            ) : null}
+                                            <div className="relative" ref={filterPanelRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => (filterOpen ? setFilterOpen(false) : openFilterPanel())}
+                                                    className="inline-flex items-center gap-2 rounded-xl border border-sky-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-sky-800 shadow-sm ring-1 ring-slate-900/5 transition hover:border-sky-400 hover:bg-sky-50/80 hover:text-sky-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
+                                                    title="Filter rentang tanggal (GET /api/gcc/cutting/smarket/data)"
+                                                >
+                                                    <CalendarRange className="h-3.5 w-3.5 text-sky-600 shrink-0" aria-hidden />
+                                                    <span className="whitespace-nowrap">{smarketFilterSummaryLabel}</span>
+                                                </button>
+                                                {filterOpen ? (
+                                                    <div
+                                                        className="absolute right-0 top-full z-[60] mt-1.5 w-[min(100vw-1.5rem,17.5rem)] rounded-xl border border-slate-200/90 bg-white p-3 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5"
+                                                        role="dialog"
+                                                        aria-label="Filter tanggal dashboard Supermarket"
+                                                    >
+                                                        <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400 mb-2">Rentang tanggal</p>
+                                                        <div className="space-y-2">
+                                                            <label className="block">
+                                                                <span className="text-[0.7rem] font-medium text-slate-600">Dari</span>
+                                                                <input
+                                                                    type="date"
+                                                                    value={draftFrom}
+                                                                    onChange={(e) => setDraftFrom(e.target.value)}
+                                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-sm text-slate-800 shadow-inner focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                                                                />
+                                                            </label>
+                                                            <label className="block">
+                                                                <span className="text-[0.7rem] font-medium text-slate-600">Sampai</span>
+                                                                <input
+                                                                    type="date"
+                                                                    value={draftTo}
+                                                                    onChange={(e) => setDraftTo(e.target.value)}
+                                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-sm text-slate-800 shadow-inner focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                                                                />
+                                                            </label>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={applySmarketDateFilter}
+                                                                className="flex-1 min-w-[5rem] rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                                                            >
+                                                                Terapkan
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={resetSmarketDateFilterToday}
+                                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
+                                                            >
+                                                                Hari ini
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    }
+                                    className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2"
+                                >
                                     <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-100 bg-white/70">
                                         <table className="min-w-full" style={{ fontSize: MARKET_TYPO.table }}>
                                             <thead className="sticky top-0 bg-white border-b border-slate-100">
@@ -316,7 +488,33 @@ export default function DashboardSupermarketCutting() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {storeRows.length === 0 ? (
+                                                {tableItemsFromApi ? (
+                                                    tableItemsFromApi.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                                                                Belum ada data supermarket (API).
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        tableItemsFromApi.map((it, idx) => (
+                                                            <tr
+                                                                key={`${it.rfid_bundles || 'x'}-${it.id_bundles ?? ''}-${idx}`}
+                                                                className="hover:bg-sky-50/40"
+                                                            >
+                                                                <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                                                    {it.rfid_bundles?.trim() || '—'}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-slate-800 whitespace-nowrap">{it.wo?.trim() ? it.wo.trim() : '—'}</td>
+                                                                <td className="px-3 py-2 text-right tabular-nums">{safeNum(it.qty)}</td>
+                                                                <td className="px-3 py-2 whitespace-nowrap">{it.line != null && String(it.line).trim() !== '' ? String(it.line).trim() : '—'}</td>
+                                                                <td className="px-3 py-2 whitespace-nowrap">{lokasiFromLastStatus(it.last_status)}</td>
+                                                                <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                                                                    {formatIsoShort(it.smarket_time || it.tanggal || '')}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )
+                                                ) : storeRows.length === 0 ? (
                                                     <tr>
                                                         <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                                                             Belum ada data supermarket.

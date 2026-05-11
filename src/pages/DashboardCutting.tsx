@@ -7,7 +7,7 @@ import CuttingProcessSection from '../components/dashboard/cutting/CuttingProces
 import CuttingDashboardCharts from '../components/dashboard/cutting/CuttingDashboardCharts';
 import { COLORS } from '../components/dashboard/constants';
 import backgroundImage from '../assets/background.jpg';
-import { getCuttingScanState } from '../config/api';
+import { getCuttingScanState, filterCuttingScanStateToLocalToday } from '../config/api';
 
 const QUERY_CUTTING_SCAN = ['cutting-scan-state'] as const;
 
@@ -38,6 +38,7 @@ export default function DashboardCutting() {
         refetchInterval: 12_000,
     });
     const scanDoc = scanQuery.data;
+    const scanDocToday = useMemo(() => (scanDoc ? filterCuttingScanStateToLocalToday(scanDoc) : undefined), [scanDoc]);
 
     useEffect(() => {
         const t = setInterval(() => {
@@ -52,9 +53,9 @@ export default function DashboardCutting() {
 
     const distributionData = useMemo(() => {
         const bundle = bundleMetric;
-        const qc = scanDoc?.qc.history.length ?? 0;
-        const store = scanDoc?.store.count ?? 0;
-        const supply = scanDoc?.supply.count ?? 0;
+        const qc = scanDocToday?.qc.history.length ?? 0;
+        const store = scanDocToday?.store.count ?? 0;
+        const supply = scanDocToday?.supply.count ?? 0;
         const raw = [
             { name: 'Bundle', value: bundle, fill: COLORS.blue },
             { name: 'Quality Control', value: qc, fill: COLORS.orange },
@@ -71,7 +72,7 @@ export default function DashboardCutting() {
             ];
         }
         return raw;
-    }, [bundleMetric, scanDoc]);
+    }, [bundleMetric, scanDocToday]);
 
     const trendData = useMemo(() => {
         return SHIFT_HOURS.map((jam, i) => {
@@ -119,7 +120,7 @@ export default function DashboardCutting() {
                 */}
                 <main className="flex flex-col flex-1 min-h-0 w-full overflow-hidden bg-slate-50/50 px-2 md:px-3 pb-2 md:pb-3 pt-10 xs:pt-12 sm:pt-14 md:pt-[3.5rem] lg:pt-[4.5rem] gap-2">
                     <div className="flex-[3] min-h-0 min-w-0 flex flex-col overflow-hidden border border-blue-100 rounded-xl bg-white/80 shadow-sm p-1 md:p-1.5">
-                        <CuttingProcessSection onBundleMetrics={setBundleMetric} />
+                        <CuttingProcessSection onBundleMetrics={setBundleMetric} filterTablesToToday />
                     </div>
 
                     <div className="flex-[2] min-h-0 min-w-0 flex flex-col overflow-hidden">

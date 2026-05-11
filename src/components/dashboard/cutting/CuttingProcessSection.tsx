@@ -23,6 +23,7 @@ import {
     getWOBreakdown,
     inputRfidCuttingBundle,
     getCuttingScanState,
+    filterCuttingScanStateToLocalToday,
     getGccCuttingQcQty,
     postCuttingQcScan,
     postCuttingStoreScan,
@@ -210,9 +211,12 @@ function LeftDetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: 
 
 const CuttingProcessSection = memo(function CuttingProcessSection({
     onBundleMetrics,
+    filterTablesToToday = false,
 }: {
     /** Untuk grafik distribusi: jumlah baris bundle tersimpan */
     onBundleMetrics?: (bundleTableRows: number) => void;
+    /** Jika true (dashboard cutting), tabel hanya menampilkan entri yang `at`-nya hari ini (lokal). */
+    filterTablesToToday?: boolean;
 }) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -228,6 +232,11 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         refetchInterval: 12_000,
     });
     const doc = scanQuery.data;
+    const displayDoc = useMemo(() => {
+        if (!doc) return undefined;
+        if (!filterTablesToToday) return doc;
+        return filterCuttingScanStateToLocalToday(doc);
+    }, [doc, filterTablesToToday]);
 
     useEffect(() => {
         successAudioRef.current = new Audio(successSoundPath);
@@ -736,7 +745,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     }, [modalSupplyRfid, modalSupplyLineNum, modalSupplyLocation, submitSupply, playSound]);
 
     const qcRows = useMemo(() => {
-        return (doc?.qc.history ?? []).slice(0, 24).map((h) => ({
+        return (displayDoc?.qc.history ?? []).slice(0, 24).map((h) => ({
             rfid: h.rfid_garment,
             qty: (h.good ?? 0) + (h.repair ?? 0) + (h.reject ?? 0),
             good: h.good ?? 0,
@@ -751,10 +760,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             location: h.location ?? 'quality_control',
             timestamp: h.at ?? '—',
         }));
-    }, [doc]);
+    }, [displayDoc]);
 
     const bundleRows = useMemo(() => {
-        return (doc?.bundle?.history ?? []).slice(0, 50).map((h) => ({
+        return (displayDoc?.bundle?.history ?? []).slice(0, 50).map((h) => ({
             rfid: h.rfid_garment,
             wo: h.wo ?? '—',
             qty: Math.max(1, Number(h.qty ?? 1)),
@@ -766,14 +775,14 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             location: h.location ?? 'bundle',
             timestamp: h.at ?? '—',
         }));
-    }, [doc]);
+    }, [displayDoc]);
 
     useEffect(() => {
         onBundleMetrics?.(bundleRows.length);
     }, [bundleRows.length, onBundleMetrics]);
 
     const storeRows = useMemo(() => {
-        return (doc?.store.history ?? []).slice(0, 24).map((h) => {
+        return (displayDoc?.store.history ?? []).slice(0, 24).map((h) => {
             const locRaw = (h.location ?? '').trim();
             const isCheckout = h.checkout === true || locRaw === 'checkout';
             const lokasi = isCheckout
@@ -799,10 +808,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 timestamp: h.at ?? '—',
             };
         });
-    }, [doc]);
+    }, [displayDoc]);
 
     const supplyRows = useMemo(() => {
-        return (doc?.supply.history ?? []).slice(0, 24).map((h) => ({
+        return (displayDoc?.supply.history ?? []).slice(0, 24).map((h) => ({
             rfid: h.rfid_garment,
             wo: h.wo ?? '—',
             line: h.line ?? '—',
@@ -816,7 +825,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             location: h.location ?? 'supply_sewing',
             timestamp: h.at ?? '—',
         }));
-    }, [doc]);
+    }, [displayDoc]);
 
     const invalidate = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: QUERY_SCAN });
@@ -918,7 +927,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   second: '2-digit',
               })
             : '—';
-        const totalQc = doc?.qc.history?.length ?? qcRows.length;
+        const totalQc = displayDoc?.qc.history?.length ?? qcRows.length;
         return (
             <>
                 <div className="rounded-xl border-2 border-sky-200/90 bg-white p-3 shadow-sm">
@@ -959,7 +968,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 </div>
             </>
         );
-    }, [operator, qcSessionLog, qcRows, doc?.qc.history?.length]);
+    }, [operator, qcSessionLog, qcRows, displayDoc?.qc.history?.length]);
 
     const storeLeftColumn = useMemo(() => {
         const lastOk = storeSessionLog.find((s) => s.ok);
@@ -979,7 +988,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   second: '2-digit',
               })
             : '—';
-        const totalSt = doc?.store.history?.length ?? storeRows.length;
+        const totalSt = displayDoc?.store.history?.length ?? storeRows.length;
         return (
             <>
                 <div className="rounded-xl border-2 border-amber-200/90 bg-white p-3 shadow-sm">
@@ -1016,7 +1025,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 </div>
             </>
         );
-    }, [operator, storeSessionLog, storeRows, doc?.store.history?.length]);
+    }, [operator, storeSessionLog, storeRows, displayDoc?.store.history?.length]);
 
     const supplyLeftColumn = useMemo(() => {
         const lastOk = supplySessionLog.find((s) => s.ok);
@@ -1044,7 +1053,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   second: '2-digit',
               })
             : '—';
-        const totalSu = doc?.supply.history?.length ?? supplyRows.length;
+        const totalSu = displayDoc?.supply.history?.length ?? supplyRows.length;
         return (
             <>
                 <div className="rounded-xl border-2 border-violet-200/90 bg-white p-3 shadow-sm">
@@ -1082,7 +1091,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 </div>
             </>
         );
-    }, [operator, supplySessionLog, supplyRows, doc?.supply.history?.length]);
+    }, [operator, supplySessionLog, supplyRows, displayDoc?.supply.history?.length]);
 
     // Form metadata Bundle disembunyikan sesuai permintaan UI.
 

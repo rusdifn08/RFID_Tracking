@@ -2113,6 +2113,31 @@ export interface CuttingScanStateDoc {
     supply: { count: number; history: CuttingScanHistoryEntry[] };
 }
 
+/** True jika `iso` jatuh pada hari kalender lokal yang sama dengan `day`. */
+export function cuttingHistoryIsoOnLocalDay(iso: string | undefined, day: Date): boolean {
+    if (iso == null || String(iso).trim() === '') return false;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    return d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate();
+}
+
+/** Salin state scan cutting dengan riwayat per tahap difilter ke hari ini (timezone browser). */
+export function filterCuttingScanStateToLocalToday(doc: CuttingScanStateDoc, day: Date = new Date()): CuttingScanStateDoc {
+    const bundleHist = (doc.bundle.history ?? []).filter((h) => cuttingHistoryIsoOnLocalDay(h.at, day));
+    const qcHist = (doc.qc.history ?? []).filter((h) => cuttingHistoryIsoOnLocalDay(h.at, day));
+    const storeHist = (doc.store.history ?? []).filter((h) => cuttingHistoryIsoOnLocalDay(h.at, day));
+    const supplyHist = (doc.supply.history ?? []).filter((h) => cuttingHistoryIsoOnLocalDay(h.at, day));
+    const goodTotal = qcHist.reduce((s, h) => s + (h.good ?? 0), 0);
+    const repairTotal = qcHist.reduce((s, h) => s + (h.repair ?? 0), 0);
+    const rejectTotal = qcHist.reduce((s, h) => s + (h.reject ?? 0), 0);
+    return {
+        bundle: { count: bundleHist.length, history: bundleHist },
+        qc: { goodTotal, repairTotal, rejectTotal, history: qcHist },
+        store: { count: storeHist.length, history: storeHist },
+        supply: { count: supplyHist.length, history: supplyHist },
+    };
+}
+
 export const getCuttingScanState = async (): Promise<ApiResponse<CuttingScanStateDoc>> => {
     return await apiGet<CuttingScanStateDoc>('/api/cutting/scan-state');
 };
@@ -2405,31 +2430,129 @@ export const postCuttingSupplySewingScan = async (body: {
     return await apiPost('/api/cutting/supply-sewing-scan', body);
 };
 
+/** Satu baris agregat per jam dari GET `/api/gcc/cutting/smarket/data`. */
+export interface GccSmarketDashboardHourRow {
+    jam: string;
+    check_in?: number;
+    check_out?: number;
+    supply_urgent?: number;
+}
+
+/** Satu baris tabel dashboard supermarket dari GET `/api/gcc/cutting/smarket/data`. */
+export interface GccSmarketDashboardItem {
+    tanggal?: string;
+    id_bundles?: number;
+    rfid_bundles?: string;
+    wo?: string;
+    qty_output?: number;
+    qty_good?: number;
+    qty_smarket_in?: number;
+    last_time_smarket_in?: string | null;
+    qty_smarket_out?: number;
+    last_time_smarket_out?: string | null;
+    qty?: number;
+    line?: string | null;
+    branch?: string | null;
+    last_status?: string;
+    smarket_time?: string | null;
+}
+
+/** Objek `data` pada respons GET `/api/gcc/cutting/smarket/data`. */
+export interface GccSmarketDashboardPayload {
+    tanggal_from?: string;
+    tanggal_to?: string;
+    summary?: {
+        jumlah_bundle?: number;
+        check_in?: number;
+        check_out?: number;
+        supply_urgent?: number;
+    };
+    data_per_jam?: GccSmarketDashboardHourRow[];
+    total_data?: number;
+    items?: GccSmarketDashboardItem[];
+}
+
+/** Body JSON GET `/api/gcc/cutting/smarket/data` (bisa `status: "success"` tanpa field `success`). */
 export interface GccCuttingSmarketDashboardDataResponse {
-    success?: boolean;
+    code?: number;
+    status?: string;
     message?: string;
-    data?: {
-        bundle?: number;
-        in?: number;
-        out?: number;
-        urgent?: number;
-    };
+    success?: boolean;
+    data?: GccSmarketDashboardPayload;
 }
 
+/** Satu baris agregat per jam dari GET `/api/gcc/cutting/qc/data`. */
+export interface GccQcDashboardHourRow {
+    jam: string;
+    good?: number;
+    repair?: number;
+    reject?: number;
+}
+
+/** Satu baris tabel dashboard QC dari GET `/api/gcc/cutting/qc/data`. */
+export interface GccQcDashboardItem {
+    tanggal?: string;
+    id_bundles?: number;
+    rfid_bundles?: string;
+    wo?: string;
+    qty_output?: number;
+    qty_good?: number;
+    qty_repair?: number;
+    qty_reject?: number;
+}
+
+/** Objek `data` pada respons GET `/api/gcc/cutting/qc/data`. */
+export interface GccQcDashboardPayload {
+    tanggal_from?: string;
+    tanggal_to?: string;
+    summary?: {
+        jumlah_bundle?: number;
+        total_good?: number;
+        total_repair?: number;
+        total_reject?: number;
+    };
+    data_per_jam?: GccQcDashboardHourRow[];
+    total_data?: number;
+    items?: GccQcDashboardItem[];
+}
+
+/** Body JSON GET `/api/gcc/cutting/qc/data`. */
 export interface GccCuttingQcDashboardDataResponse {
-    success?: boolean;
+    code?: number;
+    status?: string;
     message?: string;
-    data?: {
-        bundle?: number;
-        good?: number;
-        repair?: number;
-        reject?: number;
-    };
+    success?: boolean;
+    data?: GccQcDashboardPayload;
 }
 
-export const getGccCuttingSmarketDashboardData = async (): Promise<ApiResponse<GccCuttingSmarketDashboardDataResponse>> => {
+/** Query opsional GET `/api/gcc/cutting/smarket/data`. */
+export type GccCuttingSmarketDashboardQueryParams = {
+    tanggal_from?: string;
+    tanggal_to?: string;
+};
+
+export const getGccCuttingSmarketDashboardData = async (
+    params?: GccCuttingSmarketDashboardQueryParams,
+): Promise<ApiResponse<GccCuttingSmarketDashboardDataResponse>> => {
     try {
-        const res = await fetch(resolveGccCuttingSmarketDataUrl(), {
+        const base = resolveGccCuttingSmarketDataUrl();
+        let reqUrl = base;
+        if (params?.tanggal_from != null || params?.tanggal_to != null) {
+            let u: URL;
+            try {
+                u = new URL(base);
+            } catch {
+                u = new URL(base, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+            }
+            if (params.tanggal_from != null && String(params.tanggal_from).trim() !== '') {
+                u.searchParams.set('tanggal_from', String(params.tanggal_from).trim());
+            }
+            if (params.tanggal_to != null && String(params.tanggal_to).trim() !== '') {
+                u.searchParams.set('tanggal_to', String(params.tanggal_to).trim());
+            }
+            reqUrl = u.toString();
+        }
+        const res = await fetch(reqUrl, {
             method: 'GET',
             headers: getGccCuttingBundlesRequestHeaders(),
         });
@@ -2440,16 +2563,21 @@ export const getGccCuttingSmarketDashboardData = async (): Promise<ApiResponse<G
         } catch {
             return { success: false, error: 'Respons dashboard smarket GCC bukan JSON', status: 502 };
         }
-        const successByBody = (data as { success?: boolean })?.success;
-        const okByBody = successByBody == null || successByBody === true;
+        const body = data as GccCuttingSmarketDashboardDataResponse;
+        const st = String(body.status || '').toLowerCase();
+        const okByBody =
+            body.success !== false &&
+            !(typeof body.code === 'number' && body.code >= 400) &&
+            (body.success === true || body.code === 200 || st === 'success' || (body.data != null && st !== 'error'));
         if (!res.ok || !okByBody) {
             const msg =
-                (data as { message?: string })?.message ||
-                (data as { status?: string })?.status ||
+                body.message ||
+                body.status ||
+                (typeof body.code === 'number' ? `code ${body.code}` : null) ||
                 `HTTP ${res.status}`;
-            return { success: false, error: String(msg), data: data as GccCuttingSmarketDashboardDataResponse, status: res.status };
+            return { success: false, error: String(msg), data: body, status: res.status };
         }
-        return { success: true, data: data as GccCuttingSmarketDashboardDataResponse, status: res.status };
+        return { success: true, data: body, status: res.status };
     } catch (error) {
         return {
             success: false,
@@ -2459,9 +2587,34 @@ export const getGccCuttingSmarketDashboardData = async (): Promise<ApiResponse<G
     }
 };
 
-export const getGccCuttingQcDashboardData = async (): Promise<ApiResponse<GccCuttingQcDashboardDataResponse>> => {
+/** Query opsional GET `/api/gcc/cutting/qc/data` (contoh: `2026-05-11T00:00:00` … `2026-05-11T23:59:59`). */
+export type GccCuttingQcDashboardQueryParams = {
+    tanggal_from?: string;
+    tanggal_to?: string;
+};
+
+export const getGccCuttingQcDashboardData = async (
+    params?: GccCuttingQcDashboardQueryParams,
+): Promise<ApiResponse<GccCuttingQcDashboardDataResponse>> => {
     try {
-        const res = await fetch(resolveGccCuttingQcDataUrl(), {
+        const base = resolveGccCuttingQcDataUrl();
+        let reqUrl = base;
+        if (params?.tanggal_from != null || params?.tanggal_to != null) {
+            let u: URL;
+            try {
+                u = new URL(base);
+            } catch {
+                u = new URL(base, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+            }
+            if (params.tanggal_from != null && String(params.tanggal_from).trim() !== '') {
+                u.searchParams.set('tanggal_from', String(params.tanggal_from).trim());
+            }
+            if (params.tanggal_to != null && String(params.tanggal_to).trim() !== '') {
+                u.searchParams.set('tanggal_to', String(params.tanggal_to).trim());
+            }
+            reqUrl = u.toString();
+        }
+        const res = await fetch(reqUrl, {
             method: 'GET',
             headers: getGccCuttingBundlesRequestHeaders(),
         });
@@ -2472,16 +2625,21 @@ export const getGccCuttingQcDashboardData = async (): Promise<ApiResponse<GccCut
         } catch {
             return { success: false, error: 'Respons dashboard QC GCC bukan JSON', status: 502 };
         }
-        const successByBody = (data as { success?: boolean })?.success;
-        const okByBody = successByBody == null || successByBody === true;
+        const body = data as GccCuttingQcDashboardDataResponse;
+        const st = String(body.status || '').toLowerCase();
+        const okByBody =
+            body.success !== false &&
+            !(typeof body.code === 'number' && body.code >= 400) &&
+            (body.success === true || body.code === 200 || st === 'success' || (body.data != null && st !== 'error'));
         if (!res.ok || !okByBody) {
             const msg =
-                (data as { message?: string })?.message ||
-                (data as { status?: string })?.status ||
+                body.message ||
+                body.status ||
+                (typeof body.code === 'number' ? `code ${body.code}` : null) ||
                 `HTTP ${res.status}`;
-            return { success: false, error: String(msg), data: data as GccCuttingQcDashboardDataResponse, status: res.status };
+            return { success: false, error: String(msg), data: body, status: res.status };
         }
-        return { success: true, data: data as GccCuttingQcDashboardDataResponse, status: res.status };
+        return { success: true, data: body, status: res.status };
     } catch (error) {
         return {
             success: false,
