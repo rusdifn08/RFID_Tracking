@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import CuttingProcessSection from '../components/dashboard/cutting/CuttingProcessSection';
 import CuttingDashboardCharts from '../components/dashboard/cutting/CuttingDashboardCharts';
 import { COLORS } from '../components/dashboard/constants';
@@ -78,10 +77,8 @@ function buildTrendAndActivityFromScanState(
 }
 
 export default function DashboardCutting() {
-    const { isOpen } = useSidebar();
-    const sidebarWidth = isOpen ? '18%' : '5rem';
-
     const [bundleMetric, setBundleMetric] = useState(0);
+    const [homeCounts, setHomeCounts] = useState<{ bundle: number; qc: number; store: number } | null>(null);
 
     const scanQuery = useQuery({
         queryKey: QUERY_CUTTING_SCAN,
@@ -101,9 +98,9 @@ export default function DashboardCutting() {
     }, [scanDocToday]);
 
     const distributionData = useMemo(() => {
-        const bundle = bundleMetric;
-        const qc = scanDocToday?.qc.history.length ?? 0;
-        const store = scanDocToday?.store.count ?? 0;
+        const bundle = homeCounts != null ? homeCounts.bundle : bundleMetric;
+        const qc = homeCounts != null ? homeCounts.qc : (scanDocToday?.qc.history.length ?? 0);
+        const store = homeCounts != null ? homeCounts.store : (scanDocToday?.store.count ?? 0);
         const supply = scanDocToday?.supply.count ?? 0;
         const raw = [
             { name: 'Bundle', value: bundle, fill: COLORS.blue },
@@ -121,7 +118,7 @@ export default function DashboardCutting() {
             ];
         }
         return raw;
-    }, [bundleMetric, scanDocToday]);
+    }, [bundleMetric, scanDocToday, homeCounts]);
 
     return (
         <div className="flex h-screen w-full font-sans text-slate-800 bg-slate-50 overflow-hidden selection:bg-sky-100 selection:text-sky-900">
@@ -135,29 +132,35 @@ export default function DashboardCutting() {
             </div>
 
             <div
-                className="flex flex-col h-full min-h-0 relative z-10 transition-all duration-300 ease-in-out"
+                className="flex flex-col h-full min-h-0 min-w-0 relative z-10 transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 <Header />
 
                 {/*
                   Header fixed: h-12 / xs:h-14 / sm:h-16; logo di md+ lebih tinggi — beri ruang ekstra agar konten tidak tertutup.
-                  Area utama: 3/5 scanning + 2/5 grafik (flex-[3] : flex-[2]).
+                  Desktop: 3/5 scanning + 2/5 grafik (flex-[3] : flex-[2]), overflow terkunci di viewport.
+                  Smartphone / tablet kecil: scroll vertikal di <main>; kartu tabel punya min-height agar baris data terlihat.
                 */}
-                <main className="flex flex-col flex-1 min-h-0 w-full overflow-hidden bg-slate-50/50 px-2 md:px-3 pb-2 md:pb-3 pt-10 xs:pt-12 sm:pt-14 md:pt-[3.5rem] lg:pt-[4.5rem] gap-2">
-                    <div className="flex-[3] min-h-0 min-w-0 flex flex-col overflow-hidden border border-blue-100 rounded-xl bg-white/80 shadow-sm p-1 md:p-1.5">
-                        <CuttingProcessSection onBundleMetrics={setBundleMetric} filterTablesToToday />
+                <main className="flex flex-col flex-1 min-h-0 w-full bg-slate-50/50 px-2 md:px-3 pb-2 md:pb-3 pt-10 xs:pt-12 sm:pt-14 md:pt-[3.5rem] lg:pt-[4.5rem] gap-2 lg:overflow-hidden max-lg:overflow-y-auto max-lg:overscroll-contain max-lg:[-webkit-overflow-scrolling:touch] max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                    <div className="flex-[3] min-h-0 min-w-0 flex flex-col border border-blue-100 rounded-xl bg-white/80 shadow-sm p-1 md:p-1.5 lg:overflow-hidden max-lg:flex-none max-lg:overflow-visible max-lg:min-h-0">
+                        <CuttingProcessSection
+                            onBundleMetrics={setBundleMetric}
+                            filterTablesToToday
+                            homeDashboardApi
+                            onHomeDashboardCounts={setHomeCounts}
+                        />
                     </div>
 
-                    <div className="flex-[2] min-h-0 min-w-0 flex flex-col overflow-hidden">
+                    <div className="flex-[2] min-h-0 min-w-0 flex flex-col lg:overflow-hidden max-lg:flex-none max-lg:min-h-[min(280px,42svh)] max-lg:overflow-visible">
                         <CuttingDashboardCharts
                             distributionData={distributionData}
                             trendData={trendData}
                             activityData={activityData}
-                            className="flex-1 min-h-0 h-full"
+                            className="flex-1 min-h-0 h-full max-lg:min-h-[260px]"
                         />
                     </div>
                 </main>

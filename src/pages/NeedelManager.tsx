@@ -3,7 +3,6 @@ import ExcelJS from 'exceljs';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import needleIcon from '../assets/needle.webp';
 import { CircleDot, Download, Loader2, Search, X } from 'lucide-react';
@@ -153,7 +152,6 @@ const NeedleTableRow = memo(function NeedleTableRow({
 });
 
 export default function NeedleManager() {
-  const { isOpen } = useSidebar();
   const [dateFrom, setDateFrom] = useState(getTodayIso());
   const [dateTo, setDateTo] = useState(getTodayIso());
   const [items, setItems] = useState<NeedlePickingItem[]>([]);
@@ -446,8 +444,8 @@ export default function NeedleManager() {
       <div
         className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
         style={{
-          marginLeft: isOpen ? '18%' : '5rem',
-          width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+          marginLeft: 'var(--layout-sidebar-offset)',
+          width: 'var(--layout-sidebar-width)',
         }}
       >
         <Header />

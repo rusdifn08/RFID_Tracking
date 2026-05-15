@@ -34,6 +34,9 @@ interface CuttingDashboardChartsProps {
 /**
  * Baris 3 kartu grafik Cutting — wireframe: donut + legenda vertikal, dua line/area.
  */
+const CUTTING_CHART_CARD_CLASS =
+    'min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 max-lg:min-h-[200px] max-lg:h-auto max-lg:flex-none';
+
 const CuttingDashboardCharts = memo(function CuttingDashboardCharts({
     distributionData,
     trendData,
@@ -44,7 +47,7 @@ const CuttingDashboardCharts = memo(function CuttingDashboardCharts({
 
     return (
         <div
-            className={`flex-1 min-h-0 h-full w-full grid grid-cols-1 sm:grid-cols-3 gap-1.5 md:gap-2 ${className}`}
+            className={`flex-1 min-h-0 h-full w-full grid grid-cols-1 sm:grid-cols-3 gap-1.5 md:gap-2 max-lg:h-auto max-lg:min-h-0 ${className}`}
             style={{ gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)' }}
         >
             <ChartCard
@@ -52,9 +55,9 @@ const CuttingDashboardCharts = memo(function CuttingDashboardCharts({
                 icon={PackagePlus}
                 iconColor={COLORS.blue}
                 iconBgColor={COLORS.blueSoft}
-                className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300"
+                className={CUTTING_CHART_CARD_CLASS}
             >
-                <div className="w-full flex-1 min-h-0 flex flex-row items-stretch gap-1 rounded-xl">
+                <div className="w-full flex-1 min-h-0 max-lg:min-h-[160px] flex flex-row items-stretch gap-1 rounded-xl">
                     <div className="flex-1 min-w-0 min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
@@ -108,9 +111,9 @@ const CuttingDashboardCharts = memo(function CuttingDashboardCharts({
                 icon={TrendingUp}
                 iconColor={COLORS.blue}
                 iconBgColor={COLORS.blueSoft}
-                className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300"
+                className={CUTTING_CHART_CARD_CLASS}
             >
-                <div className="w-full flex-1 min-h-0">
+                <div className="w-full flex-1 min-h-0 max-lg:min-h-[160px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={trendData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
                             <defs>
@@ -146,9 +149,9 @@ const CuttingDashboardCharts = memo(function CuttingDashboardCharts({
                 icon={Activity}
                 iconColor={COLORS.green}
                 iconBgColor={COLORS.greenSoft}
-                className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300"
+                className={CUTTING_CHART_CARD_CLASS}
             >
-                <div className="w-full flex-1 min-h-0">
+                <div className="w-full flex-1 min-h-0 max-lg:min-h-[160px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={activityData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
                             <defs>

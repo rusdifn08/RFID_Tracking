@@ -1,8 +1,11 @@
 import { memo } from 'react';
 import { Activity, XCircle, Clock, MapPin, User } from 'lucide-react';
 import { parseTimestamp, getStatusColor, formatLokasi } from '../../utils/checkingUtils';
+import { CHECKING_THEME, type CheckingTheme } from '../../utils/checkingTheme';
 
 interface TrackingModalProps {
+    theme?: CheckingTheme;
+    title?: string;
     isOpen: boolean;
     selectedRfid: string;
     trackingData: any[];
@@ -11,12 +14,16 @@ interface TrackingModalProps {
 }
 
 const TrackingModal = memo(({ 
+    theme = 'default',
+    title,
     isOpen, 
     selectedRfid, 
     trackingData, 
     loadingTracking, 
     onClose 
 }: TrackingModalProps) => {
+    const t = CHECKING_THEME[theme];
+    const modalTitle = title ?? (theme === 'cutting' ? 'Tracking Bundle Cutting' : 'Tracking Data RFID');
     if (!isOpen) return null;
 
     return (
@@ -25,11 +32,11 @@ const TrackingModal = memo(({
                 {/* Header */}
                 <div className="flex items-center justify-between p-2 xs:p-3 sm:p-4 md:p-6 border-b border-gray-200 flex-shrink-0">
                     <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 flex-1 min-w-0">
-                        <div className="p-1.5 xs:p-2 bg-blue-100 rounded-lg flex-shrink-0">
-                            <Activity className="w-4 xs:w-4.5 sm:w-5 md:w-6 h-4 xs:h-4.5 sm:h-5 md:h-6 text-blue-600" strokeWidth={2.5} />
+                        <div className={`p-1.5 xs:p-2 ${t.modalIconBg} rounded-lg flex-shrink-0`}>
+                            <Activity className={`w-4 xs:w-4.5 sm:w-5 md:w-6 h-4 xs:h-4.5 sm:h-5 md:h-6 ${t.modalIcon}`} strokeWidth={2.5} />
                         </div>
                         <div className="min-w-0 flex-1">
-                            <h3 className="text-sm xs:text-base sm:text-lg md:text-xl font-bold text-gray-800 truncate">Tracking Data RFID</h3>
+                            <h3 className="text-sm xs:text-base sm:text-lg md:text-xl font-bold text-gray-800 truncate">{modalTitle}</h3>
                             <p className="text-[10px] xs:text-xs sm:text-sm text-gray-600 font-mono mt-0.5 xs:mt-1 truncate">{selectedRfid}</p>
                         </div>
                     </div>
@@ -45,7 +52,7 @@ const TrackingModal = memo(({
                 <div className="flex-1 overflow-y-auto p-2 xs:p-3 sm:p-4 md:p-6">
                     {loadingTracking ? (
                         <div className="flex items-center justify-center py-8 xs:py-12 sm:py-16">
-                            <Activity className="w-6 xs:w-7 sm:w-8 h-6 xs:h-7 sm:h-8 text-blue-500 animate-spin" strokeWidth={2.5} />
+                            <Activity className={`w-6 xs:w-7 sm:w-8 h-6 xs:h-7 sm:h-8 ${t.icon} animate-spin`} strokeWidth={2.5} />
                             <span className="ml-2 xs:ml-3 text-[10px] xs:text-xs sm:text-sm text-gray-600">Memuat data tracking...</span>
                         </div>
                     ) : trackingData.length === 0 ? (
@@ -59,7 +66,7 @@ const TrackingModal = memo(({
                             {trackingData.map((track, index) => (
                                 <div
                                     key={`${track.id || index}`}
-                                    className="relative p-2 xs:p-3 sm:p-4 rounded-lg border border-gray-200 bg-gradient-to-r from-white to-gray-50 hover:from-blue-50 hover:to-blue-100 transition-all duration-300"
+                                    className={`relative p-2 xs:p-3 sm:p-4 rounded-lg border border-gray-200 bg-gradient-to-r from-white to-gray-50 ${t.cardHover} transition-all duration-300`}
                                 >
                                     <div className="flex items-start gap-2 xs:gap-3 sm:gap-4">
                                         {/* Timeline indicator */}
@@ -88,8 +95,8 @@ const TrackingModal = memo(({
                                                         </span>
                                                     )}
                                                     {track.line && (
-                                                        <span className="text-[10px] xs:text-xs text-blue-600 bg-blue-50 px-1.5 xs:px-2 py-0.5 xs:py-1 rounded">
-                                                            Line {track.line}
+                                                        <span className={`text-[10px] xs:text-xs px-1.5 xs:px-2 py-0.5 xs:py-1 rounded ${theme === 'cutting' ? 'text-emerald-700 bg-emerald-50' : 'text-blue-600 bg-blue-50'}`}>
+                                                            {theme === 'cutting' ? `Meja ${track.line}` : `Line ${track.line}`}
                                                         </span>
                                                     )}
                                                 </div>
@@ -108,7 +115,44 @@ const TrackingModal = memo(({
                                                 </div>
                                             )}
 
-                                            {(track.wo || track.style || track.buyer || track.item || track.color || track.size) && (
+                                            {(track.barcode || track.qty_batch != null) && (
+                                                <div className="flex flex-wrap gap-1.5 xs:gap-2 mt-1.5 text-[10px] xs:text-xs text-gray-600">
+                                                    {track.barcode ? (
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">Barcode: {track.barcode}</span>
+                                                    ) : null}
+                                                    {track.qty_batch != null ? (
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">Qty: {track.qty_batch}</span>
+                                                    ) : null}
+                                                    {track.batch ? (
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">Batch: {track.batch}</span>
+                                                    ) : null}
+                                                </div>
+                                            )}
+
+                                            {theme === 'cutting' ? (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 xs:gap-2 mt-2 xs:mt-2.5 sm:mt-3 pt-2 xs:pt-2.5 sm:pt-3 border-t border-emerald-100 text-[10px] xs:text-xs">
+                                                    {(
+                                                        [
+                                                            ['WO', track.wo],
+                                                            ['Style', track.style],
+                                                            ['Meja', track.line],
+                                                            ['Warna', track.color],
+                                                            ['Size', track.size],
+                                                            ['No. Ikat', track.no_ikat != null ? String(track.no_ikat) : ''],
+                                                            ['No. Urut', track.no_urut],
+                                                            ['Season', track.season],
+                                                            ['Country', track.country],
+                                                        ] as const
+                                                    ).map(([label, val]) =>
+                                                        val ? (
+                                                            <div key={label}>
+                                                                <span className="text-gray-500 font-medium">{label}:</span>
+                                                                <span className="ml-1 font-semibold text-gray-700">{val}</span>
+                                                            </div>
+                                                        ) : null
+                                                    )}
+                                                </div>
+                                            ) : (track.wo || track.style || track.buyer || track.item || track.color || track.size) ? (
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 xs:gap-2 mt-2 xs:mt-2.5 sm:mt-3 pt-2 xs:pt-2.5 sm:pt-3 border-t border-gray-200 text-[10px] xs:text-xs">
                                                     {track.wo && (
                                                         <div>
@@ -147,7 +191,7 @@ const TrackingModal = memo(({
                                                         </div>
                                                     )}
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>
@@ -164,7 +208,7 @@ const TrackingModal = memo(({
                         </span>
                         <button
                             onClick={onClose}
-                            className="px-4 xs:px-5 sm:px-6 py-1.5 xs:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md text-[10px] xs:text-xs sm:text-sm"
+                            className={`px-4 xs:px-5 sm:px-6 py-1.5 xs:py-2 ${t.modalFooterBtn} text-white rounded-lg transition-colors duration-200 font-semibold shadow-sm hover:shadow-md text-[10px] xs:text-xs sm:text-sm`}
                         >
                             Tutup
                         </button>

@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Layers, Scan, RefreshCw, TrendingUp, X } from 'lucide-react';
 import foldingIcon from '../assets/folding_icon.webp';
@@ -48,7 +47,6 @@ interface TableDistributionData {
 }
 
 export default function DashboardFolding() {
-  const { isOpen } = useSidebar();
   const { user } = useAuth(); // Get current logged in user
   const userPart = String(user?.bagian || user?.jabatan || '').toUpperCase().trim();
   const canAccessFoldingCheckIn = ['FOLDING', 'ROBOTIC'].includes(userPart);
@@ -810,8 +808,6 @@ export default function DashboardFolding() {
   }, [tableCountDataResponse, optimisticCounts, activeUsersMap, scanningUsersMap, canAccessTable, tableWoData]);
 
   // --- LAYOUT ---
-  const sidebarWidth = isOpen ? '18%' : '5rem';
-
   // State untuk detect mobile device
   const [isMobile, setIsMobile] = useState(false);
 
@@ -845,8 +841,8 @@ export default function DashboardFolding() {
       <div
         className="flex flex-col h-full relative z-10 transition-all duration-300 ease-in-out"
         style={{
-          marginLeft: sidebarWidth,
-          width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+          marginLeft: 'var(--layout-sidebar-offset)',
+          width: 'var(--layout-sidebar-width)',
         }}
       >
 

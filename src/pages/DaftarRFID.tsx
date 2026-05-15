@@ -3,7 +3,6 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import ScanningRFIDNew from '../components/ScanningRFIDNew';
 import backgroundImage from '../assets/background.jpg';
 import { useDaftarRFID } from '../hooks/useDaftarRFID';
@@ -15,7 +14,6 @@ import UpdateDataModal from '../components/daftar/UpdateDataModal';
 import { API_BASE_URL, getWOBreakdown, getDefaultHeaders } from '../config/api';
 
 const DaftarRFID = memo(() => {
-    const { isOpen } = useSidebar();
 
     // State untuk Update Modal
     const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -663,7 +661,7 @@ const DaftarRFID = memo(() => {
             {/* Main Content Area */}
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header */}
                 <Header />

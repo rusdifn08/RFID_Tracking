@@ -3,7 +3,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
 import dashboardRfidIcon from '../assets/dashboardrfid.webp';
@@ -37,7 +36,6 @@ const cards = [
 ];
 
 const Cutting = memo(() => {
-    const { isOpen } = useSidebar();
 
     return (
         <div
@@ -57,8 +55,8 @@ const Cutting = memo(() => {
             <div
                 className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out relative"
                 style={{
-                    marginLeft: isOpen ? '18%' : '5rem',
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 <div className="sticky top-0 z-40 shadow-md">

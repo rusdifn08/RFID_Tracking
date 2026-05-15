@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import { trackingTimeService } from '../services/trackingTimeService';
 import { exportProductionTrackingToExcel } from '../utils/exportProductionTrackingToExcel';
 import {
@@ -12,7 +11,6 @@ import {
 const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 menit
 
 export default function ProductionTrackingTime() {
-  const { isOpen } = useSidebar();
   const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState<string>(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -454,7 +452,7 @@ export default function ProductionTrackingTime() {
       <Sidebar />
       <div
         className="flex-1 flex flex-col transition-all duration-300 relative"
-        style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+        style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
       >
         <Header />
 

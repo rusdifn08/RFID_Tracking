@@ -17,6 +17,11 @@ export interface RFIDCheckItem {
     lastScanned?: string;
     lokasi?: string;
     statusData?: string;
+    meja?: string;
+    noIkat?: number;
+    noUrut?: string;
+    season?: string;
+    country?: string;
 }
 
 interface UseCheckingRFIDReturn {

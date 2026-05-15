@@ -1,8 +1,7 @@
-import React, { useMemo, useCallback, memo } from 'react';
+import React, { useCallback, memo } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import ExportModal from '../components/ExportModal';
 import backgroundImage from '../assets/background.jpg';
 import { useListRFIDQuery as useListRFID } from '../hooks/useListRFIDQuery';
@@ -12,7 +11,6 @@ import RFIDTable from '../components/list/RFIDTable';
 import { FileText, X, MapPin, Trash2, AlertTriangle, Calendar } from 'lucide-react';
 
 const ListRFID: React.FC = memo(() => {
-    const { isOpen } = useSidebar();
 
     // Custom hook untuk semua state dan logic
     const {
@@ -96,8 +94,6 @@ const ListRFID: React.FC = memo(() => {
     }, [itemToDelete, confirmDelete, showNotification]);
 
     // Sidebar width
-    const sidebarWidth = useMemo(() => isOpen ? '18%' : '5rem', [isOpen]);
-
     return (
         <div className="flex min-h-screen w-full h-screen font-sans text-gray-800 overflow-hidden fixed inset-0 m-0 p-0"
             style={{
@@ -117,8 +113,8 @@ const ListRFID: React.FC = memo(() => {
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: `calc(100% - ${sidebarWidth})`
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 {/* Header - Fixed Position handled in Header component */}

@@ -9,6 +9,7 @@ import NotificationModal from './notification/NotificationModal';
 import NotificationDetailModal from './notification/NotificationDetailModal';
 import { useNotifications } from '../hooks/useNotifications';
 import { getInitialEnvironment, getEnvironmentFromAPI, type BackendEnvironment } from '../config/api';
+import { isCuttingCheckingArea, isMonitoringCheckingArea } from '../utils/checkingPaths';
 
 const ENV_LABEL: Record<BackendEnvironment, string> = {
     CLN: 'CLN',
@@ -17,37 +18,13 @@ const ENV_LABEL: Record<BackendEnvironment, string> = {
     GCC: 'GCC',
 };
 
-const RFID_AREA_PATH_PREFIXES = [
-    '/rfid-tracking',
-    '/monitoring-rfid',
-    '/line/',
-    '/dashboard-rfid/',
-    '/checking-rfid',
-    '/status-rfid',
-    '/daftar-rfid',
-    '/list-rfid',
-    '/data-rfid',
-    '/cutting',
-    '/dashboard-cutting',
-    '/sewing',
-    '/reject-room',
-    '/dashboard-rfid-reject',
-    '/list-rfid-reject',
-    '/finishing',
-    '/dashboard-rfid-finishing',
-    '/dashboard-detail-finishing',
-    '/dashboard-dryroom',
-    '/dashboard-folding',
-    '/all-production-line',
-    '/production-tracking-time',
-];
-
 const Header = memo(() => {
     const { isOpen, toggleSidebar } = useSidebar();
     const { user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const shouldShowCheckingRfid = RFID_AREA_PATH_PREFIXES.some((prefix) => location.pathname.startsWith(prefix));
+    const showMonitoringChecking = isMonitoringCheckingArea(location.pathname);
+    const showCuttingChecking = isCuttingCheckingArea(location.pathname);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [environment, setEnvironment] = useState<BackendEnvironment>(getInitialEnvironment);
 
@@ -132,7 +109,7 @@ const Header = memo(() => {
     return (
         <header
             className="bg-white h-12 xs:h-14 sm:h-16 flex items-center justify-between px-1.5 xs:px-2 sm:px-3 md:px-4 fixed top-0 right-0 z-30 transition-all duration-300 ease-in-out shadow-md border-b border-gray-200"
-            style={{ left: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+            style={{ left: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
         >
             {/* --- LEFT SECTION: Hamburger & Title --- */}
             <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 md:gap-2">
@@ -149,16 +126,20 @@ const Header = memo(() => {
                     )}
                 </button>
 
-                {/* Header Icon - Logo dari sidebar */}
-                <img src={logo} alt="Gistex Logo" className="w-11 xs:w-13 sm:w-15 md:w-18 lg:w-20 xl:w-25 h-12 xs:h-14 sm:h-16 md:h-20 lg:h-24 xl:h-28 object-contain mr-2" />
+                {/* Logo teks di smartphone disembunyikan; ikon logo diperkecil di layar kecil */}
+                <img
+                    src={logo}
+                    alt="Gistex Logo"
+                    className="w-8 h-8 xs:w-9 xs:h-9 sm:w-11 sm:h-14 md:w-14 md:h-16 lg:w-20 lg:h-24 object-contain mr-1 sm:mr-2 shrink-0"
+                />
 
-                {/* System Title */}
+                {/* Judul lengkap dari sm ke atas; di smartphone hanya badge env (tanpa teks Gistex) */}
                 <div className="flex items-baseline gap-1.5 sm:gap-2 min-w-0">
-                    <h1 className="text-lg tracking-normal text-zinc-500 truncate" style={{ textTransform: 'capitalize', fontFamily: 'Poppins, sans-serif' }}>
-                        <span className="hidden sm:inline">
-                            <span style={{ fontWeight: 600 }}>  Gistex Command Center</span>
-                        </span>
-                        <span className="sm:hidden" style={{ fontWeight: 600 }}>Gistex</span>
+                    <h1
+                        className="hidden sm:block text-lg tracking-normal text-zinc-500 truncate"
+                        style={{ textTransform: 'capitalize', fontFamily: 'Poppins, sans-serif' }}
+                    >
+                        <span style={{ fontWeight: 600 }}> Gistex Command Center</span>
                     </h1>
                     <span
                         className="shrink-0 text-[9px] xs:text-[10px] sm:text-[11px] font-semibold tracking-wide text-zinc-400 uppercase tabular-nums"
@@ -174,7 +155,7 @@ const Header = memo(() => {
             <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
 
                 {/* Checking RFID hanya muncul di area RFID Tracking dan turunannya */}
-                {shouldShowCheckingRfid && (
+                {showMonitoringChecking ? (
                     <button
                         onClick={() => navigate('/checking-rfid')}
                         className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 px-4 xs:px-4.5 sm:px-5 md:px-6 py-1.5 xs:py-2 sm:py-2.5 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 text-blue-700 hover:from-blue-100 hover:to-blue-200 hover:border-blue-300 hover:text-blue-800 font-semibold rounded-lg shadow-sm hover:shadow-md transition-all duration-300 ease-in-out group text-xs sm:text-sm relative overflow-hidden"
@@ -188,7 +169,22 @@ const Header = memo(() => {
                         <span className="tracking-wide hidden sm:inline relative z-10">CHECKING RFID</span>
                         <span className="tracking-wide sm:hidden relative z-10">CHECK</span>
                     </button>
-                )}
+                ) : null}
+
+                {showCuttingChecking ? (
+                    <button
+                        type="button"
+                        onClick={() => navigate('/checking-rfid-cutting')}
+                        className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 px-4 xs:px-4.5 sm:px-5 md:px-6 py-1.5 xs:py-2 sm:py-2.5 bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-300 text-emerald-800 hover:from-emerald-100 hover:to-emerald-200 hover:border-emerald-400 hover:text-emerald-900 font-semibold rounded-lg shadow-sm hover:shadow-md transition-all duration-300 ease-in-out group text-xs sm:text-sm relative overflow-hidden"
+                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                        title="Checking RFID — Area Cutting (GCC)"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                        <Radio className="w-4 xs:w-4.5 sm:w-5 h-4 xs:h-4.5 sm:h-5 text-emerald-700 group-hover:text-emerald-800 transition-all duration-300 group-hover:scale-110 relative z-10" strokeWidth={2.5} />
+                        <span className="tracking-wide hidden sm:inline relative z-10">CHECKING RFID</span>
+                        <span className="tracking-wide sm:hidden relative z-10">CHECK</span>
+                    </button>
+                ) : null}
 
                 {/* Fullscreen Toggle Button - Kotak di samping Checking RFID */}
                 <button

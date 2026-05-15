@@ -6,7 +6,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import ChartCard from '../components/dashboard/ChartCard';
 import { COLORS } from '../components/dashboard/constants';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import { getCuttingScanState, getGccCuttingSmarketDashboardData } from '../config/api';
 import type { GccSmarketDashboardItem } from '../config/api';
@@ -30,9 +29,6 @@ function formatYmdIdLabel(ymd: string): string {
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 const SHIFT_HOURS = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-const CHECKIN_ICON = '/assets/good.png';
-const CHECKOUT_ICON = '/assets/reject.webp';
-const URGENT_ICON = '/assets/rework.png';
 
 const MARKET_CHART = {
     checkin: '#0284c7',
@@ -139,9 +135,6 @@ function BundleCard({ value }: { value: number }) {
 }
 
 export default function DashboardSupermarketCutting() {
-    const { isOpen } = useSidebar();
-    const sidebarWidth = isOpen ? '18%' : '5rem';
-
     const [smarketRangeFrom, setSmarketRangeFrom] = useState(ymdTodayLocal);
     const [smarketRangeTo, setSmarketRangeTo] = useState(ymdTodayLocal);
     const [filterOpen, setFilterOpen] = useState(false);
@@ -322,7 +315,7 @@ export default function DashboardSupermarketCutting() {
 
             <div
                 className="flex flex-col h-full min-h-0 relative z-10 transition-all duration-300 ease-in-out"
-                style={{ marginLeft: sidebarWidth, width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 <Header />
 

@@ -23,7 +23,6 @@ import {
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import dryroomIcon from '../assets/dryroom_icon.webp';
 import foldingIcon from '../assets/folding_icon.webp';
@@ -48,7 +47,6 @@ const COLORS = {
 };
 
 export default function DashboardRFIDFinishing() {
-    const { isOpen } = useSidebar();
     const currentUser = useMemo(() => {
         try {
             const raw = localStorage.getItem('user');
@@ -259,8 +257,6 @@ export default function DashboardRFIDFinishing() {
         return filtered;
     }, [filterWo, tableData]);
 
-    const sidebarWidth = isOpen ? '18%' : '5rem';
-
     // State untuk detect mobile device
     const [isMobile, setIsMobile] = useState(false);
 
@@ -291,8 +287,8 @@ export default function DashboardRFIDFinishing() {
             <div
                 className="flex flex-col h-full relative z-10 transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 <Header />

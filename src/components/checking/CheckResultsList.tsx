@@ -2,16 +2,20 @@ import { memo } from 'react';
 import { Radio, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import type { RFIDCheckItem } from '../../hooks/useCheckingRFID';
 import { formatTimestampSpace } from '../../utils/checkingUtils';
+import { CHECKING_THEME, type CheckingTheme } from '../../utils/checkingTheme';
+import CuttingCheckDetailGrid from './CuttingCheckDetailGrid';
 
 interface CheckResultsListProps {
+    theme?: CheckingTheme;
     filteredItems: RFIDCheckItem[];
     checkItems: RFIDCheckItem[];
     onItemClick: (rfid: string) => void;
 }
 
-const CheckResultsList = memo(({ filteredItems, checkItems, onItemClick }: CheckResultsListProps) => {
+const CheckResultsList = memo(({ theme = 'default', filteredItems, checkItems, onItemClick }: CheckResultsListProps) => {
+    const t = CHECKING_THEME[theme];
     return (
-        <div className="bg-white border-2 border-blue-500 rounded-lg p-2 xs:p-3 sm:p-4 md:p-5 lg:p-6">
+        <div className={`bg-white border-2 ${t.border} rounded-lg p-2 xs:p-3 sm:p-4 md:p-5 lg:p-6`}>
             <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5 md:mb-6">
                 <h2 className="text-base xs:text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 tracking-wide" style={{ textTransform: 'capitalize' }}>
                     Check Results
@@ -33,12 +37,12 @@ const CheckResultsList = memo(({ filteredItems, checkItems, onItemClick }: Check
                         <div
                             key={`${item.rfid}-${index}`}
                             onClick={() => item.status === 'found' && onItemClick(item.rfid)}
-                            className={`relative p-2 xs:p-3 sm:p-4 md:p-5 rounded-lg border-2 border-blue-500 bg-white hover:shadow-lg hover:border-blue-600 transition-all duration-300 ${
+                            className={`relative p-2 xs:p-3 sm:p-4 md:p-5 rounded-lg border-2 ${t.border} bg-white hover:shadow-lg ${t.borderHover} transition-all duration-300 ${
                                 item.status === 'found' ? 'cursor-pointer' : 'cursor-default'
                             }`}
                         >
                             <div className="flex items-start gap-2 xs:gap-3 sm:gap-4">
-                                <div className="p-1.5 xs:p-2 sm:p-2.5 md:p-3 rounded-lg bg-blue-50 border border-blue-500 flex-shrink-0">
+                                <div className={`p-1.5 xs:p-2 sm:p-2.5 md:p-3 rounded-lg ${t.iconBg} border ${t.border} flex-shrink-0`}>
                                     {item.status === 'found' ? (
                                         <CheckCircle2 className="w-4 xs:w-5 sm:w-6 md:w-7 h-4 xs:h-5 sm:h-6 md:h-7 text-green-500" />
                                     ) : item.status === 'not_found' ? (
@@ -100,7 +104,8 @@ const CheckResultsList = memo(({ filteredItems, checkItems, onItemClick }: Check
                                             {item.details}
                                         </p>
                                     )}
-                                    {(item.wo || item.style || item.buyer || item.item || item.color || item.size) && (
+                                    {theme === 'cutting' ? <CuttingCheckDetailGrid item={item} /> : null}
+                                    {theme !== 'cutting' && (item.wo || item.style || item.buyer || item.item || item.color || item.size) && (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 xs:gap-2.5 sm:gap-3 mt-2 xs:mt-2.5 sm:mt-3 pt-2 xs:pt-2.5 sm:pt-3 border-t border-gray-200">
                                             {item.wo && (
                                                 <div>

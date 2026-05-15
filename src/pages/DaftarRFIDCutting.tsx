@@ -2,7 +2,6 @@ import React, { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, u
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import {
     fetchGccCuttingListByBarcode,
@@ -69,7 +68,6 @@ function bundleOptionLabel(b: GccCuttingBundleRow): string {
 }
 
 const DaftarRFIDCutting: React.FC = memo(() => {
-    const { isOpen } = useSidebar();
     const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
     const [manualBarcode, setManualBarcode] = useState('');
     const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -240,8 +238,6 @@ const DaftarRFIDCutting: React.FC = memo(() => {
         }
     }, [manualRfid, cuttingForm]);
 
-    const sidebarWidth = useMemo(() => (isOpen ? '18%' : '5rem'), [isOpen]);
-
     return (
         <div
             className="flex min-h-screen w-full h-screen font-sans text-gray-800 overflow-hidden fixed inset-0 m-0 p-0"
@@ -259,8 +255,8 @@ const DaftarRFIDCutting: React.FC = memo(() => {
             <div
                 className="flex flex-col w-full min-h-screen transition-[margin,width] duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: `calc(100% - ${sidebarWidth})`,
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 <Header />

@@ -4,7 +4,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import cardNeedle from '../assets/card_needel.webp';
 import cardKolam from '../assets/card_kolam.webp';
@@ -45,7 +44,6 @@ const cards: HubCard[] = [
 ];
 
 export default function NeedleManagerHub() {
-  const { isOpen } = useSidebar();
   const navigate = useNavigate();
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -64,8 +62,8 @@ export default function NeedleManagerHub() {
       <div
         className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
         style={{
-          marginLeft: isOpen ? '18%' : '5rem',
-          width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+          marginLeft: 'var(--layout-sidebar-offset)',
+          width: 'var(--layout-sidebar-width)',
         }}
       >
         <Header />

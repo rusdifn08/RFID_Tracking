@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import { API_BASE_URL, getDefaultHeaders, getBackendEnvironment, type BackendEnvironment } from '../config/api';
 import ExportModal from '../components/ExportModal';
 import type { ExportType } from '../components/ExportModal';
@@ -45,7 +44,6 @@ const MAX_LINE = Math.max(...DASHBOARD_RFID_LINE_IDS);
 export default function DashboardRFID() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { isOpen } = useSidebar();
 
     // Normalisasi lineId - ekstrak angka dari format "LINE 3" atau "LINE%203"
     const normalizedLineId = useMemo(() => {
@@ -624,25 +622,40 @@ export default function DashboardRFID() {
         { name: 'Reject', value: pqcReject, color: COLORS.red },
     ].filter(d => d.value > 0), [pqcGood, wiraPqc, pqcReject]);
 
-    // Jendela jam untuk Output Sewing: hanya tampilkan 10 jam dari jam pertama yang ada data
-    const OUTPUT_HOUR_WINDOW = 10;
+    const OUTPUT_JAM_KEYS = [
+        'jam_06', 'jam_07', 'jam_08', 'jam_09', 'jam_10', 'jam_11', 'jam_12', 'jam_13', 'jam_14', 'jam_15',
+        'jam_16', 'jam_17', 'jam_18', 'jam_19', 'jam_20', 'jam_21', 'jam_22',
+    ] as const;
 
-    // Data chart per jam untuk Output Sewing (dari summary_per_jam), hanya 10 jam dari jam pertama ada data
+    // Chart per jam Output Sewing: jumlahkan semua baris summary_per_jam (multi tanggal), lalu potong sumbu jam pertama–terakhir yang ada output
     const outputPerJamChartData = useMemo(() => {
         if (!detailSummaryPerJam.length) return [];
-        const row = detailSummaryPerJam[0];
-        const jamKeys = ['jam_06', 'jam_07', 'jam_08', 'jam_09', 'jam_10', 'jam_11', 'jam_12', 'jam_13', 'jam_14', 'jam_15', 'jam_16', 'jam_17', 'jam_18', 'jam_19', 'jam_20', 'jam_21', 'jam_22'];
-        const fullData = jamKeys.map((key) => {
+        const merged: Record<string, number> = {};
+        for (const key of OUTPUT_JAM_KEYS) merged[key] = 0;
+        for (const row of detailSummaryPerJam) {
+            for (const key of OUTPUT_JAM_KEYS) {
+                const v = row[key];
+                merged[key] += typeof v === 'number' ? v : 0;
+            }
+        }
+        const fullData = OUTPUT_JAM_KEYS.map((key) => {
             const jam = key.replace('jam_', '');
             return {
                 jam: `${jam}:00`,
                 label: jam,
-                jumlah: typeof row[key] === 'number' ? row[key] : 0,
+                jumlah: merged[key] ?? 0,
             };
         });
         const firstIndex = fullData.findIndex((d) => d.jumlah > 0);
-        if (firstIndex < 0) return fullData.slice(0, OUTPUT_HOUR_WINDOW);
-        return fullData.slice(firstIndex, firstIndex + OUTPUT_HOUR_WINDOW);
+        if (firstIndex < 0) return fullData;
+        let lastIndex = -1;
+        for (let i = fullData.length - 1; i >= 0; i--) {
+            if (fullData[i].jumlah > 0) {
+                lastIndex = i;
+                break;
+            }
+        }
+        return lastIndex >= firstIndex ? fullData.slice(firstIndex, lastIndex + 1) : fullData;
     }, [detailSummaryPerJam]);
 
     // Max Y untuk chart Output Sewing: ikuti data tertinggi, default 40 jika semua nol
@@ -652,40 +665,14 @@ export default function DashboardRFID() {
         return max > 0 ? Math.ceil(max * 1.05) || 40 : 40;
     }, [outputPerJamChartData]);
 
-    // Untuk OUTPUT: range jam (start, end) dari chart agar bisa filter raw_data
-    const outputHourRange = useMemo(() => {
-        if (detailType !== 'OUTPUT' || !outputPerJamChartData.length) return null;
-        const first = outputPerJamChartData[0];
-        const last = outputPerJamChartData[outputPerJamChartData.length - 1];
-        const startHour = parseInt(first?.label ?? '6', 10);
-        const endHour = parseInt(last?.label ?? '22', 10);
-        return { startHour, endHour };
-    }, [detailType, outputPerJamChartData]);
-
-    // Raw data untuk OUTPUT: hanya yang timestamp-nya dalam jendela 10 jam
-    const detailDataForDisplay = useMemo(() => {
-        if (detailType !== 'OUTPUT' || !outputHourRange) return detailData;
-        const { startHour, endHour } = outputHourRange;
-        return detailData.filter((item) => {
-            const ts = item.timestamp;
-            if (!ts) return false;
-            const match = String(ts).match(/T(\d{2}):/);
-            const hour = match ? parseInt(match[1], 10) : -1;
-            return hour >= startHour && hour <= endHour;
-        });
-    }, [detailType, detailData, outputHourRange]);
-
-    // Sumber data tabel: pakai detailDataForDisplay untuk OUTPUT (sudah difilter jam), selain itu detailData
-    const detailDataForTable = detailType === 'OUTPUT' && outputHourRange ? detailDataForDisplay : detailData;
-
-    // Filter data berdasarkan search query (sumber: detailDataForTable = sudah filter jam untuk OUTPUT)
+    // Tabel Detail Output Sewing: seluruh raw_data dari API (tanpa filter jam; rentang multi-hari tidak boleh memotong baris)
     const filteredDetailData = useMemo(() => {
         if (!searchQuery.trim()) {
-            return detailDataForTable;
+            return detailData;
         }
 
         const query = searchQuery.toLowerCase().trim();
-        return detailDataForTable.filter((item) => {
+        return detailData.filter((item) => {
             const rfid = (item.rfid_garment || '').toLowerCase();
             const wo = (item.wo || '').toLowerCase();
             const style = (item.style || '').toLowerCase();
@@ -704,7 +691,7 @@ export default function DashboardRFID() {
                 size.includes(query) ||
                 line.includes(query);
         });
-    }, [detailDataForTable, searchQuery]);
+    }, [detailData, searchQuery]);
 
     // Fungsi untuk fetch data per hari
     const fetchDailyData = async (): Promise<any[]> => {
@@ -908,9 +895,7 @@ export default function DashboardRFID() {
     }, [lineId, woData, outputLine, rework, wiraQc, reject, good, pqcRework, wiraPqc, pqcReject, pqcGood, filterDateFrom, filterDateTo]);
 
     // LOGIKA SIZE SIDEBAR (PENTING UNTUK MENGHINDARI TABRAKAN)
-    // 18% = Width Sidebar Expanded
-    // 5rem = 80px (Width Sidebar Collapsed default tailwind w-20)
-    const sidebarWidth = isOpen ? '18%' : '5rem';
+    // Offset & lebar area utama mengikuti SidebarProvider → --layout-sidebar-* (desktop vs smartphone).
 
     // State untuk detect mobile device (termasuk tablet portrait)
     const [isMobile, setIsMobile] = useState(false);
@@ -957,8 +942,8 @@ export default function DashboardRFID() {
             <div
                 className="flex flex-col w-full h-full transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}>
 
                 {/* 3. HEADER (STICKY) */}
@@ -1444,11 +1429,11 @@ export default function DashboardRFID() {
                                         <div className="text-2xl font-bold text-white">
                                             {searchQuery.trim()
                                                 ? filteredDetailData.length
-                                                : (detailType === 'OUTPUT' ? detailDataForTable.length : detailData.length)}
+                                                : detailData.length}
                                         </div>
                                     </div>
                                     {detailType === 'OUTPUT' && targetOutput !== undefined && targetOutput > 0 && (() => {
-                                        const totalCount = searchQuery.trim() ? filteredDetailData.length : detailDataForTable.length;
+                                        const totalCount = searchQuery.trim() ? filteredDetailData.length : detailData.length;
                                         const targetMet = totalCount >= targetOutput;
                                         return (
                                             <div className={`backdrop-blur-sm border-2 rounded-xl px-4 py-2.5 shadow-lg ${targetMet ? 'bg-green-500/30 border-green-400' : 'bg-white/20 border-white/30'}`}>

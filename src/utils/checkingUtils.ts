@@ -67,12 +67,25 @@ export const parseTimestamp = (timestamp: string): string => {
 
 export const getStatusColor = (status: string): string => {
     const upperStatus = (status || '').toUpperCase().trim();
-    if (upperStatus === 'GOOD' || upperStatus === 'OUTPUT' || upperStatus.includes('OUTPUT')) {
+    if (
+        upperStatus === 'GOOD' ||
+        upperStatus === 'OUTPUT' ||
+        upperStatus.includes('OUTPUT') ||
+        upperStatus === 'OUTPUT_BUNDLE'
+    ) {
         return 'bg-green-100 text-green-700 border-green-300';
-    } else if (upperStatus === 'REWORK') {
+    }
+    if (upperStatus === 'REWORK' || upperStatus === 'REPAIR') {
         return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-    } else if (upperStatus === 'REJECT') {
+    }
+    if (upperStatus === 'REJECT') {
         return 'bg-red-100 text-red-700 border-red-300';
+    }
+    if (upperStatus === 'IN_SMARKET' || upperStatus === 'IN_SUPERMARKET') {
+        return 'bg-amber-100 text-amber-800 border-amber-300';
+    }
+    if (upperStatus === 'OUT_SMARKET' || upperStatus === 'OUT_SUPERMARKET') {
+        return 'bg-orange-100 text-orange-800 border-orange-300';
     }
     return 'bg-gray-100 text-gray-700 border-gray-300';
 };

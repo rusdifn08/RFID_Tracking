@@ -14,7 +14,6 @@ import {
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import { apiGet, getBackendEnvironment } from '../config/api';
 import {
@@ -308,20 +307,16 @@ function isFormExportCardHidden(cardId: string): boolean {
 }
 
 export default function FormData() {
-  const { isOpen } = useSidebar();
   const [dateFrom, setDateFrom] = useState(getTodayIso());
   const [dateTo, setDateTo] = useState(getTodayIso());
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const [metrics, setMetrics] = useState<Record<string, ReportMetric>>({});
 
-  const containerStyle = useMemo(
-    () => ({
-      marginLeft: isOpen ? '18%' : '5rem',
-      width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
-    }),
-    [isOpen]
-  );
+  const containerStyle = {
+    marginLeft: 'var(--layout-sidebar-offset)',
+    width: 'var(--layout-sidebar-width)',
+  };
 
   const reportCardsVisible = useMemo(
     () => REPORT_CARDS.filter((card) => !isFormExportCardHidden(card.id)),

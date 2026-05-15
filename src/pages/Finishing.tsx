@@ -2,7 +2,6 @@ import { memo, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
 
@@ -13,8 +12,6 @@ import foldingIcon from '../assets/folding.webp';
 import listIcon from '../assets/list.webp';
 
 const Finishing = memo(() => {
-    const { isOpen } = useSidebar();
-
     const cards = useMemo(() => [
         {
             id: 1,
@@ -69,8 +66,8 @@ const Finishing = memo(() => {
             <div
                 className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out relative"
                 style={{
-                    marginLeft: isOpen ? '18%' : '5rem',
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 {/* Header */}

@@ -208,7 +208,28 @@ export default function Breadcrumb() {
                 label: lineTitles[lineId || '1'] || `Line ${lineId}`,
                 isActive: true,
             });
+        } else if (path.startsWith('/checking-rfid-cutting')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Cutting Proses',
+                path: '/cutting',
+            });
+            breadcrumbs.push({
+                label: 'Checking RFID Cutting',
+                isActive: true,
+            });
         } else if (path.startsWith('/checking-rfid')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Production Lines',
+                path: '/monitoring-rfid',
+            });
             breadcrumbs.push({
                 label: 'Checking RFID',
                 isActive: true,

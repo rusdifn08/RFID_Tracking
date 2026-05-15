@@ -130,8 +130,9 @@ const Sidebar = memo(() => {
 
             {/* Sidebar Container */}
             <aside
-                className={`bg-gradient-to-b from-[#0073EE] to-[#0073EE] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${isOpen ? 'w-[18%] ' : 'w-20 px-2'
-                    }`}
+                className={`bg-gradient-to-b from-[#0073EE] to-[#0073EE] h-screen fixed left-0 top-0 flex flex-col shadow-2xl z-50 transition-all duration-300 ease-in-out backdrop-blur-sm ${
+                    isOpen ? 'w-[18%] max-lg:w-52 max-lg:min-w-0' : 'w-20 px-2 max-lg:w-14 max-lg:px-1'
+                }`}
             >
                 {/* --- LOGO AREA - DI PALING ATAS --- */}
                 <div className={`flex flex-col items-center justify-center pt-4 pb-3 relative flex-shrink-0 ${isOpen ? 'px-2' : 'px-0'}`}>

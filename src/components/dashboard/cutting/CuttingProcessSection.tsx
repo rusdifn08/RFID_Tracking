@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
@@ -20,41 +20,212 @@ import {
     Plus,
 } from 'lucide-react';
 import {
-    getWOBreakdown,
     inputRfidCuttingBundle,
     getCuttingScanState,
     filterCuttingScanStateToLocalToday,
-    getGccCuttingQcQty,
-    postCuttingQcScan,
     postCuttingStoreScan,
     postCuttingSupplySewingScan,
+    getHomeDashboard,
+    type HomeDashboardItem,
 } from '../../../config/api';
 import { SUPPLY_SOON } from '../../../config/comingsoon';
-import { buildWorkOrderMap, type WorkOrderMapEntry } from '../../../utils/workOrderFromBreakdown';
 import ChartCard from '../ChartCard';
 import CuttingScanStationModal, { type CuttingScanSessionRow } from './CuttingScanStationModal';
+import QcScanStationHost from './QcScanStationHost';
 
-const QUERY_WO = ['cutting-wo-breakdown'] as const;
 const QUERY_SCAN = ['cutting-scan-state'] as const;
+const QUERY_HOME_DASH = ['cutting-home-dashboard'] as const;
+
+/** Normalisasi `last_status` dari GET `/api/homedashboard` untuk perbandingan. */
+function normCuttingLastStatus(s: unknown): string {
+    return String(s ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '_');
+}
+
+/** Urutan â€œkemajuanâ€ status untuk fallback jika tidak ada petunjuk di baris klik. */
+const HOME_STATUS_RANK: Record<string, number> = {
+    OUTPUT_BUNDLE: 10,
+    GOOD: 20,
+    REPAIR: 20,
+    REJECT: 20,
+    IN_SMARKET: 30,
+    OUT_SMARKET: 40,
+    IN_SUPERMARKET: 30,
+    OUT_SUPERMARKET: 40,
+};
+
+function pickLatestHomeDashboardItem(items: HomeDashboardItem[]): HomeDashboardItem {
+    return items.reduce((best, cur) => {
+        const sb = HOME_STATUS_RANK[normCuttingLastStatus(best.last_status)] ?? 0;
+        const sc = HOME_STATUS_RANK[normCuttingLastStatus(cur.last_status)] ?? 0;
+        return sc >= sb ? cur : best;
+    });
+}
+
+/**
+ * API bisa mengembalikan banyak baris untuk RFID yang sama (riwayat status).
+ * Jangan pakai Map(rfid) â€” ambil objek yang sama dengan baris tabel (last_status / barcode / id_bundles).
+ */
+function findHomeDashboardItemForDetail(
+    items: HomeDashboardItem[] | undefined,
+    row: CuttingTableRow,
+): HomeDashboardItem | undefined {
+    if (!items?.length) return undefined;
+    const rfid = String(row.rfid ?? '').trim();
+    if (!rfid) return undefined;
+
+    const same = items.filter((it) => String(it.rfid_bundles ?? '').trim() === rfid);
+    if (same.length === 0) return undefined;
+    if (same.length === 1) return same[0];
+
+    const rowStatus = normCuttingLastStatus(row.last_status);
+    const rowBarcode = String(row.barcode ?? '').trim();
+    const rowIdRaw = row.id_bundles;
+    const rowIdNum =
+        rowIdRaw != null && rowIdRaw !== '' && !Number.isNaN(Number(rowIdRaw)) ? Number(rowIdRaw) : NaN;
+
+    if (rowStatus) {
+        const bySt = same.filter((it) => normCuttingLastStatus(it.last_status) === rowStatus);
+        if (bySt.length === 1) return bySt[0];
+        if (bySt.length > 1) {
+            if (rowBarcode) {
+                const byBc = bySt.filter((it) => String(it.barcode ?? '').trim() === rowBarcode);
+                if (byBc.length >= 1) return byBc[0];
+            }
+            if (Number.isFinite(rowIdNum)) {
+                const byId = bySt.filter((it) => Number(it.id_bundles) === rowIdNum);
+                if (byId.length >= 1) return byId[0];
+            }
+            return bySt[0];
+        }
+    }
+
+    return pickLatestHomeDashboardItem(same);
+}
+
+function mapHomeItemToBundleRow(item: HomeDashboardItem) {
+    const qty = Math.max(1, Number(item.qty_batch ?? 1));
+    return {
+        rfid: item.rfid_bundles ?? 'â€”',
+        wo: item.wo ?? 'â€”',
+        qty,
+        style: item.style ?? 'â€”',
+        buyer: 'â€”',
+        item: 'â€”',
+        color: item.warna ?? 'â€”',
+        size: item.size ?? 'â€”',
+        location: 'bundle',
+        timestamp: item.barcode ?? 'â€”',
+        last_status: item.last_status,
+        id_bundles: item.id_bundles,
+        barcode: item.barcode,
+    };
+}
+
+function mapHomeItemToQcRow(item: HomeDashboardItem) {
+    const qty = Math.max(1, Number(item.qty_batch ?? 1));
+    const st = normCuttingLastStatus(item.last_status);
+    let good = 0;
+    let repair = 0;
+    let reject = 0;
+    if (st === 'GOOD') good = qty;
+    else if (st === 'REPAIR') repair = qty;
+    else if (st === 'REJECT') reject = qty;
+    return {
+        rfid: item.rfid_bundles ?? 'â€”',
+        qty,
+        good,
+        repair,
+        reject,
+        wo: item.wo ?? 'â€”',
+        style: item.style ?? 'â€”',
+        buyer: 'â€”',
+        item: 'â€”',
+        color: item.warna ?? 'â€”',
+        size: item.size ?? 'â€”',
+        location: 'quality_control',
+        timestamp: item.barcode ?? 'â€”',
+        last_status: item.last_status,
+        id_bundles: item.id_bundles,
+        barcode: item.barcode,
+    };
+}
+
+function mapHomeItemToStoreRow(item: HomeDashboardItem) {
+    const qty = Math.max(1, Number(item.qty_batch ?? 1));
+    const st = normCuttingLastStatus(item.last_status);
+    const lokasi =
+        st === 'IN_SMARKET' || st === 'IN_SUPERMARKET'
+            ? 'Masuk Supermarket'
+            : st === 'OUT_SMARKET' || st === 'OUT_SUPERMARKET'
+              ? 'Keluar Supermarket'
+              : String(item.lokasi ?? item.last_status ?? 'â€”');
+    const lineStr =
+        item.line != null && String(item.line).trim() !== '' ? String(item.line) : 'â€”';
+    return {
+        rfid: item.rfid_bundles ?? 'â€”',
+        wo: item.wo ?? 'â€”',
+        qty,
+        line: lineStr,
+        lokasi,
+        style: item.style ?? 'â€”',
+        buyer: 'â€”',
+        item: 'â€”',
+        color: item.warna ?? 'â€”',
+        size: item.size ?? 'â€”',
+        location: 'supermarket',
+        timestamp: item.barcode ?? 'â€”',
+        last_status: item.last_status,
+        id_bundles: item.id_bundles,
+        barcode: item.barcode,
+    };
+}
+
+/** Field detail modal dari satu baris respons GET `/api/homedashboard`. */
+function homeDashboardItemToFields(
+    item: HomeDashboardItem,
+    fmt: (v: unknown) => string
+): { label: string; value: string }[] {
+    const order: { key: string; label: string }[] = [
+        { key: 'rfid_bundles', label: 'RFID Bundle' },
+        { key: 'id_bundles', label: 'ID Bundles' },
+        { key: 'barcode', label: 'Barcode' },
+        { key: 'last_status', label: 'Last Status' },
+        { key: 'wo', label: 'WO' },
+        { key: 'style', label: 'Style' },
+        { key: 'warna', label: 'Warna' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty_batch', label: 'Qty Batch' },
+        { key: 'line', label: 'Line' },
+        { key: 'lokasi', label: 'Lokasi' },
+    ];
+    const shown = new Set<string>();
+    const out: { label: string; value: string }[] = [];
+    for (const { key, label } of order) {
+        shown.add(key);
+        const v = (item as Record<string, unknown>)[key];
+        const s = fmt(v);
+        if (s !== 'â€”') out.push({ label, value: s });
+    }
+    for (const [k, v] of Object.entries(item)) {
+        if (shown.has(k)) continue;
+        if (typeof v === 'object' && v !== null) continue;
+        const s = fmt(v);
+        if (s === 'â€”') continue;
+        const pretty = k
+            .split('_')
+            .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''))
+            .join(' ');
+        out.push({ label: pretty || k, value: s });
+    }
+    return out;
+}
 
 const STORE_FORM_FS = 'clamp(0.65rem, 0.52rem + 0.38vmin, 0.82rem)' as const;
 const STORE_FORM_LABEL_FS = 'clamp(0.58rem, 0.48rem + 0.28vmin, 0.72rem)' as const;
 
-function formatDateYmd(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-}
-
-function getDefaultDateRange(): { from: string; to: string } {
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - 60);
-    return { from: formatDateYmd(from), to: formatDateYmd(to) };
-}
-
-const BRANCH_OPTIONS = ['CJL', 'MJ1', 'MJ2'] as const;
 const successSoundPath = '/assets/succes.mp3';
 const errorSoundPath = '/assets/error.mp3';
 
@@ -67,17 +238,17 @@ function newCuttingScanRowId(): string {
 function readCuttingOperator(): { name: string; nik: string } {
     try {
         const raw = localStorage.getItem('user');
-        if (!raw) return { name: '—', nik: '—' };
+        if (!raw) return { name: 'â€”', nik: 'â€”' };
         const u = JSON.parse(raw) as { name?: string; nama?: string; nik?: string; NIK?: string };
-        const name = u.name ?? u.nama ?? '—';
-        const nik = String(u.nik ?? u.NIK ?? '—');
+        const name = u.name ?? u.nama ?? 'â€”';
+        const nik = String(u.nik ?? u.NIK ?? 'â€”');
         return { name, nik };
     } catch {
-        return { name: '—', nik: '—' };
+        return { name: 'â€”', nik: 'â€”' };
     }
 }
 
-/** Judul kartu ala ChartCard — tanpa capitalize otomatis agar singkatan (mis. QC Cutting) tetap benar. */
+/** Judul kartu ala ChartCard â€” tanpa capitalize otomatis agar singkatan (mis. QC Cutting) tetap benar. */
 function CuttingStageTitle({ children }: { children: string }) {
     return (
         <h2
@@ -90,7 +261,7 @@ function CuttingStageTitle({ children }: { children: string }) {
 }
 
 const CUTTING_STAGE_CHART_CARD_CLASS =
-    'min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300';
+    'min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 max-lg:h-auto max-lg:min-h-[12.5rem] max-lg:flex-none';
 
 type ScanningModalId = 'bundle' | 'qc' | 'store' | 'supply';
 
@@ -144,9 +315,10 @@ function WireTable({
 }) {
     return (
         <div
-            className="flex-1 min-h-0 overflow-auto rounded-b-xl"
-            onClickCapture={(e) => {
-                // Hanya blok klik pada elemen tabel (kolom/baris), bukan area kosong kartu.
+            className="flex-1 min-h-0 max-lg:min-h-[9rem] overflow-auto rounded-b-xl touch-pan-y"
+            onClick={(e) => {
+                /* Bubble phase: jangan pakai onClickCapture + stopPropagation â€” itu memblokir event sampai ke <tr>.
+                   Hentikan bubble ke ChartCard (navigasi QC/Supermarket) setelah target menangani klik. */
                 const target = e.target as HTMLElement | null;
                 if (target?.closest('table, thead, tbody, tr, th, td')) {
                     e.stopPropagation();
@@ -178,12 +350,19 @@ function WireTable({
                             <tr
                                 key={i}
                                 className={`border-b border-slate-100/80 hover:bg-sky-50/60 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
-                                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                                onClick={
+                                    onRowClick
+                                        ? (e) => {
+                                              e.stopPropagation();
+                                              onRowClick(row);
+                                          }
+                                        : undefined
+                                }
                                 title={onRowClick ? 'Klik untuk lihat detail data' : undefined}
                             >
                                 {columns.map((c) => (
                                     <td key={c.key} className={`px-1.5 py-1 text-slate-700 truncate max-w-0 ${c.className ?? ''}`} title={String(row[c.key] ?? '')}>
-                                        {row[c.key] ?? '—'}
+                                        {row[c.key] ?? 'â€”'}
                                     </td>
                                 ))}
                             </tr>
@@ -212,11 +391,17 @@ function LeftDetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: 
 const CuttingProcessSection = memo(function CuttingProcessSection({
     onBundleMetrics,
     filterTablesToToday = false,
+    homeDashboardApi = false,
+    onHomeDashboardCounts,
 }: {
     /** Untuk grafik distribusi: jumlah baris bundle tersimpan */
     onBundleMetrics?: (bundleTableRows: number) => void;
-    /** Jika true (dashboard cutting), tabel hanya menampilkan entri yang `at`-nya hari ini (lokal). */
+    /** Jika true (dashboard cutting), tabel hanya menampilkan entri yang `at`-nya hari ini (lokal) â€” diabaikan jika `homeDashboardApi`. */
     filterTablesToToday?: boolean;
+    /** Data tabel dari GET `/api/homedashboard` (command center cutting). */
+    homeDashboardApi?: boolean;
+    /** Untuk donut chart induk: hitungan bundle / QC / supermarket dari API yang sama. */
+    onHomeDashboardCounts?: (c: { bundle: number; qc: number; store: number }) => void;
 }) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -231,12 +416,39 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         },
         refetchInterval: 12_000,
     });
+    const homeDashQuery = useQuery({
+        queryKey: QUERY_HOME_DASH,
+        queryFn: async () => {
+            const r = await getHomeDashboard();
+            if (!r.success || !r.data) throw new Error(r.error || 'Gagal memuat home dashboard');
+            return r.data;
+        },
+        enabled: homeDashboardApi,
+        refetchInterval: 12_000,
+    });
     const doc = scanQuery.data;
     const displayDoc = useMemo(() => {
         if (!doc) return undefined;
-        if (!filterTablesToToday) return doc;
+        if (!filterTablesToToday || homeDashboardApi) return doc;
         return filterCuttingScanStateToLocalToday(doc);
-    }, [doc, filterTablesToToday]);
+    }, [doc, filterTablesToToday, homeDashboardApi]);
+
+    useEffect(() => {
+        if (!homeDashboardApi || !onHomeDashboardCounts || !homeDashQuery.data) return;
+        const items = homeDashQuery.data;
+        const qcStatuses = new Set(['GOOD', 'REPAIR', 'REJECT']);
+        const storeStatuses = new Set(['IN_SMARKET', 'OUT_SMARKET', 'IN_SUPERMARKET', 'OUT_SUPERMARKET']);
+        let bundle = 0;
+        let qc = 0;
+        let store = 0;
+        for (const it of items) {
+            const s = normCuttingLastStatus(it.last_status);
+            if (s === 'OUTPUT_BUNDLE') bundle += 1;
+            else if (qcStatuses.has(s)) qc += 1;
+            else if (storeStatuses.has(s)) store += 1;
+        }
+        onHomeDashboardCounts({ bundle, qc, store });
+    }, [homeDashboardApi, homeDashQuery.data, onHomeDashboardCounts]);
 
     useEffect(() => {
         successAudioRef.current = new Audio(successSoundPath);
@@ -269,9 +481,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         }
     }, []);
 
-    const { from: dateFrom, to: dateTo } = useMemo(() => getDefaultDateRange(), []);
-    const [branch, setBranch] = useState<string>('CJL');
-    const [form, setForm] = useState({
+    const [form] = useState({
         workOrder: '',
         style: '',
         buyer: '',
@@ -279,21 +489,12 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         color: '',
         size: '',
     });
-    const [qtyNext, setQtyNext] = useState<string>('1');
+    const [qtyNext] = useState<string>('1');
     const [busyB, setBusyB] = useState(false);
 
     const [scanningModal, setScanningModal] = useState<ScanningModalId | null>(null);
     const [modalBundleRfid, setModalBundleRfid] = useState('');
     const [modalBundleScanningQty, setModalBundleScanningQty] = useState('1');
-    const [modalQcRfid, setModalQcRfid] = useState('');
-    const [qcPrompt, setQcPrompt] = useState<{ open: boolean; rfid: string; qty: number; good: string; repair: string; reject: string }>({
-        open: false,
-        rfid: '',
-        qty: 0,
-        good: '0',
-        repair: '0',
-        reject: '0',
-    });
     const [modalStoreRfid, setModalStoreRfid] = useState('');
     const [modalStoreMode, setModalStoreMode] = useState<'checkin' | 'checkout' | 'urgent'>('checkin');
     const [modalStoreUrgentLine, setModalStoreUrgentLine] = useState(1);
@@ -301,7 +502,12 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const [modalSupplyRfid, setModalSupplyRfid] = useState('');
     const [modalSupplyLineNum, setModalSupplyLineNum] = useState(1);
     const [modalSupplyLocation, setModalSupplyLocation] = useState<'GM 1' | 'GM 2'>('GM 1');
-    const [tableDetail, setTableDetail] = useState<{ open: boolean; title: string; fields: { label: string; value: string }[] }>({
+    const [tableDetail, setTableDetail] = useState<{
+        open: boolean;
+        title: string;
+        subtitle?: string;
+        fields: { label: string; value: string }[];
+    }>({
         open: false,
         title: '',
         fields: [],
@@ -309,21 +515,35 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 
     const operator = useMemo(() => readCuttingOperator(), []);
     const [bundleSessionLog, setBundleSessionLog] = useState<CuttingScanSessionRow[]>([]);
-    const [qcSessionLog, setQcSessionLog] = useState<CuttingScanSessionRow[]>([]);
     const [storeSessionLog, setStoreSessionLog] = useState<CuttingScanSessionRow[]>([]);
     const [supplySessionLog, setSupplySessionLog] = useState<CuttingScanSessionRow[]>([]);
 
     const formatFieldValue = useCallback((v: unknown): string => {
-        if (v == null) return '—';
+        if (v == null) return 'â€”';
+        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
         const s = String(v).trim();
-        return s === '' ? '—' : s;
+        return s === '' ? 'â€”' : s;
     }, []);
 
     const openDetailFromRow = useCallback(
         (stage: string, row: CuttingTableRow) => {
+            const rfidKey = String(row.rfid ?? '').trim();
+            if (homeDashboardApi && rfidKey) {
+                const homeItem = findHomeDashboardItemForDetail(homeDashQuery.data, row);
+                if (homeItem) {
+                    const fields = homeDashboardItemToFields(homeItem, formatFieldValue);
+                    setTableDetail({
+                        open: true,
+                        title: `Detail Data â€” ${stage}`,
+                        subtitle: 'Data dari API Home Dashboard (/api/homedashboard)',
+                        fields,
+                    });
+                    return;
+                }
+            }
             const rawTimestamp = formatFieldValue(row.timestamp);
             const timestampDisplay =
-                rawTimestamp !== '—' && !Number.isNaN(Date.parse(rawTimestamp))
+                rawTimestamp !== 'â€”' && !Number.isNaN(Date.parse(rawTimestamp))
                     ? new Date(rawTimestamp).toLocaleString('id-ID')
                     : rawTimestamp;
             const fields: { label: string; value: string }[] = [
@@ -342,27 +562,19 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 { label: 'Location (GM)', value: formatFieldValue(row.gm) },
                 { label: 'Lokasi', value: formatFieldValue(row.location) },
                 { label: 'Scanning At', value: timestampDisplay },
-            ].filter((f) => f.value !== '—');
-            setTableDetail({ open: true, title: `Detail Data — ${stage}`, fields });
+            ].filter((f) => f.value !== 'â€”');
+            setTableDetail({
+                open: true,
+                title: `Detail Data â€” ${stage}`,
+                subtitle: undefined,
+                fields,
+            });
         },
-        [formatFieldValue]
+        [formatFieldValue, homeDashboardApi, homeDashQuery.data]
     );
-
-    const woQuery = useQuery({
-        queryKey: [...QUERY_WO, branch, dateFrom, dateTo],
-        queryFn: async () => {
-            const res = await getWOBreakdown(branch, dateFrom, dateTo);
-            if (!res.success || !res.data?.data) throw new Error(res.error || 'Gagal memuat WO');
-            return buildWorkOrderMap(res.data.data);
-        },
-        staleTime: 60_000,
-    });
-    const woMap = woQuery.data ?? ({} as Record<string, WorkOrderMapEntry>);
-    const woKeys = useMemo(() => Object.keys(woMap).sort(), [woMap]);
 
     useEffect(() => {
         if (scanningModal === 'bundle') setBundleSessionLog([]);
-        else if (scanningModal === 'qc') setQcSessionLog([]);
         else if (scanningModal === 'store') {
             setStoreSessionLog([]);
             setModalStoreUrgentLine(1);
@@ -375,18 +587,6 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         }
     }, [scanningModal]);
 
-    const onWoChange = (wo: string) => {
-        const sel = wo ? woMap[wo] : null;
-        setForm({
-            workOrder: wo,
-            style: sel?.styles?.length === 1 ? sel.styles[0] : '',
-            buyer: sel?.buyers?.length === 1 ? sel.buyers[0] : '',
-            item: sel?.items?.length === 1 ? sel.items[0] : '',
-            color: '',
-            size: '',
-        });
-    };
-
     const submitBundle = useCallback(
         async (
             rfid: string,
@@ -398,7 +598,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     : Math.max(1, parseInt(String(qtyNext).replace(/\D/g, ''), 10) || 1);
             setBusyB(true);
             try {
-                const nikOperator = operator.nik && operator.nik !== '—' ? operator.nik : '';
+                const nikOperator = operator.nik && operator.nik !== 'â€”' ? operator.nik : '';
                 const res = await inputRfidCuttingBundle({
                     rfid_garment: rfid,
                     rfid_bundles: rfid,
@@ -452,11 +652,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     rfid,
                     time: new Date(),
                     ok: true,
-                    message: `Qty ${res.qty} · WO ${res.wo}`,
+                    message: `Qty ${res.qty} Â· WO ${res.wo}`,
                 },
                 ...prev,
             ]);
-            setModalBundleRfid('');
         } else {
             playSound('error');
             setBundleSessionLog((prev) => [
@@ -470,132 +669,8 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 ...prev,
             ]);
         }
+        setModalBundleRfid('');
     }, [modalBundleRfid, modalBundleScanningQty, submitBundle, playSound]);
-
-    const [busyQ, setBusyQ] = useState(false);
-
-    const setQcPromptByCounters = useCallback((repairNum: number, rejectNum: number) => {
-        setQcPrompt((prev) => {
-            const qty = Math.max(1, prev.qty || 1);
-            const repairSafe = Math.max(0, Math.min(qty, repairNum));
-            const rejectSafe = Math.max(0, Math.min(qty - repairSafe, rejectNum));
-            const goodSafe = Math.max(0, qty - repairSafe - rejectSafe);
-            return {
-                ...prev,
-                good: String(goodSafe),
-                repair: String(repairSafe),
-                reject: String(rejectSafe),
-            };
-        });
-    }, []);
-
-    const adjustQcPrompt = useCallback(
-        (field: 'repair' | 'reject', delta: number) => {
-            setQcPrompt((prev) => {
-                const qty = Math.max(1, prev.qty || 1);
-                let repair = Math.max(0, parseInt(String(prev.repair).replace(/\D/g, ''), 10) || 0);
-                let reject = Math.max(0, parseInt(String(prev.reject).replace(/\D/g, ''), 10) || 0);
-                if (field === 'repair') repair += delta;
-                else reject += delta;
-                repair = Math.max(0, Math.min(qty, repair));
-                reject = Math.max(0, Math.min(qty, reject));
-                if (repair + reject > qty) {
-                    if (field === 'repair') reject = Math.max(0, qty - repair);
-                    else repair = Math.max(0, qty - reject);
-                }
-                const good = Math.max(0, qty - repair - reject);
-                return {
-                    ...prev,
-                    good: String(good),
-                    repair: String(repair),
-                    reject: String(reject),
-                };
-            });
-        },
-        []
-    );
-
-    const runQcSubmit = useCallback(async () => {
-        const v = modalQcRfid.trim();
-        if (!v) {
-            alert('Scan atau ketik RFID lalu tekan Enter.');
-            return;
-        }
-        setBusyQ(true);
-        try {
-            const qtyRes = await getGccCuttingQcQty(v);
-            if (!qtyRes.success) {
-                playSound('error');
-                setQcSessionLog((prev) => [
-                    { id: newCuttingScanRowId(), rfid: v, time: new Date(), ok: false, message: qtyRes.error || 'Gagal ambil qty QC' },
-                    ...prev,
-                ]);
-                return;
-            }
-            const qty = Math.max(1, Number(qtyRes.data?.data?.qty_output ?? 1));
-            const presetGood = String(qty);
-            setQcPrompt({
-                open: true,
-                rfid: v,
-                qty,
-                good: presetGood,
-                repair: '0',
-                reject: '0',
-            });
-            playSound('success');
-            setModalQcRfid('');
-        } catch (e) {
-            playSound('error');
-            const msg = e instanceof Error ? e.message : 'Gagal scan QC';
-            setQcSessionLog((prev) => [{ id: newCuttingScanRowId(), rfid: v, time: new Date(), ok: false, message: msg }, ...prev]);
-        } finally {
-            setBusyQ(false);
-        }
-    }, [modalQcRfid, playSound]);
-
-    const confirmQcPrompt = useCallback(async () => {
-        const rid = qcPrompt.rfid;
-        const qty = qcPrompt.qty;
-        const good = Math.max(0, parseInt(String(qcPrompt.good).replace(/\D/g, ''), 10) || 0);
-        const repair = Math.max(0, parseInt(String(qcPrompt.repair).replace(/\D/g, ''), 10) || 0);
-        const reject = Math.max(0, parseInt(String(qcPrompt.reject).replace(/\D/g, ''), 10) || 0);
-        if (good + repair + reject !== qty) {
-            alert(`Total Good + Repair + Reject harus sama dengan Qty (${qty}).`);
-            return;
-        }
-        setBusyQ(true);
-        try {
-            const nikOperator = operator.nik && operator.nik !== '—' ? operator.nik : '';
-            const res = await postCuttingQcScan({ rfid_garment: rid, good, repair, reject, nik: nikOperator });
-            if (!res.success) {
-                playSound('error');
-                setQcSessionLog((prev) => [
-                    { id: newCuttingScanRowId(), rfid: rid, time: new Date(), ok: false, message: res.error || 'Gagal simpan QC' },
-                    ...prev,
-                ]);
-                return;
-            }
-            void queryClient.invalidateQueries({ queryKey: QUERY_SCAN });
-            playSound('success');
-            setQcSessionLog((prev) => [
-                {
-                    id: newCuttingScanRowId(),
-                    rfid: rid,
-                    time: new Date(),
-                    ok: true,
-                    message: `Good ${good} · Repair ${repair} · Reject ${reject}`,
-                },
-                ...prev,
-            ]);
-            setQcPrompt({ open: false, rfid: '', qty: 0, good: '0', repair: '0', reject: '0' });
-        } catch (e) {
-            playSound('error');
-            const msg = e instanceof Error ? e.message : 'Gagal simpan QC';
-            setQcSessionLog((prev) => [{ id: newCuttingScanRowId(), rfid: rid, time: new Date(), ok: false, message: msg }, ...prev]);
-        } finally {
-            setBusyQ(false);
-        }
-    }, [qcPrompt, queryClient, playSound, operator.nik]);
 
     const [busySt, setBusySt] = useState(false);
     const submitStore = useCallback(
@@ -645,10 +720,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             }
             const meta = { line: lineNum, location: loc };
             if (modalStoreMode === 'urgent') {
-                modeLabel = `Supply Urgent · Line ${lineNum} · ${loc}`;
+                modeLabel = `Supply Urgent Â· Line ${lineNum} Â· ${loc}`;
                 res = await submitStore(v, 'urgent', meta);
             } else {
-                modeLabel = `Check Out · Line ${lineNum} · ${loc}`;
+                modeLabel = `Check Out Â· Line ${lineNum} Â· ${loc}`;
                 res = await submitStore(v, 'checkout', meta);
             }
         } else {
@@ -659,7 +734,6 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         if (res.ok) {
             playSound('success');
             setStoreSessionLog((prev) => [{ id, rfid: v, time: new Date(), ok: true, message: modeLabel }, ...prev]);
-            setModalStoreRfid('');
         } else {
             playSound('error');
             setStoreSessionLog((prev) => [
@@ -673,6 +747,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 ...prev,
             ]);
         }
+        setModalStoreRfid('');
     }, [modalStoreRfid, modalStoreMode, modalStoreUrgentLine, modalStoreUrgentLocation, submitStore, playSound]);
 
     const [busySu, setBusySu] = useState(false);
@@ -724,11 +799,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     rfid: v,
                     time: new Date(),
                     ok: true,
-                    message: `Line ${lineStr} · ${loc}`,
+                    message: `Line ${lineStr} Â· ${loc}`,
                 },
                 ...prev,
             ]);
-            setModalSupplyRfid('');
         } else {
             playSound('error');
             setSupplySessionLog((prev) => [
@@ -742,108 +816,141 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 ...prev,
             ]);
         }
+        setModalSupplyRfid('');
     }, [modalSupplyRfid, modalSupplyLineNum, modalSupplyLocation, submitSupply, playSound]);
 
     const qcRows = useMemo(() => {
+        if (homeDashboardApi) {
+            const items = homeDashQuery.data;
+            if (!items?.length) return [];
+            const qcStatuses = new Set(['GOOD', 'REPAIR', 'REJECT']);
+            return items
+                .filter((it) => qcStatuses.has(normCuttingLastStatus(it.last_status)))
+                .slice(0, 24)
+                .map(mapHomeItemToQcRow);
+        }
         return (displayDoc?.qc.history ?? []).slice(0, 24).map((h) => ({
             rfid: h.rfid_garment,
             qty: (h.good ?? 0) + (h.repair ?? 0) + (h.reject ?? 0),
             good: h.good ?? 0,
             repair: h.repair ?? 0,
             reject: h.reject ?? 0,
-            wo: h.wo ?? '—',
-            style: h.style ?? '—',
-            buyer: h.buyer ?? '—',
-            item: h.item ?? '—',
-            color: h.color ?? '—',
-            size: h.size ?? '—',
+            wo: h.wo ?? 'â€”',
+            style: h.style ?? 'â€”',
+            buyer: h.buyer ?? 'â€”',
+            item: h.item ?? 'â€”',
+            color: h.color ?? 'â€”',
+            size: h.size ?? 'â€”',
             location: h.location ?? 'quality_control',
-            timestamp: h.at ?? '—',
+            timestamp: h.at ?? 'â€”',
         }));
-    }, [displayDoc]);
+    }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
+
+    const totalQcServerCount = useMemo(
+        () => (homeDashboardApi ? qcRows.length : (displayDoc?.qc.history?.length ?? qcRows.length)),
+        [homeDashboardApi, qcRows.length, displayDoc?.qc.history?.length]
+    );
 
     const bundleRows = useMemo(() => {
+        if (homeDashboardApi) {
+            const items = homeDashQuery.data;
+            if (!items?.length) return [];
+            return items
+                .filter((it) => normCuttingLastStatus(it.last_status) === 'OUTPUT_BUNDLE')
+                .slice(0, 50)
+                .map(mapHomeItemToBundleRow);
+        }
         return (displayDoc?.bundle?.history ?? []).slice(0, 50).map((h) => ({
             rfid: h.rfid_garment,
-            wo: h.wo ?? '—',
+            wo: h.wo ?? 'â€”',
             qty: Math.max(1, Number(h.qty ?? 1)),
-            style: h.style ?? '—',
-            buyer: h.buyer ?? '—',
-            item: h.item ?? '—',
-            color: h.color ?? '—',
-            size: h.size ?? '—',
+            style: h.style ?? 'â€”',
+            buyer: h.buyer ?? 'â€”',
+            item: h.item ?? 'â€”',
+            color: h.color ?? 'â€”',
+            size: h.size ?? 'â€”',
             location: h.location ?? 'bundle',
-            timestamp: h.at ?? '—',
+            timestamp: h.at ?? 'â€”',
         }));
-    }, [displayDoc]);
+    }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
 
     useEffect(() => {
         onBundleMetrics?.(bundleRows.length);
     }, [bundleRows.length, onBundleMetrics]);
 
     const storeRows = useMemo(() => {
+        if (homeDashboardApi) {
+            const items = homeDashQuery.data;
+            if (!items?.length) return [];
+            const storeStatuses = new Set(['IN_SMARKET', 'OUT_SMARKET', 'IN_SUPERMARKET', 'OUT_SUPERMARKET']);
+            return items
+                .filter((it) => storeStatuses.has(normCuttingLastStatus(it.last_status)))
+                .slice(0, 24)
+                .map(mapHomeItemToStoreRow);
+        }
         return (displayDoc?.store.history ?? []).slice(0, 24).map((h) => {
             const locRaw = (h.location ?? '').trim();
             const isCheckout = h.checkout === true || locRaw === 'checkout';
             const lokasi = isCheckout
                 ? locRaw === 'checkout' || !locRaw
                     ? 'Check-out'
-                    : `Check-out · ${locRaw}`
+                    : `Check-out Â· ${locRaw}`
                 : locRaw === 'supermarket' || locRaw === ''
                   ? 'Supermarket'
                   : locRaw;
-            const lineStr = h.line != null && String(h.line).trim() !== '' ? String(h.line) : '—';
+            const lineStr = h.line != null && String(h.line).trim() !== '' ? String(h.line) : 'â€”';
             return {
                 rfid: h.rfid_garment,
-                wo: h.wo ?? '—',
+                wo: h.wo ?? 'â€”',
                 qty: Math.max(1, Number(h.qty ?? 1)),
                 line: lineStr,
                 lokasi,
-                style: h.style ?? '—',
-                buyer: h.buyer ?? '—',
-                item: h.item ?? '—',
-                color: h.color ?? '—',
-                size: h.size ?? '—',
+                style: h.style ?? 'â€”',
+                buyer: h.buyer ?? 'â€”',
+                item: h.item ?? 'â€”',
+                color: h.color ?? 'â€”',
+                size: h.size ?? 'â€”',
                 location: h.location ?? 'supermarket',
-                timestamp: h.at ?? '—',
+                timestamp: h.at ?? 'â€”',
             };
         });
-    }, [displayDoc]);
+    }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
 
     const supplyRows = useMemo(() => {
         return (displayDoc?.supply.history ?? []).slice(0, 24).map((h) => ({
             rfid: h.rfid_garment,
-            wo: h.wo ?? '—',
-            line: h.line ?? '—',
-            gm: h.gm ?? '—',
+            wo: h.wo ?? 'â€”',
+            line: h.line ?? 'â€”',
+            gm: h.gm ?? 'â€”',
             qty: Math.max(1, Number(h.qty ?? 1)),
-            style: h.style ?? '—',
-            buyer: h.buyer ?? '—',
-            item: h.item ?? '—',
-            color: h.color ?? '—',
-            size: h.size ?? '—',
+            style: h.style ?? 'â€”',
+            buyer: h.buyer ?? 'â€”',
+            item: h.item ?? 'â€”',
+            color: h.color ?? 'â€”',
+            size: h.size ?? 'â€”',
             location: h.location ?? 'supply_sewing',
-            timestamp: h.at ?? '—',
+            timestamp: h.at ?? 'â€”',
         }));
     }, [displayDoc]);
 
     const invalidate = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: QUERY_SCAN });
-    }, [queryClient]);
+        if (homeDashboardApi) void queryClient.invalidateQueries({ queryKey: QUERY_HOME_DASH });
+    }, [queryClient, homeDashboardApi]);
 
     const bundleLeftColumn = useMemo(() => {
         const lastOk = bundleSessionLog.find((s) => s.ok);
         const latestBundleRow = bundleRows[0];
-        const rfidShow = lastOk?.rfid ?? bundleRows[0]?.rfid ?? '—';
+        const rfidShow = lastOk?.rfid ?? bundleRows[0]?.rfid ?? 'â€”';
         const ridB = lastOk?.rfid ?? bundleRows[0]?.rfid ?? '';
         const bundleRowForWo = bundleRows.find((r) => r.rfid === ridB) ?? bundleRows[0];
         const woShow =
-            bundleRowForWo?.wo != null && String(bundleRowForWo.wo).trim() !== '' ? String(bundleRowForWo.wo) : '—';
-        const styleShow = latestBundleRow?.style ?? '—';
-        const itemShow = latestBundleRow?.item ?? '—';
-        const buyerShow = latestBundleRow?.buyer ?? '—';
-        const colorShow = latestBundleRow?.color ?? '—';
-        const sizeShow = latestBundleRow?.size ?? '—';
+            bundleRowForWo?.wo != null && String(bundleRowForWo.wo).trim() !== '' ? String(bundleRowForWo.wo) : 'â€”';
+        const styleShow = latestBundleRow?.style ?? 'â€”';
+        const itemShow = latestBundleRow?.item ?? 'â€”';
+        const buyerShow = latestBundleRow?.buyer ?? 'â€”';
+        const colorShow = latestBundleRow?.color ?? 'â€”';
+        const sizeShow = latestBundleRow?.size ?? 'â€”';
         const rowTimestamp =
             latestBundleRow?.timestamp && !Number.isNaN(Date.parse(String(latestBundleRow.timestamp)))
                 ? new Date(String(latestBundleRow.timestamp))
@@ -858,7 +965,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : '—';
+            : 'â€”';
         return (
             <>
                 <div className="rounded-xl border-2 border-emerald-200/90 bg-white p-3 shadow-sm">
@@ -906,77 +1013,13 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         );
     }, [operator, bundleRows, bundleSessionLog]);
 
-    const qcLeftColumn = useMemo(() => {
-        const lastOk = qcSessionLog.find((s) => s.ok);
-        const parsed = lastOk?.message?.match(/Good\s+(\d+)\s*·\s*Repair\s+(\d+)\s*·\s*Reject\s+(\d+)/);
-        const rfidShow = lastOk?.rfid ?? qcRows[0]?.rfid ?? '—';
-        const ridQc = lastOk?.rfid ?? qcRows[0]?.rfid ?? '';
-        const qcRowForDetail = qcRows.find((r) => r.rfid === ridQc) ?? qcRows[0];
-        const woShowQc = qcRowForDetail?.wo != null && String(qcRowForDetail.wo).trim() !== '' ? String(qcRowForDetail.wo) : '—';
-        const goodShow = parsed ? parsed[1] : qcRows[0] != null ? String(qcRows[0].good) : '—';
-        const repairShow = parsed ? parsed[2] : qcRows[0] != null ? String(qcRows[0].repair) : '—';
-        const rejectShow = parsed ? parsed[3] : qcRows[0] != null ? String(qcRows[0].reject) : '—';
-        const t = qcSessionLog.find((s) => s.ok)?.time ?? qcSessionLog[0]?.time;
-        const timeStr = t
-            ? t.toLocaleString('id-ID', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-              })
-            : '—';
-        const totalQc = displayDoc?.qc.history?.length ?? qcRows.length;
-        return (
-            <>
-                <div className="rounded-xl border-2 border-sky-200/90 bg-white p-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-1.5 text-sky-700">
-                            <User className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Operator</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-white bg-sky-500 px-2 py-0.5 rounded-full shrink-0">QC</span>
-                    </div>
-                    <div className="text-sm font-bold text-slate-900 leading-tight break-words">{operator.name}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">NIK: {operator.nik}</div>
-                </div>
-
-                <div className="rounded-xl border-2 border-sky-200 bg-gradient-to-br from-sky-50/90 to-white p-3 shadow-sm">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-sky-600 mb-1">Ringkasan</div>
-                    <div className="text-2xl font-extrabold text-slate-900 leading-none tabular-nums">{totalQc}</div>
-                    <div className="text-[10px] text-slate-500 mt-1">Total {totalQc} scan QC (server)</div>
-                </div>
-
-                <div className="rounded-xl border border-sky-200 overflow-hidden bg-white shadow-sm">
-                    <div className="flex items-center justify-between gap-2 px-2.5 py-2 bg-gradient-to-r from-sky-600 to-sky-500 text-white">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <ClipboardList className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} />
-                            <span className="text-[10px] font-bold truncate">Detail Data Terakhir</span>
-                        </div>
-                        <span className="text-[9px] font-mono shrink-0 opacity-95">{timeStr}</span>
-                    </div>
-                    <div className="p-2.5">
-                        <LeftDetailRow icon={Hash} label="# RFID" value={rfidShow} />
-                        <LeftDetailRow icon={Tag} label="WO" value={woShowQc} />
-                        <LeftDetailRow icon={ClipboardCheck} label="GOOD" value={goodShow} />
-                        <LeftDetailRow icon={ClipboardCheck} label="REPAIR" value={repairShow} />
-                        <LeftDetailRow icon={ClipboardCheck} label="REJECT" value={rejectShow} />
-                        <LeftDetailRow icon={Palette} label="COLOR" value="—" />
-                        <LeftDetailRow icon={Ruler} label="SIZE" value="—" />
-                    </div>
-                </div>
-            </>
-        );
-    }, [operator, qcSessionLog, qcRows, displayDoc?.qc.history?.length]);
-
     const storeLeftColumn = useMemo(() => {
         const lastOk = storeSessionLog.find((s) => s.ok);
-        const rfidShow = lastOk?.rfid ?? storeRows[0]?.rfid ?? '—';
+        const rfidShow = lastOk?.rfid ?? storeRows[0]?.rfid ?? 'â€”';
         const ridSt = lastOk?.rfid ?? storeRows[0]?.rfid ?? '';
         const storeRowForDetail = storeRows.find((r) => r.rfid === ridSt) ?? storeRows[0];
         const woShowSt =
-            storeRowForDetail?.wo != null && String(storeRowForDetail.wo).trim() !== '' ? String(storeRowForDetail.wo) : '—';
+            storeRowForDetail?.wo != null && String(storeRowForDetail.wo).trim() !== '' ? String(storeRowForDetail.wo) : 'â€”';
         const t = storeSessionLog.find((s) => s.ok)?.time ?? storeSessionLog[0]?.time;
         const timeStr = t
             ? t.toLocaleString('id-ID', {
@@ -987,8 +1030,8 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : '—';
-        const totalSt = displayDoc?.store.history?.length ?? storeRows.length;
+            : 'â€”';
+        const totalSt = homeDashboardApi ? storeRows.length : (displayDoc?.store.history?.length ?? storeRows.length);
         return (
             <>
                 <div className="rounded-xl border-2 border-amber-200/90 bg-white p-3 shadow-sm">
@@ -1025,23 +1068,23 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 </div>
             </>
         );
-    }, [operator, storeSessionLog, storeRows, displayDoc?.store.history?.length]);
+    }, [operator, storeSessionLog, storeRows, displayDoc?.store.history?.length, homeDashboardApi]);
 
     const supplyLeftColumn = useMemo(() => {
         const lastOk = supplySessionLog.find((s) => s.ok);
-        const rfidShow = lastOk?.rfid ?? supplyRows[0]?.rfid ?? '—';
+        const rfidShow = lastOk?.rfid ?? supplyRows[0]?.rfid ?? 'â€”';
         const ridSu = lastOk?.rfid ?? supplyRows[0]?.rfid ?? '';
         const supplyRowForDetail = supplyRows.find((r) => r.rfid === ridSu) ?? supplyRows[0];
         const woShowSu =
             supplyRowForDetail?.wo != null && String(supplyRowForDetail.wo).trim() !== ''
                 ? String(supplyRowForDetail.wo)
-                : '—';
+                : 'â€”';
         const lineShow =
             supplyRowForDetail?.line != null && String(supplyRowForDetail.line).trim() !== ''
                 ? String(supplyRowForDetail.line)
-                : '—';
+                : 'â€”';
         const gmShow =
-            supplyRowForDetail?.gm != null && String(supplyRowForDetail.gm).trim() !== '' ? String(supplyRowForDetail.gm) : '—';
+            supplyRowForDetail?.gm != null && String(supplyRowForDetail.gm).trim() !== '' ? String(supplyRowForDetail.gm) : 'â€”';
         const t = supplySessionLog.find((s) => s.ok)?.time ?? supplySessionLog[0]?.time;
         const timeStr = t
             ? t.toLocaleString('id-ID', {
@@ -1052,7 +1095,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : '—';
+            : 'â€”';
         const totalSu = displayDoc?.supply.history?.length ?? supplyRows.length;
         return (
             <>
@@ -1095,11 +1138,6 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 
     // Form metadata Bundle disembunyikan sesuai permintaan UI.
 
-    const qcFormSection = (
-        <div className="text-[10px] text-slate-600 rounded-lg border border-sky-100 bg-sky-50/50 px-2.5 py-2">
-            Scan RFID terlebih dahulu. Jika RFID valid dari Bundle, pop-up input Good/Repair/Reject akan muncul otomatis.
-        </div>
-    );
 
     const supplyFormSection = (
         <div
@@ -1107,7 +1145,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             style={{ fontSize: STORE_FORM_FS }}
         >
             <div className="font-semibold text-violet-900" style={{ fontSize: STORE_FORM_LABEL_FS }}>
-                Supply Sewing — isi sebelum scan
+                Supply Sewing â€” isi sebelum scan
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                 <div className="min-w-0">
@@ -1210,7 +1248,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     style={{ fontSize: STORE_FORM_FS }}
                 >
                     <div className="font-semibold text-amber-900" style={{ fontSize: STORE_FORM_LABEL_FS }}>
-                        {modalStoreMode === 'checkout' ? 'Check Out — isi sebelum scan' : 'Supply Urgent — isi sebelum scan'}
+                        {modalStoreMode === 'checkout' ? 'Check Out â€” isi sebelum scan' : 'Supply Urgent â€” isi sebelum scan'}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                         <div className="min-w-0">
@@ -1273,10 +1311,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 
     return (
         <div
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 flex-1 min-h-0 min-w-0"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 flex-1 min-h-0 min-w-0 max-lg:flex-none max-lg:min-h-0 max-lg:auto-rows-min"
             style={{ gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)' }}
         >
-            {/* Bundle — pengisian WO / style / color hanya lewat popup Scanning; kartu = ChartCard ala Distribusi Data */}
+            {/* Bundle â€” pengisian WO / style / color hanya lewat popup Scanning; kartu = ChartCard ala Distribusi Data */}
             <ChartCard
                 title={<CuttingStageTitle>Bundle</CuttingStageTitle>}
                 icon={PackagePlus}
@@ -1402,7 +1440,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         className="text-[9px] text-slate-500 hover:text-sky-700 shrink-0 px-1.5 py-0.5 rounded-md hover:bg-sky-50 transition-colors"
                         title="Refresh data"
                     >
-                        ↻ Refresh
+                        â†» Refresh
                     </button>
                 </div>
                 {!SUPPLY_SOON ? (
@@ -1420,12 +1458,14 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         <div className="bg-gradient-to-r from-sky-600 to-cyan-500 px-4 py-3 flex items-center justify-between gap-2">
                             <div>
                                 <h3 className="text-sm sm:text-base font-extrabold text-white">{tableDetail.title}</h3>
-                                <p className="text-[10px] sm:text-xs text-cyan-50/90">Informasi tracking hasil scan</p>
+                                <p className="text-[10px] sm:text-xs text-cyan-50/90">
+                                    {tableDetail.subtitle ?? 'Informasi tracking hasil scan'}
+                                </p>
                             </div>
                             <button
                                 type="button"
                                 className="rounded-md border border-white/35 bg-white/10 px-2.5 py-1 text-xs text-white hover:bg-white/20"
-                                onClick={() => setTableDetail({ open: false, title: '', fields: [] })}
+                                onClick={() => setTableDetail({ open: false, title: '', fields: [], subtitle: undefined })}
                             >
                                 Tutup
                             </button>
@@ -1442,110 +1482,12 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 </div>
             ) : null}
 
-            {qcPrompt.open ? (
-                <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-900/45 backdrop-blur-[1px] p-3">
-                    <div className="w-full max-w-md rounded-2xl border border-sky-200 bg-white shadow-2xl p-4">
-                        <h3 className="text-sm font-extrabold text-sky-700">Input Hasil Quality Control</h3>
-                        <p className="mt-1 text-[11px] text-slate-600">
-                            RFID <span className="font-mono font-bold text-slate-800">{qcPrompt.rfid}</span> · Qty Bundle{' '}
-                            <span className="font-bold">{qcPrompt.qty}</span>
-                        </p>
-                        <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Good</label>
-                                <div className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-slate-50 text-slate-800 font-bold tabular-nums">
-                                    {qcPrompt.good}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Repair</label>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustQcPrompt('repair', -1)}
-                                        className="h-7 w-7 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                    >
-                                        -
-                                    </button>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        value={qcPrompt.repair}
-                                        onChange={(e) => {
-                                            const nextRepair = Math.max(0, parseInt(String(e.target.value).replace(/\D/g, ''), 10) || 0);
-                                            const keepReject = Math.max(0, parseInt(String(qcPrompt.reject).replace(/\D/g, ''), 10) || 0);
-                                            setQcPromptByCounters(nextRepair, keepReject);
-                                        }}
-                                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center tabular-nums"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustQcPrompt('repair', 1)}
-                                        className="h-7 w-7 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                    >
-                                        +
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Reject</label>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustQcPrompt('reject', -1)}
-                                        className="h-7 w-7 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                    >
-                                        -
-                                    </button>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        value={qcPrompt.reject}
-                                        onChange={(e) => {
-                                            const keepRepair = Math.max(0, parseInt(String(qcPrompt.repair).replace(/\D/g, ''), 10) || 0);
-                                            const nextReject = Math.max(0, parseInt(String(e.target.value).replace(/\D/g, ''), 10) || 0);
-                                            setQcPromptByCounters(keepRepair, nextReject);
-                                        }}
-                                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center tabular-nums"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustQcPrompt('reject', 1)}
-                                        className="h-7 w-7 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                    >
-                                        +
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <p className="mt-2 text-[10px] text-slate-500">Total Good + Repair + Reject harus sama dengan Qty Bundle.</p>
-                        <div className="mt-3 flex items-center justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setQcPrompt({ open: false, rfid: '', qty: 0, good: '0', repair: '0', reject: '0' })}
-                                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                disabled={busyQ}
-                            >
-                                Batal
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void confirmQcPrompt()}
-                                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
-                                disabled={busyQ}
-                            >
-                                OK
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
 
             <CuttingScanStationModal
                 isOpen={scanningModal === 'bundle'}
                 onClose={() => setScanningModal(null)}
-                title="Scanning Station — Bundle"
-                subtitle="Scan RFID untuk input Bundle (Cutting)"
+                title="Station Bundle"
+                subtitle="Scan RFID"
                 accent="emerald"
                 stageBadge="Bundle"
                 busy={busyB}
@@ -1556,26 +1498,17 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 sessionItems={bundleSessionLog}
             />
 
-            <CuttingScanStationModal
+            <QcScanStationHost
                 isOpen={scanningModal === 'qc'}
                 onClose={() => setScanningModal(null)}
-                title="Scanning Station — Quality Control"
-                subtitle="Scan RFID untuk Quality Control"
                 accent="sky"
-                stageBadge="Quality Control"
-                busy={busyQ}
-                leftColumn={qcLeftColumn}
-                formSection={qcFormSection}
-                rfidValue={modalQcRfid}
-                onRfidChange={setModalQcRfid}
-                onRfidSubmit={() => void runQcSubmit()}
-                sessionItems={qcSessionLog}
+                serverScanTotal={totalQcServerCount}
             />
 
             <CuttingScanStationModal
                 isOpen={scanningModal === 'store'}
                 onClose={() => setScanningModal(null)}
-                title="Scanning Station — Supermarket"
+                title="Scanning Station Supermarket"
                 subtitle="Scan RFID untuk Supermarket (Cutting)"
                 accent="amber"
                 stageBadge="Supermarket"
@@ -1591,8 +1524,8 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             <CuttingScanStationModal
                 isOpen={scanningModal === 'supply'}
                 onClose={() => setScanningModal(null)}
-                title="Scanning Station — Supply Sewing"
-                subtitle="Scan RFID untuk Supply Sewing"
+                title="Station Supply Sewing"
+                subtitle="Scan RFID"
                 accent="violet"
                 stageBadge="Supply Sewing"
                 busy={busySu}

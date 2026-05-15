@@ -1,17 +1,16 @@
-import { useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import backgroundImage from '../assets/background.jpg';
-import { useCheckingRFIDQuery as useCheckingRFID } from '../hooks/useCheckingRFIDQuery';
+import { useCheckingRFIDCuttingQuery } from '../hooks/useCheckingRFIDCuttingQuery';
 import PageHeader from '../components/checking/PageHeader';
 import RFIDInputSection from '../components/checking/RFIDInputSection';
 import FiltersAndActions from '../components/checking/FiltersAndActions';
 import CheckResultsList from '../components/checking/CheckResultsList';
 import TrackingModal from '../components/checking/TrackingModal';
 
-export default function CheckingRFID() {
-
+export default function CheckingRFIDCutting() {
     const {
         rfidInput,
         setRfidInput,
@@ -33,13 +32,16 @@ export default function CheckingRFID() {
         handleRfidCheck,
         handleKeyPress,
         filteredItems,
-    } = useCheckingRFID();
+    } = useCheckingRFIDCuttingQuery();
 
-    const handleItemClick = useCallback((rfid: string) => {
-        if (!rfid) return;
-        setSelectedRfid(rfid);
-        setShowTrackingModal(true);
-    }, [setSelectedRfid, setShowTrackingModal]);
+    const handleItemClick = useCallback(
+        (rfid: string) => {
+            if (!rfid) return;
+            setSelectedRfid(rfid);
+            setShowTrackingModal(true);
+        },
+        [setSelectedRfid, setShowTrackingModal]
+    );
 
     const handleCloseTrackingModal = useCallback(() => {
         setShowTrackingModal(false);
@@ -48,11 +50,14 @@ export default function CheckingRFID() {
     }, [setShowTrackingModal, setTrackingData, setSelectedRfid]);
 
     const handleCheckRFID = useCallback(() => {
-        handleRfidCheck(rfidInput);
+        void handleRfidCheck(rfidInput);
     }, [handleRfidCheck, rfidInput]);
 
+    const pageSubtitle = useMemo(() => 'Verifikasi & riwayat tracking bundle Cutting (GCC)', []);
+
     return (
-        <div className="flex min-h-screen w-full h-screen font-sans overflow-x-hidden fixed inset-0 m-0 p-0"
+        <div
+            className="flex min-h-screen w-full h-screen font-sans overflow-x-hidden fixed inset-0 m-0 p-0"
             style={{
                 backgroundImage: `url(${backgroundImage})`,
                 backgroundSize: '100% 100%',
@@ -61,12 +66,10 @@ export default function CheckingRFID() {
                 backgroundAttachment: 'fixed',
             }}
         >
-            {/* Sidebar */}
             <div className="fixed left-0 top-0 h-full z-50 shadow-xl">
                 <Sidebar />
             </div>
 
-            {/* Main Content */}
             <div
                 className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out"
                 style={{
@@ -74,26 +77,24 @@ export default function CheckingRFID() {
                     width: 'var(--layout-sidebar-width)',
                 }}
             >
-                {/* Header */}
                 <div className="sticky top-0 z-40 shadow-md">
                     <Header />
                 </div>
 
-                {/* Breadcrumb */}
                 <Breadcrumb />
 
-                {/* Page Content */}
-                <main 
+                <main
                     className="flex-1 p-2 xs:p-3 sm:p-4 md:p-5 lg:p-6 space-y-3 xs:space-y-4 sm:space-y-5 md:space-y-6 pt-2 xs:pt-3 sm:pt-4 overflow-y-auto min-h-0"
                     style={{
                         WebkitOverflowScrolling: 'touch',
                         scrollbarWidth: 'thin',
                         scrollbarColor: '#cbd5e1 #f1f5f9',
-                        paddingBottom: 'clamp(2rem, 4vh, 4rem)'
+                        paddingBottom: 'clamp(2rem, 4vh, 4rem)',
                     }}
                 >
-                    <PageHeader />
+                    <PageHeader theme="cutting" title="Checking RFID Cutting" subtitle={pageSubtitle} />
                     <RFIDInputSection
+                        theme="cutting"
                         rfidInput={rfidInput}
                         setRfidInput={setRfidInput}
                         inputRef={inputRef}
@@ -101,8 +102,10 @@ export default function CheckingRFID() {
                         onKeyPress={handleKeyPress}
                         onCheck={handleCheckRFID}
                         checkItems={checkItems}
+                        rfidPlaceholder="Scan atau ketik RFID bundle untuk checking cutting..."
                     />
                     <FiltersAndActions
+                        theme="cutting"
                         filterStatus={filterStatus}
                         setFilterStatus={setFilterStatus}
                         searchQuery={searchQuery}
@@ -112,6 +115,7 @@ export default function CheckingRFID() {
                         setRfidInput={setRfidInput}
                     />
                     <CheckResultsList
+                        theme="cutting"
                         filteredItems={filteredItems}
                         checkItems={checkItems}
                         onItemClick={handleItemClick}
@@ -119,13 +123,14 @@ export default function CheckingRFID() {
                 </main>
             </div>
 
-            {/* Tracking Modal */}
             <TrackingModal
+                theme="cutting"
                 isOpen={showTrackingModal}
                 selectedRfid={selectedRfid}
                 trackingData={trackingData}
                 loadingTracking={loadingTracking}
                 onClose={handleCloseTrackingModal}
+                title="Tracking Bundle Cutting"
             />
         </div>
     );

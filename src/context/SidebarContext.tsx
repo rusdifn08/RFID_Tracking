@@ -1,5 +1,29 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useLayoutEffect } from 'react';
 import type { ReactNode } from 'react';
+
+/** Sama dengan breakpoint `lg` Tailwind — layout sidebar sempit di bawah ini. */
+const SIDEBAR_LAYOUT_LG_PX = 1024;
+
+function applySidebarLayoutCss(isOpen: boolean) {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const mobile = window.innerWidth < SIDEBAR_LAYOUT_LG_PX;
+    if (mobile) {
+        if (isOpen) {
+            root.style.setProperty('--layout-sidebar-offset', '13rem');
+            root.style.setProperty('--layout-sidebar-width', 'calc(100% - 13rem)');
+        } else {
+            root.style.setProperty('--layout-sidebar-offset', '3.5rem');
+            root.style.setProperty('--layout-sidebar-width', 'calc(100% - 3.5rem)');
+        }
+    } else if (isOpen) {
+        root.style.setProperty('--layout-sidebar-offset', '18%');
+        root.style.setProperty('--layout-sidebar-width', 'calc(100% - 18%)');
+    } else {
+        root.style.setProperty('--layout-sidebar-offset', '5rem');
+        root.style.setProperty('--layout-sidebar-width', 'calc(100% - 5rem)');
+    }
+}
 
 interface SidebarContextType {
     isOpen: boolean;
@@ -13,6 +37,16 @@ const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 export function SidebarProvider({ children }: { children: ReactNode }) {
     // Default: selalu tertutup (tidak auto terbuka)
     const [isOpen, setIsOpen] = useState(false);
+
+    useLayoutEffect(() => {
+        applySidebarLayoutCss(isOpen);
+    }, [isOpen]);
+
+    useEffect(() => {
+        const onResize = () => applySidebarLayoutCss(isOpen);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [isOpen]);
 
     // Auto-close sidebar setelah beberapa menit tidak ada aktivitas
     useEffect(() => {

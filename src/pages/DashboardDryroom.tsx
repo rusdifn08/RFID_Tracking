@@ -13,7 +13,6 @@ import dryroomIcon from '../assets/dryroom_icon.webp';
 // --- IMPORTS COMPONENTS ---
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import ScanningFinishingModal from '../components/ScanningFinishingModal';
 import { getFinishingData, getFinishingDataWithFilter, getFinishingDataByLine, API_BASE_URL, getDefaultHeaders } from '../config/api';
 import { productionLinesMJL } from '../data/production_line';
@@ -86,7 +85,6 @@ const THEME = {
  * ============================================================================
  */
 export default function DashboardDryroom() {
-  const { isOpen } = useSidebar();
 
   // --- STATE ---
   const [filters, setFilters] = useState<FilterState>({ dateFrom: '', dateTo: '', wo: '' });
@@ -296,8 +294,6 @@ export default function DashboardDryroom() {
 
 
   // --- LAYOUT ---
-  const sidebarWidth = isOpen ? '18%' : '5rem';
-
   // State untuk detect mobile device
   const [isMobile, setIsMobile] = useState(false);
 
@@ -331,8 +327,8 @@ export default function DashboardDryroom() {
       <div
         className="flex flex-col h-full relative z-10 transition-all duration-300 ease-in-out"
         style={{
-          marginLeft: sidebarWidth,
-          width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+          marginLeft: 'var(--layout-sidebar-offset)',
+          width: 'var(--layout-sidebar-width)',
         }}
       >
 

@@ -4,11 +4,11 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { AlertTriangle, CalendarRange, CheckCircle2, CircleX, ClipboardCheck, Layers, Wrench } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
-import backgroundImage from '../assets/background.jpg';
 import ChartCard from '../components/dashboard/ChartCard';
 import { COLORS } from '../components/dashboard/constants';
+import backgroundImage from '../assets/background.jpg';
 import { getCuttingScanState, getGccCuttingQcDashboardData, type CuttingScanHistoryEntry, type GccQcDashboardItem } from '../config/api';
+import QcRepairScanModalHost from '../components/dashboard/cutting/QcRepairScanModalHost';
 
 const QUERY_CUTTING_QC = ['cutting-qc-dashboard'] as const;
 const QUERY_CUTTING_QC_GCC_BASE = 'cutting-qc-dashboard-gcc' as const;
@@ -137,9 +137,7 @@ function BundleCard({ value }: { value: number }) {
 }
 
 export default function DashboardQualityControlCutting() {
-  const { isOpen } = useSidebar();
-  const sidebarWidth = isOpen ? '18%' : '5rem';
-
+  const [qcRepairModalOpen, setQcRepairModalOpen] = useState(false);
   const [qcRangeFrom, setQcRangeFrom] = useState(ymdTodayLocal);
   const [qcRangeTo, setQcRangeTo] = useState(ymdTodayLocal);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -311,7 +309,7 @@ export default function DashboardQualityControlCutting() {
 
       <div
         className="flex flex-col h-full min-h-0 relative z-10 transition-all duration-300 ease-in-out"
-        style={{ marginLeft: sidebarWidth, width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+        style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
       >
         <Header />
 
@@ -424,6 +422,15 @@ export default function DashboardQualityControlCutting() {
                   iconBgColor={COLORS.blueSoft}
                   headerAction={
                     <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setQcRepairModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-orange-400 bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-500/25 transition hover:bg-orange-600 hover:border-orange-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
+                        title="Buka modal scan QC Repair di halaman ini — qty awal dialokasikan ke Repair (bisa diubah sebelum simpan)"
+                      >
+                        <Wrench className="h-3.5 w-3.5 text-white shrink-0" aria-hidden />
+                        <span className="whitespace-nowrap">Scan QC Repair</span>
+                      </button>
                       {gccDashboardQuery.error ? (
                         <span
                           className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
@@ -567,6 +574,7 @@ export default function DashboardQualityControlCutting() {
           </div>
         </main>
       </div>
+      <QcRepairScanModalHost isOpen={qcRepairModalOpen} onClose={() => setQcRepairModalOpen(false)} />
     </div>
   );
 }

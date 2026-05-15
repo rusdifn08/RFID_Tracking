@@ -3,7 +3,6 @@ import { useMutation } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
-import { useSidebar } from '../context/SidebarContext';
 import { API_BASE_URL, getDefaultHeaders } from '../config/api';
 import backgroundImage from '../assets/background.jpg';
 import StatusPageHeader from '../components/status/StatusPageHeader';
@@ -37,7 +36,6 @@ interface RFIDStatusItem {
 }
 
 const StatusRFID = memo(() => {
-    const { isOpen } = useSidebar();
     const [rfidInput, setRfidInput] = useState('');
     const [statusItems, setStatusItems] = useState<RFIDStatusItem[]>([]);
     const [isChecking, setIsChecking] = useState(false);
@@ -162,8 +160,6 @@ const StatusRFID = memo(() => {
     }), [statusItems]);
 
     // Sidebar width - dioptimasi dengan useMemo
-    const sidebarWidth = useMemo(() => isOpen ? '18%' : '5rem', [isOpen]);
-
     // Handle clear all - dioptimasi dengan useCallback
     const handleClearAll = useCallback(() => {
         setStatusItems([]);
@@ -200,8 +196,8 @@ const StatusRFID = memo(() => {
             <div
                 className="flex flex-col w-full h-screen transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 {/* Header */}

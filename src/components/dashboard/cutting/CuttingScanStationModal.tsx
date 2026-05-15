@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Package, CheckCircle2 } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 
@@ -106,6 +107,22 @@ export default function CuttingScanStationModal({
         return () => window.clearTimeout(t);
     }, [isOpen]);
 
+    useEffect(() => {
+        if (!isOpen || busy || rfidValue.trim() !== '') return;
+        const t = window.setTimeout(() => inputRef.current?.focus(), 50);
+        return () => window.clearTimeout(t);
+    }, [isOpen, busy, rfidValue]);
+
+    /** Modal di dalam main (z-10) tidak bisa menembus sidebar (z-50); portal ke body memperbaiki overlap di mobile/desktop. */
+    useEffect(() => {
+        if (!isOpen) return;
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [isOpen]);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && rfidValue.trim() && !busy) {
             e.preventDefault();
@@ -115,10 +132,10 @@ export default function CuttingScanStationModal({
 
     if (!isOpen) return null;
 
-    return (
+    const modal = (
         <>
             <div
-                className="fixed inset-0 z-[1000] flex items-start justify-center sm:items-center p-1.5 xs:p-2 sm:p-3 md:p-4 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+                className="fixed inset-0 z-[2000] flex items-start justify-center sm:items-center p-1.5 xs:p-2 sm:p-3 md:p-4 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
                 style={{
                     background: 'rgba(15, 23, 42, 0.85)',
                     backdropFilter: 'blur(8px)',
@@ -459,4 +476,6 @@ export default function CuttingScanStationModal({
             `}</style>
         </>
     );
+
+    return createPortal(modal, document.body);
 }

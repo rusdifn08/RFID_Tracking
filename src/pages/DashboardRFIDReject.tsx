@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { BarChart3, Table, Filter, Download, Calendar, TrendingUp, AlertTriangle, XCircle } from 'lucide-react';
 import ExportModal from '../components/ExportModal';
@@ -22,7 +21,6 @@ interface LineRejectData {
 }
 
 export default function DashboardRFIDReject() {
-    const { isOpen } = useSidebar();
     const queryClient = useQueryClient();
     const [isLoaded, setIsLoaded] = useState(false);
 
@@ -142,8 +140,6 @@ export default function DashboardRFIDReject() {
         }));
     }, [filteredLineRejectData]);
 
-    const sidebarWidth = isOpen ? '18%' : '5rem';
-
     return (
         <div className="flex h-screen w-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative selection:bg-sky-200 selection:text-sky-900">
             {/* Background Pattern */}
@@ -160,8 +156,8 @@ export default function DashboardRFIDReject() {
             <div
                 className="flex flex-col h-full relative z-10 transition-all duration-300 ease-in-out"
                 style={{
-                    marginLeft: sidebarWidth,
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 {/* HEADER */}

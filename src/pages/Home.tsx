@@ -2,11 +2,9 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import HomeContent from '../components/HomeContent';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 
 export default function Home() {
-    const { isOpen } = useSidebar();
 
     return (
         <div className="flex min-h-screen w-full h-screen fixed inset-0 m-0 p-0"
@@ -24,7 +22,7 @@ export default function Home() {
             {/* Main Content Area */}
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header */}
                 <Header />

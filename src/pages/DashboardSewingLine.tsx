@@ -3,13 +3,11 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import ChartCard from '../components/dashboard/ChartCard';
 import { LayoutGrid, UserCircle2, ActivitySquare } from 'lucide-react';
 
 export default function DashboardSewingLine() {
-    const { isOpen } = useSidebar();
 
     const [operatorName, setOperatorName] = useState<string>('-');
     const [operatorNik, setOperatorNik] = useState<string>('-');
@@ -58,7 +56,7 @@ export default function DashboardSewingLine() {
             {/* Main Content Area */}
             <div
                 className="flex flex-col w-full min-h-screen relative"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header */}
                 <Header />

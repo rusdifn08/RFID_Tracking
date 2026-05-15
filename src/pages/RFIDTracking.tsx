@@ -3,7 +3,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 // Import icons from assets folder
 // File-file ini ada di folder assets/ di root project
@@ -24,7 +23,6 @@ const timeIcon = '/assets/time.webp';
 import { HIDE_CARD_CUTTING_PROSES, HIDE_CARD_SEWING_PROSES } from '../config/hide';
 
 export default function RFIDTracking() {
-    const { isOpen } = useSidebar();
     const navigate = useNavigate();
 
     const allCards = [
@@ -129,7 +127,7 @@ export default function RFIDTracking() {
             {/* Main Content Area */}
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header */}
                 <Header />

@@ -3,7 +3,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 
 const titleByPath: Record<string, string> = {
@@ -12,7 +11,6 @@ const titleByPath: Record<string, string> = {
 };
 
 export default function PlaceholderProses() {
-    const { isOpen } = useSidebar();
     const navigate = useNavigate();
     const location = useLocation();
     const title = titleByPath[location.pathname] ?? 'Proses';
@@ -31,7 +29,7 @@ export default function PlaceholderProses() {
             <Sidebar />
             <div
                 className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 <Header />
                 <Breadcrumb />

@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ElementType } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import { Loader2, Package, RefreshCw, X, Layers, Factory, Ruler, Tag, Hash, ImageIcon, Sparkles } from 'lucide-react';
 import { getNeedleStock, type NeedleStockItem } from '../config/api';
@@ -369,7 +368,6 @@ const StockCard = memo(function StockCard({ row, stock, onOpenDetail }: StockCar
 }, (prev, next) => prev.row === next.row && prev.stock === next.stock);
 
 export default function DashboardMesinKolam() {
-  const { isOpen } = useSidebar();
   const [rows, setRows] = useState<NeedleStockItem[]>([]);
   const [stockByKey, setStockByKey] = useState<Record<string, number>>({});
   const [count, setCount] = useState(0);
@@ -470,8 +468,8 @@ export default function DashboardMesinKolam() {
       <div
         className="flex h-screen max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden transition-all duration-300 ease-in-out"
         style={{
-          marginLeft: isOpen ? '18%' : '5rem',
-          width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)',
+          marginLeft: 'var(--layout-sidebar-offset)',
+          width: 'var(--layout-sidebar-width)',
         }}
       >
         <Header />

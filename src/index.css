@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Default = sidebar tertutup desktop; SidebarProvider memperbarui di <1024px & saat buka/tutup. */
+:root {
+    --layout-sidebar-offset: 5rem;
+    --layout-sidebar-width: calc(100% - 5rem);
+}
+
 * {
 
     box-sizing: border-box;

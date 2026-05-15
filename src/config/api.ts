@@ -409,6 +409,191 @@ export function resolveGccCuttingBundlesListUrl(): string {
     return DEFAULT_GCC_CUTTING_FULL_LIST_URL;
 }
 
+/** Resolve URL GET checking history bundle cutting (`/api/gcc/cutting/check`). */
+export function resolveGccCuttingCheckUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_CHECK_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/check') ? t : `${t}/api/gcc/cutting/check`;
+    }
+    const listEnv = (import.meta.env.VITE_GCC_CUTTING_LIST_URL as string | undefined)?.trim();
+    if (listEnv) {
+        const t = listEnv.replace(/\/$/, '');
+        if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/check');
+        return `${t}/api/gcc/cutting/check`;
+    }
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/check`;
+    }
+    return 'http://10.5.0.201:9000/api/gcc/cutting/check';
+}
+
+/** Satu baris history dari GET `/api/gcc/cutting/check?rfid_bundles=`. */
+export interface GccCuttingCheckLogItem {
+    id: number;
+    id_user?: number;
+    last_status?: string;
+    qty_batch?: number;
+    batch?: string;
+    log_created_at?: string;
+    barcode?: string;
+    rfid_bundles?: string;
+    wo?: string;
+    style?: string;
+    meja?: string;
+    warna?: string;
+    size?: string;
+    no_ikat?: number;
+    no_urut?: string;
+    season?: string;
+    country?: string;
+    bundle_created_at?: string;
+}
+
+export interface GccCuttingCheckApiResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    count?: number;
+    data?: GccCuttingCheckLogItem[];
+}
+
+/** GET history tracking bundle cutting (GCC :9000). */
+export async function getGccCuttingCheck(rfid_bundles: string): Promise<{
+    success: boolean;
+    data?: GccCuttingCheckLogItem[];
+    message?: string;
+    error?: string;
+    status?: number;
+}> {
+    const rid = String(rfid_bundles || '').trim();
+    if (!rid) return { success: false, error: 'RFID bundle wajib diisi' };
+    try {
+        const base = resolveGccCuttingCheckUrl();
+        let reqUrl: string;
+        try {
+            const u = new URL(base);
+            u.searchParams.set('rfid_bundles', rid);
+            reqUrl = u.toString();
+        } catch {
+            reqUrl = `${base}?rfid_bundles=${encodeURIComponent(rid)}`;
+        }
+        const res = await fetch(reqUrl, {
+            method: 'GET',
+            headers: getGccCuttingBundlesRequestHeaders(),
+        });
+        const text = await res.text();
+        let parsed: unknown = null;
+        try {
+            parsed = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons checking cutting bukan JSON', status: 502 };
+        }
+        const body = parsed as GccCuttingCheckApiResponse;
+        const st = String(body.status || '').toLowerCase();
+        const okByBody =
+            !(typeof body.code === 'number' && body.code >= 400) &&
+            (body.code === 200 || st === 'success' || (Array.isArray(body.data) && st !== 'error'));
+        if (!res.ok || !okByBody) {
+            const msg =
+                body.message ||
+                body.status ||
+                (typeof body.code === 'number' ? `code ${body.code}` : null) ||
+                `HTTP ${res.status}`;
+            return { success: false, error: String(msg), status: res.status };
+        }
+        const rows = Array.isArray(body.data) ? body.data : [];
+        return {
+            success: true,
+            data: rows,
+            message: body.message,
+            status: res.status,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal GET checking cutting',
+            status: 500,
+        };
+    }
+}
+
+const DEFAULT_GCC_HOME_DASHBOARD_URL = 'http://10.5.0.201:9000/api/homedashboard';
+
+/** Resolve URL GET dashboard cutting home (`/api/homedashboard`, service :9000). */
+export function resolveGccHomeDashboardUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_HOME_DASHBOARD_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/homedashboard') ? t : `${t}/api/homedashboard`;
+    }
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+        return `${window.location.origin}/__gcc_cutting/api/homedashboard`;
+    }
+    return DEFAULT_GCC_HOME_DASHBOARD_URL;
+}
+
+/** Satu baris dari GET `/api/homedashboard` (aggregate status bundle → supermarket). */
+export interface HomeDashboardItem {
+    rfid_bundles?: string;
+    id_bundles?: number;
+    barcode?: string;
+    last_status?: string;
+    wo?: string;
+    style?: string;
+    warna?: string;
+    size?: string;
+    qty_batch?: number;
+    line?: string | number;
+    lokasi?: string;
+    [key: string]: unknown;
+}
+
+/**
+ * GET — snapshot dashboard cutting command center (`/api/homedashboard`).
+ * Dev: proxy Vite `/__gcc_cutting/api/homedashboard`. Prod: URL langsung atau `VITE_GCC_HOME_DASHBOARD_URL`.
+ */
+export async function getHomeDashboard(): Promise<ApiResponse<HomeDashboardItem[]>> {
+    try {
+        const url = resolveGccHomeDashboardUrl();
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: getGccCuttingBundlesRequestHeaders(),
+            cache: 'no-store',
+        });
+        const text = await res.text();
+        let json: unknown = null;
+        try {
+            json = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons server bukan JSON' };
+        }
+        const body = json as {
+            code?: number;
+            status?: string;
+            message?: string;
+            data?: unknown;
+        };
+        if (!res.ok) {
+            const msg = body?.message || body?.status || `HTTP ${res.status}`;
+            return { success: false, error: typeof msg === 'string' ? msg : 'Gagal memuat home dashboard' };
+        }
+        if (body.code != null && body.code !== 200) {
+            return {
+                success: false,
+                error: typeof body.message === 'string' ? body.message : `API code ${body.code}`,
+            };
+        }
+        const arr = Array.isArray(body.data) ? body.data : [];
+        return { success: true, data: arr as HomeDashboardItem[] };
+    } catch (e) {
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : 'Gagal memuat home dashboard',
+        };
+    }
+}
+
 /** Satu baris bundle dari GET …/api/gcc/cutting/list (service :9000). */
 export interface GccCuttingBundleRow {
     idBundles?: number;
@@ -1856,6 +2041,179 @@ function resolveGccCuttingQcQtyUrl(): string {
     return 'http://10.5.0.201:9000/api/gcc/cutting/qc/qty';
 }
 
+/** Resolve URL GET qty repair (`/api/gcc/cutting/qc/qty/repair`). */
+export function resolveGccCuttingQcQtyRepairUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_QC_QTY_REPAIR_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/qc/qty/repair') ? t : `${t}/api/gcc/cutting/qc/qty/repair`;
+    }
+    const qtyUrl = resolveGccCuttingQcQtyUrl();
+    if (qtyUrl.includes('/qc/qty')) return `${qtyUrl.replace(/\/$/, '')}/repair`;
+    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/qty/repair';
+}
+
+/** Resolve URL POST repair → good (`/api/gcc/cutting/qc/repair/good`). */
+export function resolveGccCuttingQcRepairGoodUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_QC_REPAIR_GOOD_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/qc/repair/good') ? t : `${t}/api/gcc/cutting/qc/repair/good`;
+    }
+    const qcUrl = resolveGccCuttingQcUrl();
+    if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/good`;
+    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/repair/good';
+}
+
+/** Resolve URL POST repair → reject (`/api/gcc/cutting/qc/repair/reject`). */
+export function resolveGccCuttingQcRepairRejectUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_QC_REPAIR_REJECT_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/qc/repair/reject') ? t : `${t}/api/gcc/cutting/qc/repair/reject`;
+    }
+    const qcUrl = resolveGccCuttingQcUrl();
+    if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/reject`;
+    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/repair/reject';
+}
+
+export interface GccCuttingQcQtyRepairResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    data?: {
+        id_bundles?: number;
+        rfid_bundles?: string;
+        qty_repair?: number;
+    };
+}
+
+export interface GccCuttingQcRepairActionData {
+    id_bundles?: number;
+    rfid_bundles?: string;
+    id_user?: number;
+    nik?: string;
+    last_status?: string;
+    batch?: string;
+    qty_batch?: number;
+    qty_output?: number;
+    qty_good_before?: number;
+    qty_repair_before?: number;
+    qty_reject?: number;
+    qty_good_after?: number;
+    qty_repair_after?: number;
+    repair_good_time?: string;
+    tracking_log_id?: number;
+}
+
+export interface GccCuttingQcRepairActionResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    data?: GccCuttingQcRepairActionData;
+}
+
+async function gccCuttingQcGetJson<T>(url: string, rfid_bundles: string): Promise<ApiResponse<T>> {
+    const rid = String(rfid_bundles || '').trim();
+    if (!rid) return { success: false, error: 'RFID wajib diisi', status: 400 };
+    try {
+        const qsUrl = `${url}${url.includes('?') ? '&' : '?'}rfid_bundles=${encodeURIComponent(rid)}`;
+        const res = await fetch(qsUrl, {
+            method: 'GET',
+            headers: getGccCuttingBundlesRequestHeaders(),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons bukan JSON', status: 502 };
+        }
+        if (!res.ok || !isGccCuttingApiBodyOk(data)) {
+            const body = data as { message?: string; status?: string };
+            const msg = body.message || body.status || `HTTP ${res.status}`;
+            return { success: false, error: String(msg), data: data as T, status: res.status };
+        }
+        return { success: true, data: data as T, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal GET',
+            status: 500,
+        };
+    }
+}
+
+async function gccCuttingQcPostJson<T>(
+    url: string,
+    body: { rfid_bundles: string; qty: number; nik: string }
+): Promise<ApiResponse<T>> {
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                ...getGccCuttingBundlesRequestHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons bukan JSON', status: 502 };
+        }
+        const parsed = data as { code?: number; status?: string; message?: string };
+        const st = String(parsed.status || '').toLowerCase();
+        const okByBody = !(typeof parsed.code === 'number' && parsed.code >= 400) && (parsed.code === 200 || st === 'success');
+        if (!res.ok || !okByBody) {
+            const msg = parsed.message || parsed.status || `HTTP ${res.status}`;
+            return { success: false, error: String(msg), data: data as T, status: res.status };
+        }
+        return { success: true, data: data as T, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal POST',
+            status: 500,
+        };
+    }
+}
+
+/** GET qty repair untuk bundle (sebelum Send To Good / Reject). */
+export const getGccCuttingQcQtyRepair = async (rfid_bundles: string): Promise<ApiResponse<GccCuttingQcQtyRepairResponse>> => {
+    return gccCuttingQcGetJson<GccCuttingQcQtyRepairResponse>(resolveGccCuttingQcQtyRepairUrl(), rfid_bundles);
+};
+
+/** POST konversi repair → good. */
+export const postGccCuttingQcRepairGood = async (body: {
+    rfid_bundles: string;
+    qty: number;
+    nik?: string | number;
+}): Promise<ApiResponse<GccCuttingQcRepairActionResponse>> => {
+    const nik = body.nik != null && String(body.nik).trim() !== '' ? String(body.nik).trim() : getLoggedNik();
+    return gccCuttingQcPostJson<GccCuttingQcRepairActionResponse>(resolveGccCuttingQcRepairGoodUrl(), {
+        rfid_bundles: body.rfid_bundles,
+        qty: Math.max(0, Number(body.qty) || 0),
+        nik,
+    });
+};
+
+/** POST konversi repair → reject. */
+export const postGccCuttingQcRepairReject = async (body: {
+    rfid_bundles: string;
+    qty: number;
+    nik?: string | number;
+}): Promise<ApiResponse<GccCuttingQcRepairActionResponse>> => {
+    const nik = body.nik != null && String(body.nik).trim() !== '' ? String(body.nik).trim() : getLoggedNik();
+    return gccCuttingQcPostJson<GccCuttingQcRepairActionResponse>(resolveGccCuttingQcRepairRejectUrl(), {
+        rfid_bundles: body.rfid_bundles,
+        qty: Math.max(0, Number(body.qty) || 0),
+        nik,
+    });
+};
+
 /** Resolve URL POST GCC supermarket (`/api/gcc/cutting/smarket`). */
 function resolveGccCuttingSmarketUrl(): string {
     const fromEnv = (import.meta.env.VITE_GCC_CUTTING_SMARKET_URL as string | undefined)?.trim();
@@ -2178,14 +2536,51 @@ export interface CuttingQcScanResponse {
 }
 
 export interface GccCuttingQcQtyResponse {
-    code?: number;
+    code?: number | string;
     status?: string;
     message?: string;
+    success?: boolean;
     data?: {
         id_bundles?: number;
         rfid_bundles?: string;
         qty_output?: number | string;
+        qty_bundles?: number | string;
+        qty?: number | string;
     };
+}
+
+/** Normalisasi sukses respons GCC cutting (HTTP 200 + body code/status). */
+export function isGccCuttingApiBodyOk(data: unknown): boolean {
+    const body = data as {
+        code?: number | string;
+        status?: string;
+        success?: boolean;
+        data?: unknown;
+    };
+    const st = String(body?.status ?? '').toLowerCase();
+    const codeNum = body?.code != null && body.code !== '' ? Number(body.code) : NaN;
+    const hasErrorCode = Number.isFinite(codeNum) && codeNum >= 400;
+    return (
+        body?.success !== false &&
+        !hasErrorCode &&
+        (body?.success === true ||
+            !Number.isFinite(codeNum) ||
+            codeNum === 200 ||
+            st === 'success' ||
+            st === 'ok' ||
+            (body?.data != null && st !== 'error'))
+    );
+}
+
+/** Ambil qty bundle dari respons GET `/api/gcc/cutting/qc/qty`. */
+export function extractGccCuttingQcQty(body: GccCuttingQcQtyResponse | undefined): number {
+    const inner = body?.data;
+    const candidates = [inner?.qty_output, inner?.qty_bundles, inner?.qty];
+    for (const raw of candidates) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return Math.floor(n);
+    }
+    return 1;
 }
 
 export const getGccCuttingQcQty = async (rfidBundles: string): Promise<ApiResponse<GccCuttingQcQtyResponse>> => {
@@ -2220,9 +2615,7 @@ export const getGccCuttingQcQty = async (rfidBundles: string): Promise<ApiRespon
         } catch {
             return { success: false, error: 'Respons GET qty QC GCC bukan JSON', status: 502 };
         }
-        const code = (data as { code?: number })?.code;
-        const okByBody = code == null || code === 200;
-        if (!res.ok || !okByBody) {
+        if (!res.ok || !isGccCuttingApiBodyOk(data)) {
             const msg =
                 (data as { message?: string })?.message ||
                 (data as { status?: string })?.status ||

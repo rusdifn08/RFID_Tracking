@@ -4,7 +4,6 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
 import Footer from '../components/Footer';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import LineDetailHeader from '../components/line/LineDetailHeader';
 import LineDetailCardsGrid from '../components/line/LineDetailCardsGrid';
@@ -37,7 +36,6 @@ function getSupervisorByLine(
 const LineDetail = memo(() => {
     const { id } = useParams<{ id: string }>();
     const location = useLocation();
-    const { isOpen } = useSidebar();
     const [environment, setEnvironment] = useState<BackendEnvironment>(getInitialEnvironment);
     const [supervisorFromAPI, setSupervisorFromAPI] = useState<string | null>(null);
 
@@ -186,8 +184,8 @@ const LineDetail = memo(() => {
             <div
                 className="flex flex-col w-full h-screen relative"
                 style={{
-                    marginLeft: isOpen ? '18%' : '5rem',
-                    width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)'
+                    marginLeft: 'var(--layout-sidebar-offset)',
+                    width: 'var(--layout-sidebar-width)',
                 }}
             >
                 {/* Header */}

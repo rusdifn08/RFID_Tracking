@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { useSidebar } from '../context/SidebarContext';
 import backgroundImage from '../assets/background.jpg';
 import { API_BASE_URL, getDefaultHeaders, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache, type BackendEnvironment } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2, productionLinesGCC } from '../data/production_line';
@@ -51,7 +50,6 @@ function getSupervisorByLine(
 }
 
 export default function AllProductionLineDashboard() {
-    const { isOpen } = useSidebar();
     const [lineData, setLineData] = useState<Record<string, LineData>>({});
     const [supervisorData, setSupervisorData] = useState<{ supervisors: Record<string, string>, startTimes: Record<string, string> } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -267,7 +265,7 @@ export default function AllProductionLineDashboard() {
 
             <div
                 className="flex flex-col h-full transition-all duration-300 ease-in-out relative"
-                style={{ marginLeft: isOpen ? '18%' : '5rem', width: isOpen ? 'calc(100% - 18%)' : 'calc(100% - 5rem)' }}
+                style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header mengambil tinggi fix, sisanya untuk konten */}
                 <div className="flex-none">
