@@ -1,14 +1,22 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, CalendarRange, CheckCircle2, CircleX, ClipboardCheck, Layers, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, CircleX, ClipboardCheck, FileSpreadsheet, Layers, Loader2, Wrench } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import ChartCard from '../components/dashboard/ChartCard';
 import { COLORS } from '../components/dashboard/constants';
 import backgroundImage from '../assets/background.jpg';
-import { getCuttingScanState, getGccCuttingQcDashboardData, type CuttingScanHistoryEntry, type GccQcDashboardItem } from '../config/api';
+import {
+  getCuttingScanState,
+  getGccCuttingQcDashboardData,
+  getGccCuttingQcReport,
+  type CuttingScanHistoryEntry,
+  type GccQcDashboardItem,
+} from '../config/api';
 import QcRepairScanModalHost from '../components/dashboard/cutting/QcRepairScanModalHost';
+import { HIDE_SCAN_QC_REPAIR } from '../config/hide';
+import { exportQcCuttingReportExcel } from '../utils/exportQcCuttingReportExcel';
 
 const QUERY_CUTTING_QC = ['cutting-qc-dashboard'] as const;
 const QUERY_CUTTING_QC_GCC_BASE = 'cutting-qc-dashboard-gcc' as const;
@@ -39,7 +47,8 @@ const QC_CHART = {
 const QC_TYPO = {
   stationTitle: 'clamp(0.78rem, 4.2cqw, 1.28rem)',
   stationValue: 'clamp(2.1rem, 21cqw, 6.4rem)',
-  table: 'clamp(0.7rem, 0.56rem + 0.42vmin, 1.02rem)',
+  tableHeader: '12px',
+  tableBody: '11px',
   tableMeta: 'clamp(0.64rem, 0.52rem + 0.32vmin, 0.88rem)',
   chartTick: 'clamp(9px, 6px + 0.55vmin, 13px)',
   chartTooltip: 'clamp(10px, 8px + 0.45vmin, 13px)',
@@ -138,6 +147,7 @@ function BundleCard({ value }: { value: number }) {
 
 export default function DashboardQualityControlCutting() {
   const [qcRepairModalOpen, setQcRepairModalOpen] = useState(false);
+  const [exportingQcReport, setExportingQcReport] = useState(false);
   const [qcRangeFrom, setQcRangeFrom] = useState(ymdTodayLocal);
   const [qcRangeTo, setQcRangeTo] = useState(ymdTodayLocal);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -177,6 +187,28 @@ export default function DashboardQualityControlCutting() {
     setQcRangeFrom(t);
     setQcRangeTo(t);
     setFilterOpen(false);
+  };
+
+  const handleExportQcReport = async () => {
+    setExportingQcReport(true);
+    try {
+      const res = await getGccCuttingQcReport({
+        tanggalfrom: qcRangeFrom,
+        tanggalto: qcRangeTo,
+      });
+      if (!res.success || !res.data) {
+        throw new Error(res.error || 'Gagal mengambil data report QC');
+      }
+      await exportQcCuttingReportExcel({
+        payload: res.data,
+        filterDateFrom: qcRangeFrom,
+        filterDateTo: qcRangeTo,
+      });
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Gagal export report QC');
+    } finally {
+      setExportingQcReport(false);
+    }
   };
 
   const scanQuery = useQuery({
@@ -421,16 +453,18 @@ export default function DashboardQualityControlCutting() {
                   iconColor={COLORS.blue}
                   iconBgColor={COLORS.blueSoft}
                   headerAction={
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setQcRepairModalOpen(true)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-orange-400 bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-500/25 transition hover:bg-orange-600 hover:border-orange-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
-                        title="Buka modal scan QC Repair di halaman ini — qty awal dialokasikan ke Repair (bisa diubah sebelum simpan)"
-                      >
-                        <Wrench className="h-3.5 w-3.5 text-white shrink-0" aria-hidden />
-                        <span className="whitespace-nowrap">Scan QC Repair</span>
-                      </button>
+                    <div className="flex items-center gap-2 flex-wrap justify-end max-w-full">
+                      {!HIDE_SCAN_QC_REPAIR ? (
+                        <button
+                          type="button"
+                          onClick={() => setQcRepairModalOpen(true)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border-2 border-orange-400 bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-500/25 transition hover:bg-orange-600 hover:border-orange-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 shrink-0"
+                          title="Buka modal scan QC Repair di halaman ini — qty awal dialokasikan ke Repair (bisa diubah sebelum simpan)"
+                        >
+                          <Wrench className="h-3.5 w-3.5 text-white shrink-0" aria-hidden />
+                          <span className="whitespace-nowrap">Scan QC Repair</span>
+                        </button>
+                      ) : null}
                       {gccDashboardQuery.error ? (
                         <span
                           className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
@@ -502,24 +536,38 @@ export default function DashboardQualityControlCutting() {
                           </div>
                         ) : null}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportQcReport()}
+                        disabled={exportingQcReport}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+                        title="Export Excel report QC (GET /api/gcc/cutting/qc/report)"
+                      >
+                        {exportingQcReport ? (
+                          <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                        ) : (
+                          <FileSpreadsheet className="h-4 w-4 shrink-0" aria-hidden />
+                        )}
+                        <span className="whitespace-nowrap">{exportingQcReport ? 'Mengekspor…' : 'Export Excel'}</span>
+                      </button>
                     </div>
                   }
                   className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2"
                 >
                   <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-100 bg-white/70">
-                    <table className="min-w-full" style={{ fontSize: QC_TYPO.table }}>
-                      <thead className="sticky top-0 bg-white border-b border-slate-100">
-                        <tr className="text-slate-600">
-                          <th className="text-left font-bold px-3 py-2">RFID Bundle</th>
-                          <th className="text-left font-bold px-3 py-2">WO</th>
-                          <th className="text-right font-bold px-3 py-2">QTY</th>
-                          <th className="text-right font-bold px-3 py-2">Good</th>
-                          <th className="text-right font-bold px-3 py-2">Repair</th>
-                          <th className="text-right font-bold px-3 py-2">Reject</th>
-                          <th className="text-left font-bold px-3 py-2">Waktu</th>
+                    <table className="w-max min-w-full table-auto border-separate border-spacing-0">
+                      <thead className="sticky top-0 z-10 bg-white border-b border-slate-100">
+                        <tr className="text-slate-600" style={{ fontSize: QC_TYPO.tableHeader }}>
+                          <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">RFID Bundle</th>
+                          <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">WO</th>
+                          <th className="text-right font-bold px-3 py-2.5 whitespace-nowrap">QTY</th>
+                          <th className="text-right font-bold px-3 py-2.5 whitespace-nowrap">Good</th>
+                          <th className="text-right font-bold px-3 py-2.5 whitespace-nowrap">Repair</th>
+                          <th className="text-right font-bold px-3 py-2.5 whitespace-nowrap">Reject</th>
+                          <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">Waktu</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-slate-100" style={{ fontSize: QC_TYPO.tableBody }}>
                         {tableItemsFromApi ? (
                           tableItemsFromApi.length === 0 ? (
                             <tr>
@@ -530,17 +578,17 @@ export default function DashboardQualityControlCutting() {
                           ) : (
                             tableItemsFromApi.map((it, idx) => (
                               <tr key={`${it.rfid_bundles || 'x'}-${it.id_bundles ?? ''}-${idx}`} className="hover:bg-sky-50/40">
-                                <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                <td className="px-3 py-2.5 font-mono font-semibold text-slate-900 whitespace-nowrap">
                                   {it.rfid_bundles?.trim() || '—'}
                                 </td>
-                                <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap max-w-[10rem] truncate" title={it.wo || undefined}>
+                                <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">
                                   {it.wo?.trim() ? it.wo.trim() : '—'}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">{safeNum(it.qty_output)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-semibold">{safeNum(it.qty_good)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums text-amber-700 font-semibold">{safeNum(it.qty_repair)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums text-rose-700 font-semibold">{safeNum(it.qty_reject)}</td>
-                                <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{formatIsoShort(it.tanggal || '')}</td>
+                                <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{safeNum(it.qty_output)}</td>
+                                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700 font-semibold whitespace-nowrap">{safeNum(it.qty_good)}</td>
+                                <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 font-semibold whitespace-nowrap">{safeNum(it.qty_repair)}</td>
+                                <td className="px-3 py-2.5 text-right tabular-nums text-rose-700 font-semibold whitespace-nowrap">{safeNum(it.qty_reject)}</td>
+                                <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{formatIsoShort(it.tanggal || '')}</td>
                               </tr>
                             ))
                           )
@@ -553,15 +601,15 @@ export default function DashboardQualityControlCutting() {
                         ) : (
                           qcRows.map((r, idx) => (
                             <tr key={`${r.rfid_garment || 'x'}-${r.at}-${idx}`} className="hover:bg-sky-50/40">
-                              <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">{r.rfid_garment || '—'}</td>
-                              <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap max-w-[10rem] truncate" title={r.wo || undefined}>
+                              <td className="px-3 py-2.5 font-mono font-semibold text-slate-900 whitespace-nowrap">{r.rfid_garment || '—'}</td>
+                              <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">
                                 {r.wo?.trim() ? r.wo.trim() : '—'}
                               </td>
-                              <td className="px-3 py-2 text-right tabular-nums">{safeNum(r.qty)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-semibold">{safeNum(r.good)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-amber-700 font-semibold">{safeNum(r.repair)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-rose-700 font-semibold">{safeNum(r.reject)}</td>
-                              <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{formatIsoShort(r.at)}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{safeNum(r.qty)}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700 font-semibold whitespace-nowrap">{safeNum(r.good)}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 font-semibold whitespace-nowrap">{safeNum(r.repair)}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums text-rose-700 font-semibold whitespace-nowrap">{safeNum(r.reject)}</td>
+                              <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{formatIsoShort(r.at)}</td>
                             </tr>
                           ))
                         )}
@@ -574,7 +622,9 @@ export default function DashboardQualityControlCutting() {
           </div>
         </main>
       </div>
-      <QcRepairScanModalHost isOpen={qcRepairModalOpen} onClose={() => setQcRepairModalOpen(false)} />
+      {!HIDE_SCAN_QC_REPAIR ? (
+        <QcRepairScanModalHost isOpen={qcRepairModalOpen} onClose={() => setQcRepairModalOpen(false)} />
+      ) : null}
     </div>
   );
 }

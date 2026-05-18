@@ -16,6 +16,9 @@ export const HIDE_CARD_SEWING_PROSES = true;
 /** Ikon shift (matahari/bulan) di kartu Production Line dan Sewing Line. true = disembunyikan, false = ditampilkan */
 export const HIDE_SHIFT_ICON = false;
 
+/** Tombol Scan QC Repair di header Tabel Quality Control (Dashboard QC Cutting). true = disembunyikan */
+export const HIDE_SCAN_QC_REPAIR = true;
+
 // --- Form Report Export (halaman FormData / Gistex Command Center) ---
 /** true = kartu tidak di-render (tanpa request); ubah ke false untuk menampilkan lagi */
 

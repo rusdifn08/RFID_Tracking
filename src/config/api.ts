@@ -3046,3 +3046,219 @@ export const getGccCuttingQcDashboardData = async (
     }
 };
 
+function resolveGccCuttingQcReportUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_QC_REPORT_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/qc/report') ? t : `${t}/api/gcc/cutting/qc/report`;
+    }
+    const dataUrl = resolveGccCuttingQcDataUrl();
+    if (dataUrl.includes('/qc/data')) return dataUrl.replace('/qc/data', '/qc/report');
+    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/report';
+}
+
+export interface GccCuttingQcReportSummary {
+    total_bundle_qc?: number;
+    total_bundle_good?: number;
+    total_bundle_repair?: number;
+    total_bundle_reject?: number;
+    total_qty_good?: number;
+    total_qty_repair?: number;
+    total_qty_reject?: number;
+    total_qty_qc?: number;
+    good_rate_percent?: number;
+    repair_rate_percent?: number;
+    reject_rate_percent?: number;
+}
+
+export interface GccCuttingQcReportItem {
+    qc_time?: string;
+    status_qc?: string;
+    id_bundles?: number;
+    rfid_bundles?: string;
+    barcode?: string;
+    wo?: string;
+    style?: string;
+    warna?: string;
+    size?: string;
+    meja?: string;
+    no_ikat?: number;
+    no_urut?: string;
+    season?: string;
+    country?: string;
+    placing?: string;
+    qty_output?: number;
+    qty_good?: number;
+    qty_repair?: number;
+    qty_reject?: number;
+    qty_status?: number;
+}
+
+export interface GccCuttingQcReportData {
+    tanggal_from?: string;
+    tanggal_to?: string;
+    summary?: GccCuttingQcReportSummary;
+    items?: GccCuttingQcReportItem[];
+}
+
+export interface GccCuttingQcReportResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    count?: number;
+    data?: GccCuttingQcReportData;
+}
+
+/** GET report QC Cutting untuk export Excel (`/api/gcc/cutting/qc/report`). */
+export const getGccCuttingQcReport = async (
+    params: GccCuttingQcDashboardQueryParams,
+): Promise<ApiResponse<GccCuttingQcReportResponse>> => {
+    try {
+        const base = resolveGccCuttingQcReportUrl();
+        let reqUrl = base;
+        if (params?.tanggalfrom != null || params?.tanggalto != null) {
+            let u: URL;
+            try {
+                u = new URL(base);
+            } catch {
+                u = new URL(base, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+            }
+            if (params.tanggalfrom != null && String(params.tanggalfrom).trim() !== '') {
+                u.searchParams.set('tanggalfrom', String(params.tanggalfrom).trim());
+            }
+            if (params.tanggalto != null && String(params.tanggalto).trim() !== '') {
+                u.searchParams.set('tanggalto', String(params.tanggalto).trim());
+            }
+            reqUrl = u.toString();
+        }
+        const res = await fetch(reqUrl, {
+            method: 'GET',
+            headers: getGccCuttingBundlesRequestHeaders(),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons report QC GCC bukan JSON', status: 502 };
+        }
+        if (!res.ok || !isGccCuttingApiBodyOk(data)) {
+            const body = data as GccCuttingQcReportResponse;
+            const msg = body.message || body.status || `HTTP ${res.status}`;
+            return { success: false, error: String(msg), data: body, status: res.status };
+        }
+        return { success: true, data: data as GccCuttingQcReportResponse, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal GET report QC GCC',
+            status: 500,
+        };
+    }
+};
+
+function resolveGccCuttingSmarketOutReportUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_SMARKET_OUT_REPORT_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/report/smarket/out') ? t : `${t}/api/gcc/cutting/report/smarket/out`;
+    }
+    const smarketEnv = (import.meta.env.VITE_GCC_CUTTING_SMARKET_URL as string | undefined)?.trim();
+    if (smarketEnv) {
+        const t = smarketEnv.replace(/\/$/, '');
+        if (t.endsWith('/api/gcc/cutting/smarket')) {
+            return `${t.replace(/\/api\/gcc\/cutting\/smarket$/, '')}/api/gcc/cutting/report/smarket/out`;
+        }
+        return `${t}/api/gcc/cutting/report/smarket/out`;
+    }
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/report/smarket/out`;
+    }
+    return 'http://10.5.0.201:9000/api/gcc/cutting/report/smarket/out';
+}
+
+export interface GccCuttingSmarketOutReportItem {
+    status_terakhir?: string;
+    waktu_dibuat?: string;
+    waktu_terakhir?: string;
+    style?: string;
+    bagian?: string;
+    warna?: string;
+    wo?: string;
+    barcode_gcc?: string;
+    rfid?: string;
+    no_ikat?: number;
+    no_urut?: string;
+    season?: string;
+    placing?: string;
+    ukuran?: string;
+    qty_good?: number;
+    qty_market_out?: number;
+    meja?: string;
+    tujuan?: string;
+    line?: string;
+    branch?: string;
+}
+
+export interface GccCuttingSmarketOutReportData {
+    tanggal_from?: string;
+    tanggal_to?: string;
+    total_data?: number;
+    items?: GccCuttingSmarketOutReportItem[];
+}
+
+export interface GccCuttingSmarketOutReportResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    data?: GccCuttingSmarketOutReportData;
+}
+
+/** GET report bundle OUT SMarket → Sewing (`/api/gcc/cutting/report/smarket/out`). */
+export const getGccCuttingSmarketOutReport = async (
+    params: GccCuttingQcDashboardQueryParams,
+): Promise<ApiResponse<GccCuttingSmarketOutReportResponse>> => {
+    try {
+        const base = resolveGccCuttingSmarketOutReportUrl();
+        let reqUrl = base;
+        if (params?.tanggalfrom != null || params?.tanggalto != null) {
+            let u: URL;
+            try {
+                u = new URL(base);
+            } catch {
+                u = new URL(base, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+            }
+            if (params.tanggalfrom != null && String(params.tanggalfrom).trim() !== '') {
+                u.searchParams.set('tanggalfrom', String(params.tanggalfrom).trim());
+            }
+            if (params.tanggalto != null && String(params.tanggalto).trim() !== '') {
+                u.searchParams.set('tanggalto', String(params.tanggalto).trim());
+            }
+            reqUrl = u.toString();
+        }
+        const res = await fetch(reqUrl, {
+            method: 'GET',
+            headers: getGccCuttingBundlesRequestHeaders(),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons report SMarket OUT bukan JSON', status: 502 };
+        }
+        if (!res.ok || !isGccCuttingApiBodyOk(data)) {
+            const body = data as GccCuttingSmarketOutReportResponse;
+            const msg = body.message || body.status || `HTTP ${res.status}`;
+            return { success: false, error: String(msg), data: body, status: res.status };
+        }
+        return { success: true, data: data as GccCuttingSmarketOutReportResponse, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal GET report SMarket OUT',
+            status: 500,
+        };
+    }
+};
+

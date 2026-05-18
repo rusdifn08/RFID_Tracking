@@ -18,7 +18,7 @@ interface ChartCardProps {
 const ChartCard = memo(forwardRef<HTMLDivElement, ChartCardProps>(({ children, title, icon: Icon, iconImageSrc, iconImageAlt, headerAction, onClick, className, style, iconColor = '#0284C7', iconBgColor = '#e0f2fe' }, ref) => (
     <div
         ref={ref}
-        className={`bg-white rounded-md sm:rounded-lg md:rounded-xl lg:rounded-2xl flex flex-col shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-lg group border border-blue-500 h-full ${onClick ? 'cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2' : ''} ${className || ''}`}
+        className={`bg-white rounded-md sm:rounded-lg md:rounded-xl lg:rounded-2xl flex flex-col shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-lg group border border-blue-500 h-full min-w-0 ${onClick ? 'cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2' : ''} ${className || ''}`}
         role={onClick ? 'button' : undefined}
         tabIndex={onClick ? 0 : undefined}
         onClick={onClick}
@@ -38,7 +38,7 @@ const ChartCard = memo(forwardRef<HTMLDivElement, ChartCardProps>(({ children, t
         }}
     >
         <div
-            className="flex items-center justify-between border-b border-gray-50 flex-shrink-0"
+            className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-gray-50 flex-shrink-0 overflow-visible"
             style={{
                 paddingTop: 'clamp(0.125rem, 0.4vw + 0.1rem, 0.375rem)',
                 paddingLeft: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.5rem)',
@@ -49,7 +49,7 @@ const ChartCard = memo(forwardRef<HTMLDivElement, ChartCardProps>(({ children, t
             }}
         >
             <div
-                className="flex items-center flex-1 min-w-0"
+                className="flex items-center min-w-0 flex-[1_1_10rem] max-w-full"
                 style={{
                     gap: 'clamp(0.375rem, 0.8vw + 0.2rem, 0.75rem)'
                 }}
@@ -90,12 +90,7 @@ const ChartCard = memo(forwardRef<HTMLDivElement, ChartCardProps>(({ children, t
                 )}
             </div>
             {headerAction && (
-                <div
-                    className="flex items-center justify-end flex-shrink-0"
-                    style={{
-                        marginLeft: 'clamp(0.375rem, 0.8vw + 0.2rem, 0.75rem)'
-                    }}
-                >
+                <div className="flex flex-wrap items-center justify-end gap-2 min-w-0 flex-[1_1_12rem] max-w-full">
                     {headerAction}
                 </div>
             )}

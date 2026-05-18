@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, CalendarRange, CheckCircle2, ClipboardList, Layers, Package, Truck } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ClipboardList, FileSpreadsheet, Layers, Loader2, Package, Truck } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import ChartCard from '../components/dashboard/ChartCard';
 import { COLORS } from '../components/dashboard/constants';
 import backgroundImage from '../assets/background.jpg';
-import { getCuttingScanState, getGccCuttingSmarketDashboardData } from '../config/api';
+import { getCuttingScanState, getGccCuttingSmarketDashboardData, getGccCuttingSmarketOutReport } from '../config/api';
 import type { GccSmarketDashboardItem } from '../config/api';
+import { exportSmarketOutReportExcel } from '../utils/exportSmarketOutReportExcel';
 
 const QUERY_SUPERMARKET_CUTTING = ['supermarket-cutting-dashboard'] as const;
 const QUERY_SUPERMARKET_CUTTING_GCC_BASE = 'supermarket-cutting-dashboard-gcc' as const;
@@ -40,7 +41,8 @@ const MARKET_TYPO = {
     // Berbasis ukuran card (container query units) agar proporsional terhadap card.
     stationTitle: 'clamp(0.78rem, 4.2cqw, 1.28rem)',
     stationValue: 'clamp(2.1rem, 21cqw, 6.4rem)',
-    table: 'clamp(0.7rem, 0.56rem + 0.42vmin, 1.02rem)',
+    tableHeader: '12px',
+    tableBody: '11px',
     chartTick: 'clamp(9px, 6px + 0.55vmin, 13px)',
     chartTooltip: 'clamp(10px, 8px + 0.45vmin, 13px)',
 } as const;
@@ -138,6 +140,7 @@ export default function DashboardSupermarketCutting() {
     const [smarketRangeFrom, setSmarketRangeFrom] = useState(ymdTodayLocal);
     const [smarketRangeTo, setSmarketRangeTo] = useState(ymdTodayLocal);
     const [filterOpen, setFilterOpen] = useState(false);
+    const [exportingSmarketReport, setExportingSmarketReport] = useState(false);
     const [draftFrom, setDraftFrom] = useState(ymdTodayLocal);
     const [draftTo, setDraftTo] = useState(ymdTodayLocal);
     const filterPanelRef = useRef<HTMLDivElement>(null);
@@ -180,6 +183,28 @@ export default function DashboardSupermarketCutting() {
         smarketRangeFrom === smarketRangeTo
             ? formatYmdIdLabel(smarketRangeFrom)
             : `${formatYmdIdLabel(smarketRangeFrom)} – ${formatYmdIdLabel(smarketRangeTo)}`;
+
+    const handleExportSmarketOutReport = async () => {
+        setExportingSmarketReport(true);
+        try {
+            const res = await getGccCuttingSmarketOutReport({
+                tanggalfrom: smarketRangeFrom,
+                tanggalto: smarketRangeTo,
+            });
+            if (!res.success || !res.data) {
+                throw new Error(res.error || 'Gagal mengambil data report SMarket OUT');
+            }
+            await exportSmarketOutReportExcel({
+                payload: res.data,
+                filterDateFrom: smarketRangeFrom,
+                filterDateTo: smarketRangeTo,
+            });
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : 'Gagal export report SMarket OUT');
+        } finally {
+            setExportingSmarketReport(false);
+        }
+    };
 
     const scanQuery = useQuery({
         queryKey: QUERY_SUPERMARKET_CUTTING,
@@ -395,6 +420,22 @@ export default function DashboardSupermarketCutting() {
                                     iconBgColor={COLORS.blueSoft}
                                     headerAction={
                                         <div className="flex items-center gap-2 flex-wrap justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleExportSmarketOutReport()}
+                                                disabled={exportingSmarketReport}
+                                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                title="Export Excel report SMarket OUT (GET /api/gcc/cutting/report/smarket/out)"
+                                            >
+                                                {exportingSmarketReport ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                                                ) : (
+                                                    <FileSpreadsheet className="h-4 w-4 shrink-0" aria-hidden />
+                                                )}
+                                                <span className="whitespace-nowrap">
+                                                    {exportingSmarketReport ? 'Mengekspor…' : 'Export Excel'}
+                                                </span>
+                                            </button>
                                             {gccDashboardQuery.error ? (
                                                 <span
                                                     className="text-rose-600 text-xs font-medium max-w-[10rem] sm:max-w-[14rem] truncate"
@@ -471,18 +512,18 @@ export default function DashboardSupermarketCutting() {
                                     className="min-h-0 h-full flex flex-col py-1.5 bg-gradient-to-b from-white via-white to-sky-50/20 shadow-[0_10px_22px_rgba(2,132,199,0.08)] hover:shadow-[0_14px_28px_rgba(2,132,199,0.15)] transition-all duration-300 border border-sky-100/70 lg:col-span-2"
                                 >
                                     <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-100 bg-white/70">
-                                        <table className="min-w-full" style={{ fontSize: MARKET_TYPO.table }}>
-                                            <thead className="sticky top-0 bg-white border-b border-slate-100">
-                                                <tr className="text-slate-600">
-                                                    <th className="text-left font-bold px-3 py-2">RFID Bundle</th>
-                                                    <th className="text-left font-bold px-3 py-2">WO</th>
-                                                    <th className="text-right font-bold px-3 py-2">QTY</th>
-                                                    <th className="text-left font-bold px-3 py-2">Line</th>
-                                                    <th className="text-left font-bold px-3 py-2">Lokasi</th>
-                                                    <th className="text-left font-bold px-3 py-2">Waktu</th>
+                                        <table className="w-max min-w-full table-auto border-separate border-spacing-0">
+                                            <thead className="sticky top-0 z-10 bg-white border-b border-slate-100">
+                                                <tr className="text-slate-600" style={{ fontSize: MARKET_TYPO.tableHeader }}>
+                                                    <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">RFID Bundle</th>
+                                                    <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">WO</th>
+                                                    <th className="text-right font-bold px-3 py-2.5 whitespace-nowrap">QTY</th>
+                                                    <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">Line</th>
+                                                    <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">Lokasi</th>
+                                                    <th className="text-left font-bold px-3 py-2.5 whitespace-nowrap">Waktu</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100">
+                                            <tbody className="divide-y divide-slate-100" style={{ fontSize: MARKET_TYPO.tableBody }}>
                                                 {tableItemsFromApi ? (
                                                     tableItemsFromApi.length === 0 ? (
                                                         <tr>
@@ -496,14 +537,14 @@ export default function DashboardSupermarketCutting() {
                                                                 key={`${it.rfid_bundles || 'x'}-${it.id_bundles ?? ''}-${idx}`}
                                                                 className="hover:bg-sky-50/40"
                                                             >
-                                                                <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                                                <td className="px-3 py-2.5 font-mono font-semibold text-slate-900 whitespace-nowrap">
                                                                     {it.rfid_bundles?.trim() || '—'}
                                                                 </td>
-                                                                <td className="px-3 py-2 text-slate-800 whitespace-nowrap">{it.wo?.trim() ? it.wo.trim() : '—'}</td>
-                                                                <td className="px-3 py-2 text-right tabular-nums">{safeNum(it.qty)}</td>
-                                                                <td className="px-3 py-2 whitespace-nowrap">{it.line != null && String(it.line).trim() !== '' ? String(it.line).trim() : '—'}</td>
-                                                                <td className="px-3 py-2 whitespace-nowrap">{lokasiFromLastStatus(it.last_status)}</td>
-                                                                <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                                                                <td className="px-3 py-2.5 text-slate-800 whitespace-nowrap">{it.wo?.trim() ? it.wo.trim() : '—'}</td>
+                                                                <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{safeNum(it.qty)}</td>
+                                                                <td className="px-3 py-2.5 whitespace-nowrap">{it.line != null && String(it.line).trim() !== '' ? String(it.line).trim() : '—'}</td>
+                                                                <td className="px-3 py-2.5 whitespace-nowrap">{lokasiFromLastStatus(it.last_status)}</td>
+                                                                <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
                                                                     {formatIsoShort(it.smarket_time || it.tanggal || '')}
                                                                 </td>
                                                             </tr>
@@ -518,12 +559,12 @@ export default function DashboardSupermarketCutting() {
                                                 ) : (
                                                     storeRows.map((r, idx) => (
                                                         <tr key={`${r.rfid_garment || 'x'}-${r.at || idx}-${idx}`} className="hover:bg-sky-50/40">
-                                                            <td className="px-3 py-2 font-mono font-semibold text-slate-900 whitespace-nowrap">{r.rfid_garment || '—'}</td>
-                                                            <td className="px-3 py-2 text-slate-800 whitespace-nowrap">{r.wo?.trim() ? r.wo.trim() : '—'}</td>
-                                                            <td className="px-3 py-2 text-right tabular-nums">{safeNum(r.qty)}</td>
-                                                            <td className="px-3 py-2 whitespace-nowrap">{r.line?.trim() ? r.line.trim() : '—'}</td>
-                                                            <td className="px-3 py-2 whitespace-nowrap">{r.location?.trim() ? r.location.trim() : '—'}</td>
-                                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{formatIsoShort(r.at || '')}</td>
+                                                            <td className="px-3 py-2.5 font-mono font-semibold text-slate-900 whitespace-nowrap">{r.rfid_garment || '—'}</td>
+                                                            <td className="px-3 py-2.5 text-slate-800 whitespace-nowrap">{r.wo?.trim() ? r.wo.trim() : '—'}</td>
+                                                            <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{safeNum(r.qty)}</td>
+                                                            <td className="px-3 py-2.5 whitespace-nowrap">{r.line?.trim() ? r.line.trim() : '—'}</td>
+                                                            <td className="px-3 py-2.5 whitespace-nowrap">{r.location?.trim() ? r.location.trim() : '—'}</td>
+                                                            <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{formatIsoShort(r.at || '')}</td>
                                                         </tr>
                                                     ))
                                                 )}
