@@ -1,4 +1,4 @@
-﻿import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
@@ -257,6 +257,15 @@ function CuttingStageTitle({ children }: { children: string }) {
         >
             {children}
         </h2>
+    );
+}
+
+function CuttingStageHeader({ title, action }: { title: string; action: ReactNode }) {
+    return (
+        <div className="flex w-full min-w-0 items-center justify-between gap-2">
+            <CuttingStageTitle>{title}</CuttingStageTitle>
+            <div className="flex shrink-0 items-center self-center">{action}</div>
+        </div>
     );
 }
 
@@ -1316,19 +1325,23 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         >
             {/* Bundle â€” pengisian WO / style / color hanya lewat popup Scanning; kartu = ChartCard ala Distribusi Data */}
             <ChartCard
-                title={<CuttingStageTitle>Bundle</CuttingStageTitle>}
+                title={
+                    <CuttingStageHeader
+                        title="Bundle"
+                        action={
+                            <ScanningButton
+                                accent="emerald"
+                                onClick={() => {
+                                    setModalBundleScanningQty(qtyNext);
+                                    setScanningModal('bundle');
+                                }}
+                            />
+                        }
+                    />
+                }
                 icon={PackagePlus}
                 iconColor="#047857"
                 iconBgColor="#d1fae5"
-                headerAction={
-                    <ScanningButton
-                        accent="emerald"
-                        onClick={() => {
-                            setModalBundleScanningQty(qtyNext);
-                            setScanningModal('bundle');
-                        }}
-                    />
-                }
                 className={CUTTING_STAGE_CHART_CARD_CLASS}
             >
                 <WireTable
@@ -1344,12 +1357,11 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             </ChartCard>
 
             <ChartCard
-                title={<CuttingStageTitle>Quality Control</CuttingStageTitle>}
+                title={<CuttingStageHeader title="Quality Control" action={<ScanningButton accent="sky" onClick={() => setScanningModal('qc')} />} />}
                 icon={ClipboardCheck}
                 iconColor="#0369a1"
                 iconBgColor="#e0f2fe"
                 onClick={() => navigate('/dashboard-qc-cutting')}
-                headerAction={<ScanningButton accent="sky" onClick={() => setScanningModal('qc')} />}
                 className={CUTTING_STAGE_CHART_CARD_CLASS}
             >
                 <WireTable
@@ -1381,12 +1393,11 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             </ChartCard>
 
             <ChartCard
-                title={<CuttingStageTitle>Supermarket</CuttingStageTitle>}
+                title={<CuttingStageHeader title="Supermarket" action={<ScanningButton accent="amber" onClick={() => setScanningModal('store')} />} />}
                 icon={Warehouse}
                 iconColor="#b45309"
                 iconBgColor="#fef3c7"
                 onClick={() => navigate('/dashboard-supermarket-cutting')}
-                headerAction={<ScanningButton accent="amber" onClick={() => setScanningModal('store')} />}
                 className={CUTTING_STAGE_CHART_CARD_CLASS}
             >
                 <WireTable
@@ -1404,19 +1415,23 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             </ChartCard>
 
             <ChartCard
-                title={<CuttingStageTitle>Supply Sewing</CuttingStageTitle>}
+                title={
+                    <CuttingStageHeader
+                        title="Supply Sewing"
+                        action={
+                            SUPPLY_SOON ? (
+                                <ScanningButton accent="violet" onClick={() => setScanningModal('supply')} />
+                            ) : (
+                                <span className="text-[9px] px-2 py-1 rounded-md border border-slate-300 text-slate-500 bg-slate-100/90 font-semibold">
+                                    Soon
+                                </span>
+                            )
+                        }
+                    />
+                }
                 icon={Truck}
                 iconColor="#5b21b6"
                 iconBgColor="#ede9fe"
-                headerAction={
-                    SUPPLY_SOON ? (
-                        <ScanningButton accent="violet" onClick={() => setScanningModal('supply')} />
-                    ) : (
-                        <span className="text-[9px] px-2 py-1 rounded-md border border-slate-300 text-slate-500 bg-slate-100/90 font-semibold">
-                            Soon
-                        </span>
-                    )
-                }
                 className={`${CUTTING_STAGE_CHART_CARD_CLASS} relative group ${SUPPLY_SOON ? '' : 'grayscale saturate-0 !border-slate-300 !from-slate-100 !via-slate-100 !to-slate-200/60 shadow-[0_8px_18px_rgba(15,23,42,0.06)]'}`}
             >
                 <WireTable

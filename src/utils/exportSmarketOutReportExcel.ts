@@ -10,25 +10,36 @@ import {
   addExcelGuideSheet,
   addFlatDataTableSheet,
   enableFullRecalcOnLoad,
+  excelCellRef,
   topKeysByFrequency,
+  topWoKeysByFrequency,
   uniqueSorted,
+  woCellValue,
   type ExcelTableColumnDef,
+  type NumericColFormat,
 } from './exportExcelAnalytics';
+
+const SMARKET_WO_COL_INDEX = 6;
+const SMARKET_NUMERIC_COLS: NumericColFormat[] = [{ colIndex: SMARKET_WO_COL_INDEX, numFmt: '0' }];
 
 const SMARKET_TABLE_NAME = 'SmarketOutData';
 
-const AMBER_DARK = 'FFB45309';
-const AMBER_LIGHT = 'FFFFEDD5';
-const AMBER_SOFT = 'FFFFFBEB';
+const AMBER_DARK = 'FF2F75B5';
+const AMBER_LIGHT = 'FFDDEBF7';
+const AMBER_SOFT = 'FFEAF3F8';
 const SLATE_HEADER = 'FF1E293B';
 const WHITE = 'FFFFFFFF';
 const BORDER = EXPORT_BANNER_BORDER;
+const DETAIL_TABLE_BLUE = 'FF2F75B5';
+const DETAIL_TABLE_BLUE_SOFT = 'FFDDEBF7';
 const OUT_BG = 'FFDBEAFE';
 const OUT_FG = 'FF1D4ED8';
 const GOOD_BG = 'FFD1FAE5';
 const GOOD_FG = 'FF065F46';
-const SEWING_BG = 'FFE0E7FF';
-const SEWING_FG = 'FF3730A3';
+const MARKET_OUT_BG = 'FFFFEDD5';
+const MARKET_OUT_FG = 'FF9A3412';
+const SEWING_BG = 'FFDBE5F1';
+const SEWING_FG = 'FF1F4E79';
 
 function n(v: unknown): number {
   const x = typeof v === 'number' ? v : Number(v);
@@ -122,7 +133,7 @@ function writeSummary(ws: ExcelJS.Worksheet, startRow: number, totalData: number
   const rows: { label: string; value: string | number; accent?: { bg: string; fg: string } }[] = [
     { label: 'Total bundle OUT (baris data)', value: totalData, accent: { bg: OUT_BG, fg: OUT_FG } },
     { label: 'Total qty Good', value: sumGood, accent: { bg: GOOD_BG, fg: GOOD_FG } },
-    { label: 'Total qty SMarket OUT', value: sumOut, accent: { bg: AMBER_LIGHT, fg: AMBER_DARK } },
+    { label: 'Total qty SMarket OUT', value: sumOut, accent: { bg: MARKET_OUT_BG, fg: MARKET_OUT_FG } },
     { label: 'Tujuan', value: 'SEWING', accent: { bg: SEWING_BG, fg: SEWING_FG } },
   ];
 
@@ -194,11 +205,15 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
     const cell = ws.getCell(headerRow, i + 1);
     cell.value = h;
     cell.font = { bold: true, size: SMARKET_DETAIL_FONT_HEADER, name: 'Calibri', color: { argb: WHITE } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SLATE_HEADER } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DETAIL_TABLE_BLUE } };
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.border = BORDER;
   });
   ws.getRow(headerRow).height = SMARKET_DETAIL_HEADER_ROW_HEIGHT;
+  ws.autoFilter = {
+    from: excelCellRef(headerRow, 1),
+    to: excelCellRef(headerRow + Math.max(items.length, 1), ncol),
+  };
 
   if (items.length === 0) {
     const emptyRow = headerRow + 1;
@@ -220,7 +235,7 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
       formatDt(it.waktu_terakhir),
       str(it.rfid),
       str(it.barcode_gcc),
-      str(it.wo),
+      woCellValue(it.wo) ?? '',
       str(it.style),
       str(it.bagian),
       str(it.warna),
@@ -251,6 +266,11 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
         wrapText: false,
       };
 
+      if (colIdx === 6) {
+        const wo = woCellValue(it.wo);
+        cell.value = wo ?? '—';
+        if (typeof wo === 'number') cell.numFmt = '0';
+      }
       if (colIdx === 1) {
         cell.font = { bold: true, size: SMARKET_DETAIL_FONT_DATA, color: { argb: OUT_FG } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: OUT_BG } };
@@ -258,8 +278,8 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
         cell.font = { bold: true, size: SMARKET_DETAIL_FONT_DATA, color: { argb: GOOD_FG } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
       } else if (colIdx === 17) {
-        cell.font = { bold: true, size: SMARKET_DETAIL_FONT_DATA, color: { argb: AMBER_DARK } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER_SOFT } };
+        cell.font = { bold: true, size: SMARKET_DETAIL_FONT_DATA, color: { argb: MARKET_OUT_FG } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MARKET_OUT_BG } };
       } else if (colIdx === 18) {
         cell.font = { bold: true, size: SMARKET_DETAIL_FONT_DATA, color: { argb: SEWING_FG } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SEWING_BG } };
@@ -267,7 +287,7 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: idx % 2 === 0 ? WHITE : AMBER_SOFT },
+          fgColor: { argb: idx % 2 === 0 ? WHITE : DETAIL_TABLE_BLUE_SOFT },
         };
       }
     });
@@ -285,7 +305,7 @@ function buildSmarketDataRows(items: GccCuttingSmarketOutReportItem[]): (string 
     formatDt(it.waktu_terakhir),
     str(it.rfid),
     str(it.barcode_gcc),
-    str(it.wo),
+    woCellValue(it.wo) ?? '',
     str(it.style),
     str(it.bagian),
     str(it.warna),
@@ -331,11 +351,12 @@ function appendSmarketAnalyticsSheets(
     dataRows,
     DETAIL_COL_WIDTHS,
     buildSmarketTableColumns(),
+    SMARKET_NUMERIC_COLS,
   );
 
   const lines = topKeysByFrequency(items.map((it) => str(it.line)), 25);
   const branches = uniqueSorted(items.map((it) => str(it.branch)));
-  const wos = topKeysByFrequency(items.map((it) => str(it.wo)));
+  const wos = topWoKeysByFrequency(items.map((it) => it.wo));
   const styles = topKeysByFrequency(items.map((it) => str(it.style)), 25);
 
   addAnalysisSheet(

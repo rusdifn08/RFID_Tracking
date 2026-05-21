@@ -2,7 +2,7 @@ import type ExcelJS from 'exceljs';
 import { EXPORT_BANNER_BORDER } from './exportExcelBanner';
 
 const BORDER = EXPORT_BANNER_BORDER;
-const SLATE_HEADER = 'FF1E293B';
+const SLATE_HEADER = 'FF1F4E79';
 const WHITE = 'FFFFFFFF';
 
 export function excelColLetter(col: number): string {
@@ -30,6 +30,48 @@ export type ExcelTableColumnDef = {
   totalsRowFunction?: 'none' | 'sum' | 'count' | 'average' | 'max' | 'min';
 };
 
+/** Format kolom angka (0-based index) agar filter Excel = Number Filters (Between, >, dll.) */
+export type NumericColFormat = { colIndex: number; numFmt: string };
+
+/** WO sebagai number — wajib agar AutoFilter Excel menawarkan Number Filters */
+export function woCellValue(v: unknown): number | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s || s === '—') return null;
+  const num = Number(s);
+  return Number.isFinite(num) ? num : null;
+}
+
+export function applyNumericColumnFormats(
+  ws: ExcelJS.Worksheet,
+  formats: NumericColFormat[],
+  firstDataRow: number,
+  lastDataRow: number,
+): void {
+  for (const { colIndex, numFmt } of formats) {
+    for (let r = firstDataRow; r <= lastDataRow; r++) {
+      const cell = ws.getCell(r, colIndex + 1);
+      if (typeof cell.value === 'number') {
+        cell.numFmt = numFmt;
+      }
+    }
+  }
+}
+
+/** Top WO numerik untuk sheet Analisis */
+export function topWoKeysByFrequency(woValues: unknown[], limit = 40): number[] {
+  const counts = new Map<number, number>();
+  for (const raw of woValues) {
+    const wo = woCellValue(raw);
+    if (wo == null) continue;
+    counts.set(wo, (counts.get(wo) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([k]) => k);
+}
+
 /** Sheet data datar + Excel Table (filter, sort, total baris) */
 export function addFlatDataTableSheet(
   workbook: ExcelJS.Workbook,
@@ -39,6 +81,7 @@ export function addFlatDataTableSheet(
   dataRows: (string | number)[][],
   colWidths: readonly number[],
   columns: ExcelTableColumnDef[],
+  numericColumns: NumericColFormat[] = [],
 ): ExcelJS.Worksheet {
   const ws = workbook.addWorksheet(sheetName, {
     views: [{ state: 'frozen', ySplit: 1, showGridLines: true }],
@@ -81,13 +124,17 @@ export function addFlatDataTableSheet(
     rows: dataRows,
   });
 
+  const firstDataRow = 2;
+  const lastDataRow = 1 + dataRows.length;
+  applyNumericColumnFormats(ws, numericColumns, firstDataRow, lastDataRow);
+
   return ws;
 }
 
 type PivotSection = {
   title: string;
   keyHeader: string;
-  keys: string[];
+  keys: (string | number)[];
   metricHeaders: { label: string; sumCol?: string; countCol?: string }[];
 };
 
@@ -194,7 +241,7 @@ export function addChartDataSheet(
     ref: `A3:B${dataEnd}`,
     headerRow: true,
     totalsRow: true,
-    style: { theme: 'TableStyleMedium9', showRowStripes: true },
+    style: { theme: 'TableStyleMedium2', showRowStripes: true },
     columns: [
       { name: 'Kategori', filterButton: true },
       { name: 'Nilai', filterButton: false, totalsRowFunction: 'sum' },
@@ -227,8 +274,9 @@ export function addExcelGuideSheet(
     `PANDUAN — Laporan ${opts.reportType}`,
     '',
     'Sheet "Data":',
-    `  • Tabel "${opts.tableName}" dengan filter di setiap kolom (ikon di header).`,
-    '  • Klik panah filter untuk search / filter nilai.',
+    `  • Tabel "${opts.tableName}" dengan filter di setiap kolom (ikon panah ↓ di header).`,
+    '  • Kolom WO bertipe angka → Number Filters (Equals, Between, Greater Than, Top 10, dll.).',
+    '  • Klik panah filter untuk search / centang nilai / sort.',
     '  • Baris total di bawah (SUM) untuk kolom qty.',
     '',
     'Sheet "Analisis":',

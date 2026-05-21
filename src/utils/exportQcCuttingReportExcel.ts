@@ -7,10 +7,17 @@ import {
   addExcelGuideSheet,
   addFlatDataTableSheet,
   enableFullRecalcOnLoad,
+  excelCellRef,
   topKeysByFrequency,
+  topWoKeysByFrequency,
   uniqueSorted,
+  woCellValue,
   type ExcelTableColumnDef,
+  type NumericColFormat,
 } from './exportExcelAnalytics';
+
+const QC_WO_COL_INDEX = 5;
+const QC_NUMERIC_COLS: NumericColFormat[] = [{ colIndex: QC_WO_COL_INDEX, numFmt: '0' }];
 
 const QC_TABLE_NAME = 'QcCuttingData';
 
@@ -20,6 +27,8 @@ const SKY_SOFT = 'FFF0F9FF';
 const SLATE_HEADER = 'FF1E293B';
 const WHITE = 'FFFFFFFF';
 const BORDER = EXPORT_BANNER_BORDER;
+const DETAIL_TABLE_BLUE = 'FF2F75B5';
+const DETAIL_TABLE_BLUE_SOFT = 'FFDDEBF7';
 
 const GOOD_BG = 'FFD1FAE5';
 const GOOD_FG = 'FF065F46';
@@ -27,8 +36,8 @@ const REPAIR_BG = 'FFFFEDD5';
 const REPAIR_FG = 'FF9A3412';
 const REJECT_BG = 'FFFEE2E2';
 const REJECT_FG = 'FF991B1B';
-const VIOLET_BG = 'FFEDE9FE';
-const VIOLET_FG = 'FF5B21B6';
+const VIOLET_BG = 'FFD9EAF7';
+const VIOLET_FG = 'FF2F75B5';
 
 function n(v: unknown): number {
   const x = typeof v === 'number' ? v : Number(v);
@@ -227,11 +236,15 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
     const cell = ws.getCell(headerRow, i + 1);
     cell.value = h;
     cell.font = { bold: true, size: QC_DETAIL_FONT_HEADER, name: 'Calibri', color: { argb: WHITE } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SLATE_HEADER } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DETAIL_TABLE_BLUE } };
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.border = BORDER;
   });
   ws.getRow(headerRow).height = QC_DETAIL_HEADER_ROW_HEIGHT;
+  ws.autoFilter = {
+    from: excelCellRef(headerRow, 1),
+    to: excelCellRef(headerRow + Math.max(items.length, 1), ncol),
+  };
 
   if (items.length === 0) {
     const emptyRow = headerRow + 1;
@@ -254,7 +267,7 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
       status,
       str(it.rfid_bundles),
       str(it.barcode),
-      str(it.wo),
+      woCellValue(it.wo) ?? '',
       str(it.style),
       str(it.warna),
       str(it.size),
@@ -283,6 +296,11 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
         indent: isNum ? 0 : 1,
         wrapText: colIdx === 1 || colIdx === 4,
       };
+      if (colIdx === 5) {
+        const wo = woCellValue(it.wo);
+        cell.value = wo ?? '—';
+        if (typeof wo === 'number') cell.numFmt = '0';
+      }
       if (colIdx === 2) {
         cell.font = { bold: true, size: QC_DETAIL_FONT_DATA, name: 'Calibri', color: { argb: st.fg } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.bg } };
@@ -299,7 +317,7 @@ function writeDetailTable(ws: ExcelJS.Worksheet, startRow: number, items: GccCut
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: idx % 2 === 0 ? WHITE : SKY_SOFT },
+          fgColor: { argb: idx % 2 === 0 ? WHITE : DETAIL_TABLE_BLUE_SOFT },
         };
       }
     });
@@ -316,7 +334,7 @@ function buildQcDataRows(items: GccCuttingQcReportItem[]): (string | number)[][]
     str(it.status_qc),
     str(it.rfid_bundles),
     str(it.barcode),
-    str(it.wo),
+    woCellValue(it.wo) ?? '',
     str(it.style),
     str(it.warna),
     str(it.size),
@@ -348,10 +366,19 @@ function appendQcAnalyticsSheets(
   summary: GccCuttingQcReportSummary | undefined,
 ): void {
   const dataRows = buildQcDataRows(items);
-  addFlatDataTableSheet(workbook, 'Data', QC_TABLE_NAME, DETAIL_HEADERS, dataRows, DETAIL_COL_WIDTHS, buildQcTableColumns());
+  addFlatDataTableSheet(
+    workbook,
+    'Data',
+    QC_TABLE_NAME,
+    DETAIL_HEADERS,
+    dataRows,
+    DETAIL_COL_WIDTHS,
+    buildQcTableColumns(),
+    QC_NUMERIC_COLS,
+  );
 
   const statuses = uniqueSorted(items.map((it) => str(it.status_qc)));
-  const wos = topKeysByFrequency(items.map((it) => str(it.wo)));
+  const wos = topWoKeysByFrequency(items.map((it) => it.wo));
   const styles = topKeysByFrequency(items.map((it) => str(it.style)), 30);
   const warnas = uniqueSorted(items.map((it) => str(it.warna)));
 
