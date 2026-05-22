@@ -317,9 +317,9 @@ export default function NeedleManager() {
         'Operator',
         'NIK',
         'Line',
+        'Qty',
         'Needle Parameter',
         'Model',
-        'Qty',
         'Location',
       ];
 
@@ -330,9 +330,9 @@ export default function NeedleManager() {
       headerRow.height = 34;
       const headerFillByIndex = (idx: number): string => {
         if (idx <= 2) return 'FF2563EB'; // Tanggal + Waktu
-        if (idx <= 5) return 'FF0F766E'; // Operator + NIK + Line
-        if (idx <= 7) return 'FF7C3AED'; // Parameter + Model
-        return 'FFEA580C'; // Qty + Location
+        if (idx <= 6) return 'FF0F766E'; // Operator + NIK + Line + Qty
+        if (idx <= 8) return 'FF7C3AED'; // Parameter + Model
+        return 'FFEA580C'; // Location
       };
       headerRow.eachCell((cell, colNumber) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFillByIndex(colNumber) } };
@@ -367,9 +367,9 @@ export default function NeedleManager() {
           row.nama_operator || '',
           getNik(row) || '',
           row.line || '',
+          typeof row.qty === 'number' ? row.qty : '',
           row.needle_parameter || '',
           row.model || '',
-          typeof row.qty === 'number' ? row.qty : '',
           row.location || '',
         ]);
         excelRow.height = 22;
@@ -398,6 +398,13 @@ export default function NeedleManager() {
         }
         sheet.getColumn(colIndex).width = Math.min(Math.max(maxLen + 4, 14), 56);
       });
+
+      const lastDataRow = sheet.rowCount;
+      sheet.autoFilter = {
+        from: { row: 1, column: 3 },
+        to: { row: lastDataRow, column: 5 },
+      };
+      sheet.views = [{ state: 'frozen', ySplit: 1, showGridLines: true }];
 
       setExportProgress(92);
       setExportStageText('Menyusun file Excel...');

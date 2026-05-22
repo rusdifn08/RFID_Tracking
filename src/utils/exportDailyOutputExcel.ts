@@ -1,4 +1,8 @@
 import ExcelJS from 'exceljs';
+import {
+  HIDE_DAILY_OUTPUT_HEADER_PREFIXES,
+  HIDE_FORM_EXPORT_DAILY_OUTPUT_PIC_NIK,
+} from '../config/hide';
 import { writeExportTitleBlock } from './exportExcelBanner';
 
 export const DAILY_OUTPUT_HEADERS: string[] = [
@@ -31,6 +35,16 @@ export const DAILY_OUTPUT_HEADERS: string[] = [
   'NIK - folding_out',
 ];
 
+/** Header yang benar-benar ditulis ke Excel (menghormati hide.ts). */
+export function getDailyOutputExportHeaders(): string[] {
+  if (!HIDE_FORM_EXPORT_DAILY_OUTPUT_PIC_NIK) {
+    return [...DAILY_OUTPUT_HEADERS];
+  }
+  return DAILY_OUTPUT_HEADERS.filter(
+    (h) => !HIDE_DAILY_OUTPUT_HEADER_PREFIXES.some((prefix) => h.startsWith(prefix)),
+  );
+}
+
 const toDateToken = (date?: string): string => {
   if (!date) return '';
   const d = new Date(date);
@@ -53,10 +67,11 @@ function pickDailyCell(row: Record<string, unknown>, header: string): unknown {
 }
 
 const normalizeDailyRows = (rows: any[]): Record<string, unknown>[] => {
+  const headers = getDailyOutputExportHeaders();
   return rows.map((row) => {
     const r = row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
     const normalized: Record<string, unknown> = {};
-    DAILY_OUTPUT_HEADERS.forEach((header) => {
+    headers.forEach((header) => {
       const value = pickDailyCell(r, header);
       normalized[header] = value == null ? '' : value;
     });
@@ -89,18 +104,19 @@ export const exportDailyOutputExcel = async ({
   }
 
   const normalizedRows = normalizeDailyRows(rows);
+  const exportHeaders = getDailyOutputExportHeaders();
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'RFID Tracking';
   const worksheet = workbook.addWorksheet('Daily Output');
 
-  const ncol = DAILY_OUTPUT_HEADERS.length;
+  const ncol = exportHeaders.length;
   const headerRowNum = writeExportTitleBlock(worksheet, ncol, {
     title: 'Daily Output Per WO',
     filterDateFrom,
     filterDateTo,
   });
 
-  DAILY_OUTPUT_HEADERS.forEach((header, i) => {
+  exportHeaders.forEach((header, i) => {
     const isTextLong = ['item', 'buyer'].includes(header.toLowerCase());
     const isPic = header.toLowerCase().includes('pic');
     const isNik = header.toLowerCase().includes('nik');
@@ -126,7 +142,7 @@ export const exportDailyOutputExcel = async ({
   const headerRow = worksheet.getRow(headerRowNum);
   headerRow.height = 32;
   headerRow.eachCell((cell, colNumber) => {
-    const header = DAILY_OUTPUT_HEADERS[colNumber - 1] ?? '';
+    const header = exportHeaders[colNumber - 1] ?? '';
     cell.value = header.replace(/_/g, ' ');
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12, name: 'Calibri' };
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -143,7 +159,7 @@ export const exportDailyOutputExcel = async ({
     const row = worksheet.getRow(rowNum);
     row.height = 22;
     const isEven = rowNum % 2 === 0;
-    DAILY_OUTPUT_HEADERS.forEach((header, colNumber) => {
+    exportHeaders.forEach((header, colNumber) => {
       const cell = row.getCell(colNumber);
       const val = rowObj[header];
       cell.value =
@@ -167,7 +183,7 @@ export const exportDailyOutputExcel = async ({
 
   worksheet.autoFilter = {
     from: { row: headerRowNum, column: 1 },
-    to: { row: headerRowNum, column: DAILY_OUTPUT_HEADERS.length },
+    to: { row: headerRowNum, column: exportHeaders.length },
   };
   worksheet.views = [{ state: 'frozen', ySplit: headerRowNum }];
 

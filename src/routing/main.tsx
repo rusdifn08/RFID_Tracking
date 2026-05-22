@@ -36,6 +36,7 @@ const DashboardMesinKolam = lazy(() => import('../pages/DashboardMesinKolam.tsx'
 const Cutting = lazy(() => import('../pages/Cutting.tsx'));
 const DashboardCutting = lazy(() => import('../pages/DashboardCutting.tsx'));
 const DashboardSupermarketCutting = lazy(() => import('../pages/DashboardSupermarketCutting.tsx'));
+const DashboardSupplySewingCutting = lazy(() => import('../pages/DashboardSupplySewingCutting.tsx'));
 const DaftarRFIDCutting = lazy(() => import('../pages/DaftarRFIDCutting.tsx'));
 const SewingLine = lazy(() => import('../pages/SewingLine.tsx'));
 const DashboardSewingLine = lazy(() => import('../pages/DashboardSewingLine.tsx'));
@@ -164,6 +165,16 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <DashboardQualityControlCutting />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-supply-sewing-cutting',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <DashboardSupplySewingCutting />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

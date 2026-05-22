@@ -1,8 +1,10 @@
 /**
- * Global toggle mode Coming Soon untuk fitur Supply Sewing (card di Dashboard Cutting).
+ * Toggle fitur Supply Sewing di Dashboard Cutting.
  *
- * true  => fitur aktif normal
- * false => mode Coming Soon (card abu-abu, scan nonaktif, hover tampil "Coming Soon")
+ * true  => aktif: tombol Scan, navigasi dashboard, tanpa overlay Coming Soon
+ * false => nonaktif: kartu abu-abu + badge Soon
  */
-export const SUPPLY_SOON = false;
+export const SUPPLY_SEWING_ENABLED = true;
 
+/** @deprecated Gunakan SUPPLY_SEWING_ENABLED */
+export const SUPPLY_SOON = SUPPLY_SEWING_ENABLED;

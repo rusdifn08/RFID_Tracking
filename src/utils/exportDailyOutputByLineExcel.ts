@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { writeExportTitleBlock } from './exportExcelBanner';
-import { DAILY_OUTPUT_HEADERS } from './exportDailyOutputExcel';
+import { getDailyOutputExportHeaders } from './exportDailyOutputExcel';
 
 const toDateToken = (date?: string): string => {
   if (!date) return '';
@@ -63,10 +63,10 @@ function pickCell(row: Record<string, unknown>, header: string): unknown {
   return '';
 }
 
-function normalizeRow(row: unknown): Record<string, unknown> {
+function normalizeRow(row: unknown, headers: string[]): Record<string, unknown> {
   const r = row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
   const out: Record<string, unknown> = {};
-  DAILY_OUTPUT_HEADERS.forEach((h) => {
+  headers.forEach((h) => {
     out[h] = pickCell(r, h);
   });
   return out;
@@ -125,7 +125,8 @@ export async function exportDailyOutputByLineExcel({
     throw new Error('Data daily output kosong');
   }
 
-  const normalized = rows.map(normalizeRow);
+  const exportHeaders = getDailyOutputExportHeaders();
+  const normalized = rows.map((row) => normalizeRow(row, exportHeaders));
   const byDate = new Map<string, Record<string, unknown>[]>();
   for (const r of normalized) {
     const dk = normalizeTanggalKey(r.tanggal);
@@ -146,14 +147,14 @@ export async function exportDailyOutputByLineExcel({
     views: [{ state: 'frozen', ySplit: 3, showGridLines: true }],
   });
 
-  const ncol = DAILY_OUTPUT_HEADERS.length;
+  const ncol = exportHeaders.length;
   writeExportTitleBlock(ws, ncol, {
     title: 'Daily Output Line',
     filterDateFrom,
     filterDateTo,
   });
 
-  DAILY_OUTPUT_HEADERS.forEach((h, i) => {
+  exportHeaders.forEach((h, i) => {
     ws.getColumn(i + 1).width = colWidth(h);
   });
 
@@ -201,7 +202,7 @@ export async function exportDailyOutputByLineExcel({
 
     const headerRow = ws.getRow(currentRow);
     headerRow.height = 30;
-    DAILY_OUTPUT_HEADERS.forEach((header, colIdx) => {
+    exportHeaders.forEach((header, colIdx) => {
       const cell = headerRow.getCell(colIdx + 1);
       cell.value = header.replace(/_/g, ' ');
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12, name: 'Calibri' };
@@ -215,7 +216,7 @@ export async function exportDailyOutputByLineExcel({
       const r = ws.getRow(currentRow);
       r.height = 22;
       const even = idx % 2 === 1;
-      DAILY_OUTPUT_HEADERS.forEach((header, colIdx) => {
+      exportHeaders.forEach((header, colIdx) => {
         const cell = r.getCell(colIdx + 1);
         const val = rowObj[header];
         cell.value =

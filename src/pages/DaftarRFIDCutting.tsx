@@ -14,7 +14,11 @@ import {
     type GccCuttingBundleRow,
     type GccCuttingFormFields,
 } from '../config/api';
-import { Camera, ChevronDown, PenLine, RefreshCw, Search } from 'lucide-react';
+import { Camera, ChevronDown, Minus, PenLine, Plus, RefreshCw, Search } from 'lucide-react';
+
+const DEFAULT_TOTAL_BATCH = 7;
+const MIN_TOTAL_BATCH = 1;
+const MAX_TOTAL_BATCH = 99;
 
 const CuttingLabelScanModal = lazy(() => import('../components/cutting/CuttingLabelScanModal'));
 
@@ -75,6 +79,7 @@ const DaftarRFIDCutting: React.FC = memo(() => {
     const [manualFetchError, setManualFetchError] = useState<string | null>(null);
     /** RFID garment — isi manual (biasanya kosong di bundle hingga didaftarkan). */
     const [manualRfid, setManualRfid] = useState('');
+    const [totalBatch, setTotalBatch] = useState(DEFAULT_TOTAL_BATCH);
     const [registerBusy, setRegisterBusy] = useState(false);
     const [registerMessage, setRegisterMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -211,6 +216,7 @@ const DaftarRFIDCutting: React.FC = memo(() => {
                 rfid_garment: rfid,
                 rfid_bundles: rfid,
                 barcode: cuttingForm.barcode.trim(),
+                total_batch: totalBatch,
                 wo: cuttingForm.workOrder.trim(),
                 style: cuttingForm.style.trim() || '-',
                 buyer: cuttingForm.buyer.trim() || '-',
@@ -236,7 +242,7 @@ const DaftarRFIDCutting: React.FC = memo(() => {
         } finally {
             setRegisterBusy(false);
         }
-    }, [manualRfid, cuttingForm]);
+    }, [manualRfid, cuttingForm, totalBatch]);
 
     return (
         <div
@@ -429,28 +435,58 @@ const DaftarRFIDCutting: React.FC = memo(() => {
                                     <ReadField label="No. Ikat" value={cuttingForm.noIkat} />
                                     <ReadField label="Placing / Meja" value={cuttingForm.placing} />
 
-                                    <div className="flex flex-col transition-all duration-300 sm:col-span-2">
-                                        <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
-                                            RFID garment
-                                        </label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            autoComplete="off"
-                                            value={manualRfid}
-                                            onChange={(e) => {
-                                                setManualRfid(e.target.value);
-                                                setRegisterMessage(null);
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    void handleInputRegister();
-                                                }
-                                            }}
-                                            placeholder="Nomor RFID — kosongkan jika belum ada, lalu ketik sebelum Input Register"
-                                            className="w-full min-h-[2.5rem] sm:min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl border-amber-200 bg-amber-50/60 text-gray-900 font-mono focus:ring-4 focus:ring-amber-100 focus:border-amber-500 outline-none placeholder:text-slate-400 placeholder:font-sans shadow-sm"
-                                        />
+                                    <div className="sm:col-span-2 grid grid-cols-[1fr_auto] gap-3 sm:gap-4 items-end w-full">
+                                        <div className="min-w-0 flex flex-col transition-all duration-300">
+                                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
+                                                RFID garment
+                                            </label>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                autoComplete="off"
+                                                value={manualRfid}
+                                                onChange={(e) => {
+                                                    setManualRfid(e.target.value);
+                                                    setRegisterMessage(null);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        void handleInputRegister();
+                                                    }
+                                                }}
+                                                placeholder="Nomor RFID — kosongkan jika belum ada, lalu ketik sebelum Input Register"
+                                                className="w-full min-h-[2.5rem] sm:min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl border-amber-200 bg-amber-50/60 text-gray-900 font-mono focus:ring-4 focus:ring-amber-100 focus:border-amber-500 outline-none placeholder:text-slate-400 placeholder:font-sans shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col transition-all duration-300 w-[9.5rem] sm:w-[10.5rem]">
+                                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1 text-center sm:text-left whitespace-nowrap">
+                                                Total batch
+                                            </label>
+                                            <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[2.5rem] sm:min-h-[2.75rem]">
+                                                <button
+                                                    type="button"
+                                                    aria-label="Kurangi total batch"
+                                                    onClick={() => setTotalBatch((n) => Math.max(MIN_TOTAL_BATCH, n - 1))}
+                                                    disabled={totalBatch <= MIN_TOTAL_BATCH}
+                                                    className="shrink-0 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg border-2 border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"
+                                                >
+                                                    <Minus className="h-4 w-4" strokeWidth={2.5} />
+                                                </button>
+                                                <div className="min-w-[2.75rem] text-center tabular-nums font-extrabold text-slate-900 rounded-lg border border-emerald-200 bg-white py-1.5 px-2 text-lg leading-none">
+                                                    {totalBatch}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Tambah total batch"
+                                                    onClick={() => setTotalBatch((n) => Math.min(MAX_TOTAL_BATCH, n + 1))}
+                                                    disabled={totalBatch >= MAX_TOTAL_BATCH}
+                                                    className="shrink-0 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg border-2 border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"
+                                                >
+                                                    <Plus className="h-4 w-4" strokeWidth={2.5} />
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -87,6 +87,19 @@ export default function Breadcrumb() {
                 label: 'Cutting Proses',
                 isActive: true,
             });
+        } else if (path.startsWith('/dashboard-supply-sewing-cutting')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Cutting Proses',
+                path: '/cutting',
+            });
+            breadcrumbs.push({
+                label: 'Dashboard Supply Sewing',
+                isActive: true,
+            });
         } else if (path.startsWith('/dashboard-cutting')) {
             breadcrumbs.push({
                 label: 'RFID Tracking',

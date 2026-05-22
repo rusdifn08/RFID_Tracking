@@ -28,7 +28,7 @@ import {
     getHomeDashboard,
     type HomeDashboardItem,
 } from '../../../config/api';
-import { SUPPLY_SOON } from '../../../config/comingsoon';
+import { SUPPLY_SEWING_ENABLED } from '../../../config/comingsoon';
 import ChartCard from '../ChartCard';
 import CuttingScanStationModal, { type CuttingScanSessionRow } from './CuttingScanStationModal';
 import QcScanStationHost from './QcScanStationHost';
@@ -44,7 +44,7 @@ function normCuttingLastStatus(s: unknown): string {
         .replace(/\s+/g, '_');
 }
 
-/** Urutan â€œkemajuanâ€ status untuk fallback jika tidak ada petunjuk di baris klik. */
+/** Urutan "kemajuan" status untuk fallback jika tidak ada petunjuk di baris klik. */
 const HOME_STATUS_RANK: Record<string, number> = {
     OUTPUT_BUNDLE: 10,
     GOOD: 20,
@@ -66,7 +66,7 @@ function pickLatestHomeDashboardItem(items: HomeDashboardItem[]): HomeDashboardI
 
 /**
  * API bisa mengembalikan banyak baris untuk RFID yang sama (riwayat status).
- * Jangan pakai Map(rfid) â€” ambil objek yang sama dengan baris tabel (last_status / barcode / id_bundles).
+ * Jangan pakai Map(rfid) — ambil objek yang sama dengan baris tabel (last_status / barcode / id_bundles).
  */
 function findHomeDashboardItemForDetail(
     items: HomeDashboardItem[] | undefined,
@@ -108,16 +108,16 @@ function findHomeDashboardItemForDetail(
 function mapHomeItemToBundleRow(item: HomeDashboardItem) {
     const qty = Math.max(1, Number(item.qty_batch ?? 1));
     return {
-        rfid: item.rfid_bundles ?? 'â€”',
-        wo: item.wo ?? 'â€”',
+        rfid: item.rfid_bundles ?? '—',
+        wo: item.wo ?? '—',
         qty,
-        style: item.style ?? 'â€”',
-        buyer: 'â€”',
-        item: 'â€”',
-        color: item.warna ?? 'â€”',
-        size: item.size ?? 'â€”',
+        style: item.style ?? '—',
+        buyer: '—',
+        item: '—',
+        color: item.warna ?? '—',
+        size: item.size ?? '—',
         location: 'bundle',
-        timestamp: item.barcode ?? 'â€”',
+        timestamp: item.barcode ?? '—',
         last_status: item.last_status,
         id_bundles: item.id_bundles,
         barcode: item.barcode,
@@ -134,19 +134,19 @@ function mapHomeItemToQcRow(item: HomeDashboardItem) {
     else if (st === 'REPAIR') repair = qty;
     else if (st === 'REJECT') reject = qty;
     return {
-        rfid: item.rfid_bundles ?? 'â€”',
+        rfid: item.rfid_bundles ?? '—',
         qty,
         good,
         repair,
         reject,
-        wo: item.wo ?? 'â€”',
-        style: item.style ?? 'â€”',
-        buyer: 'â€”',
-        item: 'â€”',
-        color: item.warna ?? 'â€”',
-        size: item.size ?? 'â€”',
+        wo: item.wo ?? '—',
+        style: item.style ?? '—',
+        buyer: '—',
+        item: '—',
+        color: item.warna ?? '—',
+        size: item.size ?? '—',
         location: 'quality_control',
-        timestamp: item.barcode ?? 'â€”',
+        timestamp: item.barcode ?? '—',
         last_status: item.last_status,
         id_bundles: item.id_bundles,
         barcode: item.barcode,
@@ -161,22 +161,22 @@ function mapHomeItemToStoreRow(item: HomeDashboardItem) {
             ? 'Masuk Supermarket'
             : st === 'OUT_SMARKET' || st === 'OUT_SUPERMARKET'
               ? 'Keluar Supermarket'
-              : String(item.lokasi ?? item.last_status ?? 'â€”');
+              : String(item.lokasi ?? item.last_status ?? '—');
     const lineStr =
-        item.line != null && String(item.line).trim() !== '' ? String(item.line) : 'â€”';
+        item.line != null && String(item.line).trim() !== '' ? String(item.line) : '—';
     return {
-        rfid: item.rfid_bundles ?? 'â€”',
-        wo: item.wo ?? 'â€”',
+        rfid: item.rfid_bundles ?? '—',
+        wo: item.wo ?? '—',
         qty,
         line: lineStr,
         lokasi,
-        style: item.style ?? 'â€”',
-        buyer: 'â€”',
-        item: 'â€”',
-        color: item.warna ?? 'â€”',
-        size: item.size ?? 'â€”',
+        style: item.style ?? '—',
+        buyer: '—',
+        item: '—',
+        color: item.warna ?? '—',
+        size: item.size ?? '—',
         location: 'supermarket',
-        timestamp: item.barcode ?? 'â€”',
+        timestamp: item.barcode ?? '—',
         last_status: item.last_status,
         id_bundles: item.id_bundles,
         barcode: item.barcode,
@@ -207,13 +207,13 @@ function homeDashboardItemToFields(
         shown.add(key);
         const v = (item as Record<string, unknown>)[key];
         const s = fmt(v);
-        if (s !== 'â€”') out.push({ label, value: s });
+        if (s !== '—') out.push({ label, value: s });
     }
     for (const [k, v] of Object.entries(item)) {
         if (shown.has(k)) continue;
         if (typeof v === 'object' && v !== null) continue;
         const s = fmt(v);
-        if (s === 'â€”') continue;
+        if (s === '—') continue;
         const pretty = k
             .split('_')
             .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''))
@@ -238,17 +238,17 @@ function newCuttingScanRowId(): string {
 function readCuttingOperator(): { name: string; nik: string } {
     try {
         const raw = localStorage.getItem('user');
-        if (!raw) return { name: 'â€”', nik: 'â€”' };
+        if (!raw) return { name: '—', nik: '—' };
         const u = JSON.parse(raw) as { name?: string; nama?: string; nik?: string; NIK?: string };
-        const name = u.name ?? u.nama ?? 'â€”';
-        const nik = String(u.nik ?? u.NIK ?? 'â€”');
+        const name = u.name ?? u.nama ?? '—';
+        const nik = String(u.nik ?? u.NIK ?? '—');
         return { name, nik };
     } catch {
-        return { name: 'â€”', nik: 'â€”' };
+        return { name: '—', nik: '—' };
     }
 }
 
-/** Judul kartu ala ChartCard â€” tanpa capitalize otomatis agar singkatan (mis. QC Cutting) tetap benar. */
+/** Judul kartu ala ChartCard — tanpa capitalize otomatis agar singkatan (mis. QC Cutting) tetap benar. */
 function CuttingStageTitle({ children }: { children: string }) {
     return (
         <h2
@@ -311,22 +311,43 @@ function ScanningButton({
 
 type CuttingTableRow = Record<string, string | number | null | undefined>;
 
+function parseTableRowTime(ts: unknown): number {
+    if (ts == null || ts === '' || ts === '—') return 0;
+    const d = new Date(String(ts));
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/** Data terbaru di atas: urut timestamp `at` / kolom timestamp, lalu id_bundles. */
+function sortTableRowsNewestFirst(rows: CuttingTableRow[]): CuttingTableRow[] {
+    return [...rows].sort((a, b) => {
+        const tb = parseTableRowTime(b.timestamp);
+        const ta = parseTableRowTime(a.timestamp);
+        if (tb !== ta) return tb - ta;
+        const idB = Number(b.id_bundles) || 0;
+        const idA = Number(a.id_bundles) || 0;
+        return idB - idA;
+    });
+}
+
 function WireTable({
     columns,
     rows,
     emptyText,
     onRowClick,
+    showRowNo = true,
 }: {
     columns: { key: string; label: string; className?: string }[];
     rows: CuttingTableRow[];
     emptyText: string;
     onRowClick?: (row: CuttingTableRow) => void;
+    showRowNo?: boolean;
 }) {
+    const colSpan = columns.length + (showRowNo ? 1 : 0);
     return (
         <div
             className="flex-1 min-h-0 max-lg:min-h-[9rem] overflow-auto rounded-b-xl touch-pan-y"
             onClick={(e) => {
-                /* Bubble phase: jangan pakai onClickCapture + stopPropagation â€” itu memblokir event sampai ke <tr>.
+                /* Bubble phase: jangan pakai onClickCapture + stopPropagation — itu memblokir event sampai ke <tr>.
                    Hentikan bubble ke ChartCard (navigasi QC/Supermarket) setelah target menangani klik. */
                 const target = e.target as HTMLElement | null;
                 if (target?.closest('table, thead, tbody, tr, th, td')) {
@@ -337,6 +358,11 @@ function WireTable({
             <table className="w-full text-left border-collapse text-[10px] bg-white">
                 <thead className="bg-gradient-to-r from-sky-50/70 to-white sticky top-0 z-[1] backdrop-blur-sm">
                     <tr className="border-b border-sky-100">
+                        {showRowNo && (
+                            <th className="px-1 py-1 w-8 min-w-[2rem] font-semibold text-slate-500 uppercase tracking-wide text-center">
+                                No
+                            </th>
+                        )}
                         {columns.map((c) => (
                             <th
                                 key={c.key}
@@ -350,7 +376,7 @@ function WireTable({
                 <tbody>
                     {rows.length === 0 ? (
                         <tr>
-                            <td colSpan={columns.length} className="px-2 py-4 text-center text-slate-400 italic">
+                            <td colSpan={colSpan} className="px-2 py-4 text-center text-slate-400 italic">
                                 {emptyText}
                             </td>
                         </tr>
@@ -369,9 +395,14 @@ function WireTable({
                                 }
                                 title={onRowClick ? 'Klik untuk lihat detail data' : undefined}
                             >
+                                {showRowNo && (
+                                    <td className="px-1 py-1 text-center text-slate-600 font-bold tabular-nums text-[10px] w-8 min-w-[2rem]">
+                                        {rows.length - i}
+                                    </td>
+                                )}
                                 {columns.map((c) => (
                                     <td key={c.key} className={`px-1.5 py-1 text-slate-700 truncate max-w-0 ${c.className ?? ''}`} title={String(row[c.key] ?? '')}>
-                                        {row[c.key] ?? 'â€”'}
+                                        {row[c.key] ?? '—'}
                                     </td>
                                 ))}
                             </tr>
@@ -405,7 +436,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 }: {
     /** Untuk grafik distribusi: jumlah baris bundle tersimpan */
     onBundleMetrics?: (bundleTableRows: number) => void;
-    /** Jika true (dashboard cutting), tabel hanya menampilkan entri yang `at`-nya hari ini (lokal) â€” diabaikan jika `homeDashboardApi`. */
+    /** Jika true (dashboard cutting), tabel hanya menampilkan entri yang `at`-nya hari ini (lokal) — diabaikan jika `homeDashboardApi`. */
     filterTablesToToday?: boolean;
     /** Data tabel dari GET `/api/homedashboard` (command center cutting). */
     homeDashboardApi?: boolean;
@@ -528,10 +559,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const [supplySessionLog, setSupplySessionLog] = useState<CuttingScanSessionRow[]>([]);
 
     const formatFieldValue = useCallback((v: unknown): string => {
-        if (v == null) return 'â€”';
+        if (v == null) return '—';
         if (typeof v === 'number' && Number.isFinite(v)) return String(v);
         const s = String(v).trim();
-        return s === '' ? 'â€”' : s;
+        return s === '' ? '—' : s;
     }, []);
 
     const openDetailFromRow = useCallback(
@@ -543,7 +574,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     const fields = homeDashboardItemToFields(homeItem, formatFieldValue);
                     setTableDetail({
                         open: true,
-                        title: `Detail Data â€” ${stage}`,
+                        title: `Detail Data — ${stage}`,
                         subtitle: 'Data dari API Home Dashboard (/api/homedashboard)',
                         fields,
                     });
@@ -552,7 +583,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             }
             const rawTimestamp = formatFieldValue(row.timestamp);
             const timestampDisplay =
-                rawTimestamp !== 'â€”' && !Number.isNaN(Date.parse(rawTimestamp))
+                rawTimestamp !== '—' && !Number.isNaN(Date.parse(rawTimestamp))
                     ? new Date(rawTimestamp).toLocaleString('id-ID')
                     : rawTimestamp;
             const fields: { label: string; value: string }[] = [
@@ -571,10 +602,10 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 { label: 'Location (GM)', value: formatFieldValue(row.gm) },
                 { label: 'Lokasi', value: formatFieldValue(row.location) },
                 { label: 'Scanning At', value: timestampDisplay },
-            ].filter((f) => f.value !== 'â€”');
+            ].filter((f) => f.value !== '—');
             setTableDetail({
                 open: true,
-                title: `Detail Data â€” ${stage}`,
+                title: `Detail Data — ${stage}`,
                 subtitle: undefined,
                 fields,
             });
@@ -607,7 +638,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     : Math.max(1, parseInt(String(qtyNext).replace(/\D/g, ''), 10) || 1);
             setBusyB(true);
             try {
-                const nikOperator = operator.nik && operator.nik !== 'â€”' ? operator.nik : '';
+                const nikOperator = operator.nik && operator.nik !== '—' ? operator.nik : '';
                 const res = await inputRfidCuttingBundle({
                     rfid_garment: rfid,
                     rfid_bundles: rfid,
@@ -844,14 +875,14 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             good: h.good ?? 0,
             repair: h.repair ?? 0,
             reject: h.reject ?? 0,
-            wo: h.wo ?? 'â€”',
-            style: h.style ?? 'â€”',
-            buyer: h.buyer ?? 'â€”',
-            item: h.item ?? 'â€”',
-            color: h.color ?? 'â€”',
-            size: h.size ?? 'â€”',
+            wo: h.wo ?? '—',
+            style: h.style ?? '—',
+            buyer: h.buyer ?? '—',
+            item: h.item ?? '—',
+            color: h.color ?? '—',
+            size: h.size ?? '—',
             location: h.location ?? 'quality_control',
-            timestamp: h.at ?? 'â€”',
+            timestamp: h.at ?? '—',
         }));
     }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
 
@@ -871,15 +902,15 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
         }
         return (displayDoc?.bundle?.history ?? []).slice(0, 50).map((h) => ({
             rfid: h.rfid_garment,
-            wo: h.wo ?? 'â€”',
+            wo: h.wo ?? '—',
             qty: Math.max(1, Number(h.qty ?? 1)),
-            style: h.style ?? 'â€”',
-            buyer: h.buyer ?? 'â€”',
-            item: h.item ?? 'â€”',
-            color: h.color ?? 'â€”',
-            size: h.size ?? 'â€”',
+            style: h.style ?? '—',
+            buyer: h.buyer ?? '—',
+            item: h.item ?? '—',
+            color: h.color ?? '—',
+            size: h.size ?? '—',
             location: h.location ?? 'bundle',
-            timestamp: h.at ?? 'â€”',
+            timestamp: h.at ?? '—',
         }));
     }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
 
@@ -907,20 +938,20 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 : locRaw === 'supermarket' || locRaw === ''
                   ? 'Supermarket'
                   : locRaw;
-            const lineStr = h.line != null && String(h.line).trim() !== '' ? String(h.line) : 'â€”';
+            const lineStr = h.line != null && String(h.line).trim() !== '' ? String(h.line) : '—';
             return {
                 rfid: h.rfid_garment,
-                wo: h.wo ?? 'â€”',
+                wo: h.wo ?? '—',
                 qty: Math.max(1, Number(h.qty ?? 1)),
                 line: lineStr,
                 lokasi,
-                style: h.style ?? 'â€”',
-                buyer: h.buyer ?? 'â€”',
-                item: h.item ?? 'â€”',
-                color: h.color ?? 'â€”',
-                size: h.size ?? 'â€”',
+                style: h.style ?? '—',
+                buyer: h.buyer ?? '—',
+                item: h.item ?? '—',
+                color: h.color ?? '—',
+                size: h.size ?? '—',
                 location: h.location ?? 'supermarket',
-                timestamp: h.at ?? 'â€”',
+                timestamp: h.at ?? '—',
             };
         });
     }, [homeDashboardApi, homeDashQuery.data, displayDoc]);
@@ -928,17 +959,17 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const supplyRows = useMemo(() => {
         return (displayDoc?.supply.history ?? []).slice(0, 24).map((h) => ({
             rfid: h.rfid_garment,
-            wo: h.wo ?? 'â€”',
-            line: h.line ?? 'â€”',
-            gm: h.gm ?? 'â€”',
+            wo: h.wo ?? '—',
+            line: h.line ?? '—',
+            gm: h.gm ?? '—',
             qty: Math.max(1, Number(h.qty ?? 1)),
-            style: h.style ?? 'â€”',
-            buyer: h.buyer ?? 'â€”',
-            item: h.item ?? 'â€”',
-            color: h.color ?? 'â€”',
-            size: h.size ?? 'â€”',
+            style: h.style ?? '—',
+            buyer: h.buyer ?? '—',
+            item: h.item ?? '—',
+            color: h.color ?? '—',
+            size: h.size ?? '—',
             location: h.location ?? 'supply_sewing',
-            timestamp: h.at ?? 'â€”',
+            timestamp: h.at ?? '—',
         }));
     }, [displayDoc]);
 
@@ -950,16 +981,16 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const bundleLeftColumn = useMemo(() => {
         const lastOk = bundleSessionLog.find((s) => s.ok);
         const latestBundleRow = bundleRows[0];
-        const rfidShow = lastOk?.rfid ?? bundleRows[0]?.rfid ?? 'â€”';
+        const rfidShow = lastOk?.rfid ?? bundleRows[0]?.rfid ?? '—';
         const ridB = lastOk?.rfid ?? bundleRows[0]?.rfid ?? '';
         const bundleRowForWo = bundleRows.find((r) => r.rfid === ridB) ?? bundleRows[0];
         const woShow =
-            bundleRowForWo?.wo != null && String(bundleRowForWo.wo).trim() !== '' ? String(bundleRowForWo.wo) : 'â€”';
-        const styleShow = latestBundleRow?.style ?? 'â€”';
-        const itemShow = latestBundleRow?.item ?? 'â€”';
-        const buyerShow = latestBundleRow?.buyer ?? 'â€”';
-        const colorShow = latestBundleRow?.color ?? 'â€”';
-        const sizeShow = latestBundleRow?.size ?? 'â€”';
+            bundleRowForWo?.wo != null && String(bundleRowForWo.wo).trim() !== '' ? String(bundleRowForWo.wo) : '—';
+        const styleShow = latestBundleRow?.style ?? '—';
+        const itemShow = latestBundleRow?.item ?? '—';
+        const buyerShow = latestBundleRow?.buyer ?? '—';
+        const colorShow = latestBundleRow?.color ?? '—';
+        const sizeShow = latestBundleRow?.size ?? '—';
         const rowTimestamp =
             latestBundleRow?.timestamp && !Number.isNaN(Date.parse(String(latestBundleRow.timestamp)))
                 ? new Date(String(latestBundleRow.timestamp))
@@ -974,7 +1005,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : 'â€”';
+            : '—';
         return (
             <>
                 <div className="rounded-xl border-2 border-emerald-200/90 bg-white p-3 shadow-sm">
@@ -1024,11 +1055,11 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 
     const storeLeftColumn = useMemo(() => {
         const lastOk = storeSessionLog.find((s) => s.ok);
-        const rfidShow = lastOk?.rfid ?? storeRows[0]?.rfid ?? 'â€”';
+        const rfidShow = lastOk?.rfid ?? storeRows[0]?.rfid ?? '—';
         const ridSt = lastOk?.rfid ?? storeRows[0]?.rfid ?? '';
         const storeRowForDetail = storeRows.find((r) => r.rfid === ridSt) ?? storeRows[0];
         const woShowSt =
-            storeRowForDetail?.wo != null && String(storeRowForDetail.wo).trim() !== '' ? String(storeRowForDetail.wo) : 'â€”';
+            storeRowForDetail?.wo != null && String(storeRowForDetail.wo).trim() !== '' ? String(storeRowForDetail.wo) : '—';
         const t = storeSessionLog.find((s) => s.ok)?.time ?? storeSessionLog[0]?.time;
         const timeStr = t
             ? t.toLocaleString('id-ID', {
@@ -1039,7 +1070,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : 'â€”';
+            : '—';
         const totalSt = homeDashboardApi ? storeRows.length : (displayDoc?.store.history?.length ?? storeRows.length);
         return (
             <>
@@ -1081,19 +1112,19 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
 
     const supplyLeftColumn = useMemo(() => {
         const lastOk = supplySessionLog.find((s) => s.ok);
-        const rfidShow = lastOk?.rfid ?? supplyRows[0]?.rfid ?? 'â€”';
+        const rfidShow = lastOk?.rfid ?? supplyRows[0]?.rfid ?? '—';
         const ridSu = lastOk?.rfid ?? supplyRows[0]?.rfid ?? '';
         const supplyRowForDetail = supplyRows.find((r) => r.rfid === ridSu) ?? supplyRows[0];
         const woShowSu =
             supplyRowForDetail?.wo != null && String(supplyRowForDetail.wo).trim() !== ''
                 ? String(supplyRowForDetail.wo)
-                : 'â€”';
+                : '—';
         const lineShow =
             supplyRowForDetail?.line != null && String(supplyRowForDetail.line).trim() !== ''
                 ? String(supplyRowForDetail.line)
-                : 'â€”';
+                : '—';
         const gmShow =
-            supplyRowForDetail?.gm != null && String(supplyRowForDetail.gm).trim() !== '' ? String(supplyRowForDetail.gm) : 'â€”';
+            supplyRowForDetail?.gm != null && String(supplyRowForDetail.gm).trim() !== '' ? String(supplyRowForDetail.gm) : '—';
         const t = supplySessionLog.find((s) => s.ok)?.time ?? supplySessionLog[0]?.time;
         const timeStr = t
             ? t.toLocaleString('id-ID', {
@@ -1104,7 +1135,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                   minute: '2-digit',
                   second: '2-digit',
               })
-            : 'â€”';
+            : '—';
         const totalSu = displayDoc?.supply.history?.length ?? supplyRows.length;
         return (
             <>
@@ -1154,7 +1185,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             style={{ fontSize: STORE_FORM_FS }}
         >
             <div className="font-semibold text-violet-900" style={{ fontSize: STORE_FORM_LABEL_FS }}>
-                Supply Sewing â€” isi sebelum scan
+                Supply Sewing — isi sebelum scan
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                 <div className="min-w-0">
@@ -1257,7 +1288,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     style={{ fontSize: STORE_FORM_FS }}
                 >
                     <div className="font-semibold text-amber-900" style={{ fontSize: STORE_FORM_LABEL_FS }}>
-                        {modalStoreMode === 'checkout' ? 'Check Out â€” isi sebelum scan' : 'Supply Urgent â€” isi sebelum scan'}
+                        {modalStoreMode === 'checkout' ? 'Check Out — isi sebelum scan' : 'Supply Urgent — isi sebelum scan'}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                         <div className="min-w-0">
@@ -1323,7 +1354,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 flex-1 min-h-0 min-w-0 max-lg:flex-none max-lg:min-h-0 max-lg:auto-rows-min"
             style={{ gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)' }}
         >
-            {/* Bundle â€” pengisian WO / style / color hanya lewat popup Scanning; kartu = ChartCard ala Distribusi Data */}
+            {/* Bundle — pengisian WO / style / color hanya lewat popup Scanning; kartu = ChartCard ala Distribusi Data */}
             <ChartCard
                 title={
                     <CuttingStageHeader
@@ -1350,7 +1381,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         { key: 'wo', label: 'Work Order' },
                         { key: 'qty', label: 'QTY' },
                     ]}
-                    rows={bundleRows.map((r) => ({ ...r, qty: String(r.qty) }))}
+                    rows={sortTableRowsNewestFirst(bundleRows.map((r) => ({ ...r, qty: String(r.qty) })))}
                     emptyText="Belum ada data"
                     onRowClick={(row) => openDetailFromRow('Bundle', row)}
                 />
@@ -1372,21 +1403,26 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         { key: 'repair', label: 'Repair' },
                         { key: 'reject', label: 'Reject' },
                     ]}
-                    rows={qcRows.map((r) => ({
-                        rfid: r.rfid,
-                        qty: String(r.qty),
-                        good: String(r.good),
-                        repair: String(r.repair),
-                        reject: String(r.reject),
-                        wo: r.wo,
-                        style: r.style,
-                        buyer: r.buyer,
-                        item: r.item,
-                        color: r.color,
-                        size: r.size,
-                        location: r.location,
-                        timestamp: r.timestamp,
-                    }))}
+                    rows={sortTableRowsNewestFirst(
+                        qcRows.map((r) => ({
+                            rfid: r.rfid,
+                            qty: String(r.qty),
+                            good: String(r.good),
+                            repair: String(r.repair),
+                            reject: String(r.reject),
+                            wo: r.wo,
+                            style: r.style,
+                            buyer: r.buyer,
+                            item: r.item,
+                            color: r.color,
+                            size: r.size,
+                            location: r.location,
+                            timestamp: r.timestamp,
+                            id_bundles: r.id_bundles,
+                            last_status: r.last_status,
+                            barcode: r.barcode,
+                        })),
+                    )}
                     emptyText="Belum ada data"
                     onRowClick={(row) => openDetailFromRow('Quality Control', row)}
                 />
@@ -1408,7 +1444,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         { key: 'line', label: 'Line' },
                         { key: 'lokasi', label: 'Lokasi' },
                     ]}
-                    rows={storeRows.map((r) => ({ ...r, qty: String(r.qty) }))}
+                    rows={sortTableRowsNewestFirst(storeRows.map((r) => ({ ...r, qty: String(r.qty) })))}
                     emptyText="Belum ada data"
                     onRowClick={(row) => openDetailFromRow('Supermarket', row)}
                 />
@@ -1419,7 +1455,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     <CuttingStageHeader
                         title="Supply Sewing"
                         action={
-                            SUPPLY_SOON ? (
+                            SUPPLY_SEWING_ENABLED ? (
                                 <ScanningButton accent="violet" onClick={() => setScanningModal('supply')} />
                             ) : (
                                 <span className="text-[9px] px-2 py-1 rounded-md border border-slate-300 text-slate-500 bg-slate-100/90 font-semibold">
@@ -1432,7 +1468,8 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                 icon={Truck}
                 iconColor="#5b21b6"
                 iconBgColor="#ede9fe"
-                className={`${CUTTING_STAGE_CHART_CARD_CLASS} relative group ${SUPPLY_SOON ? '' : 'grayscale saturate-0 !border-slate-300 !from-slate-100 !via-slate-100 !to-slate-200/60 shadow-[0_8px_18px_rgba(15,23,42,0.06)]'}`}
+                onClick={SUPPLY_SEWING_ENABLED ? () => navigate('/dashboard-supply-sewing-cutting') : undefined}
+                className={`${CUTTING_STAGE_CHART_CARD_CLASS} relative group ${SUPPLY_SEWING_ENABLED ? '' : 'grayscale saturate-0 !border-slate-300 !from-slate-100 !via-slate-100 !to-slate-200/60 shadow-[0_8px_18px_rgba(15,23,42,0.06)]'}`}
             >
                 <WireTable
                     columns={[
@@ -1441,9 +1478,9 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                         { key: 'line', label: 'Line' },
                         { key: 'gm', label: 'Location' },
                     ]}
-                    rows={supplyRows}
+                    rows={sortTableRowsNewestFirst(supplyRows)}
                     emptyText="Belum ada data"
-                    onRowClick={SUPPLY_SOON ? (row) => openDetailFromRow('Supply Sewing', row) : undefined}
+                    onRowClick={SUPPLY_SEWING_ENABLED ? (row) => openDetailFromRow('Supply Sewing', row) : undefined}
                 />
                 <div className="px-1.5 py-0.5 border-t border-gray-50 shrink-0 flex justify-end bg-white/90">
                     <button
@@ -1452,19 +1489,12 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                             void scanQuery.refetch();
                             invalidate();
                         }}
-                        className="text-[9px] text-slate-500 hover:text-sky-700 shrink-0 px-1.5 py-0.5 rounded-md hover:bg-sky-50 transition-colors"
+                        className="text-[9px] text-slate-500 hover:text-violet-700 shrink-0 px-1.5 py-0.5 rounded-md hover:bg-violet-50 transition-colors"
                         title="Refresh data"
                     >
-                        â†» Refresh
+                        ↻ Refresh
                     </button>
                 </div>
-                {!SUPPLY_SOON ? (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/0 group-hover:bg-slate-900/35 transition-colors pointer-events-none">
-                        <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 px-3 py-1.5 rounded-lg bg-slate-900/85 text-white text-sm font-bold tracking-wide">
-                            Coming Soon
-                        </span>
-                    </div>
-                ) : null}
             </ChartCard>
 
             {tableDetail.open ? (

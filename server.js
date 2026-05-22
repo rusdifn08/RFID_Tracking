@@ -3109,6 +3109,14 @@ app.get('/total-per-wo', async (req, res) => {
 });
 
 /**
+ * GET /report/wip?tanggalfrom=YYYY-MM-DD&tanggalto=YYYY-MM-DD
+ * Work In Progress per WO (color/size + status proses).
+ */
+app.get('/report/wip', async (req, res) => {
+    return await proxyRequest('/report/wip', req, res);
+});
+
+/**
  * GET /api/needle/pickings?tanggalfrom=YYYY-MM-DD&tanggalto=YYYY-MM-DD
  * Proxy ke backend Needle Manager terpisah (10.5.0.3:8080).
  * Tidak mempengaruhi backend utama per environment (MJL/MJL2/CLN/GCC).
@@ -3481,6 +3489,22 @@ app.post('/garment/reject/out', async (req, res) => {
  */
 app.post('/garment/reject/scrap', async (req, res) => {
     return await proxyRequest('/garment/reject/scrap', req, res, { baseUrl: REJECT_ROOM_INOUT_URL });
+});
+
+/**
+ * POST /qc/check — QC check GOOD, REWORK, REJECT → backend :7000
+ * Body: { rfid_garment, status_qc, rfid_user }
+ */
+app.post('/qc/check', async (req, res) => {
+    return await proxyRequest('/qc/check', req, res);
+});
+
+/**
+ * POST /pqc/check — PQC check PQC_GOOD, PQC_REWORK, PQC_REJECT → backend :7000
+ * Body: { rfid_garment, status_pqc, rfid_user }
+ */
+app.post('/pqc/check', async (req, res) => {
+    return await proxyRequest('/pqc/check', req, res);
 });
 
 /**

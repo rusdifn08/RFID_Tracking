@@ -28,6 +28,7 @@ import { exportDailyOutputExcel } from '../utils/exportDailyOutputExcel.ts';
 import { exportDailyOutputByLineExcel } from '../utils/exportDailyOutputByLineExcel';
 import { exportFinishingSummaryExcel } from '../utils/exportFinishingSummaryExcel';
 import { exportTotalPerWoExcel } from '../utils/exportTotalPerWoExcel';
+import { exportWipWoExcel } from '../utils/exportWipWoExcel';
 
 type ReportCard = {
   id: string;
@@ -180,6 +181,20 @@ const REPORT_CARDS: ReportCard[] = [
       button: 'from-teal-600 to-emerald-600',
       buttonHover: 'hover:from-teal-500 hover:to-emerald-500',
       glow: 'group-hover:shadow-teal-100/80',
+    },
+  },
+  {
+    id: 'wip-wo',
+    title: 'Work In Progress (WO)',
+    subtitle: 'WIP per WO (color/size) — GET /report/wip, tanggalfrom & tanggalto',
+    endpoint: '/report/wip',
+    paramsBuilder: (from, to) => ({ ...(from ? { tanggalfrom: from } : {}), ...(to ? { tanggalto: to } : {}) }),
+    tone: {
+      accent: 'from-blue-600 via-blue-500 to-sky-500',
+      chip: 'bg-blue-50 text-blue-800 border-blue-200',
+      button: 'from-blue-600 to-sky-600',
+      buttonHover: 'hover:from-blue-500 hover:to-sky-500',
+      glow: 'group-hover:shadow-blue-100/80',
     },
   },
   {
@@ -431,6 +446,12 @@ export default function FormData() {
         });
       } else if (card.id === 'total-per-wo') {
         await exportTotalPerWoExcel({
+          rows,
+          filterDateFrom: dateFrom || undefined,
+          filterDateTo: dateTo || undefined,
+        });
+      } else if (card.id === 'wip-wo') {
+        await exportWipWoExcel({
           rows,
           filterDateFrom: dateFrom || undefined,
           filterDateTo: dateTo || undefined,

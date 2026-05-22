@@ -957,6 +957,10 @@ export const apiRequest = async <T = any>(
                     password_hash: (root.password_hash ?? n.password_hash) as unknown,
                     pwd_md5: (root.pwd_md5 ?? n.pwd_md5) as unknown,
                 } as typeof data;
+                // { success, data: { count, data: T[] } } — spread root menimpa `data` array jadi wrapper object
+                if (Array.isArray(n.data)) {
+                    (responseData as Record<string, unknown>).data = n.data;
+                }
             } else {
                 responseData = (data as { data?: unknown }).data ?? data;
             }
@@ -1760,6 +1764,44 @@ export const rejectRoomScrap = async (rfid_garment: string): Promise<ApiResponse
 };
 
 // ============================================
+// QC / PQC CHECK (Dashboard RFID scan)
+// Backend: POST http://10.5.0.106:7000/qc/check | /pqc/check
+// ============================================
+
+export type QcCheckStatus = 'GOOD' | 'REWORK' | 'REJECT';
+export type PqcCheckStatus = 'PQC_GOOD' | 'PQC_REWORK' | 'PQC_REJECT';
+
+export interface QcCheckRequest {
+    rfid_garment: string;
+    status_qc: QcCheckStatus;
+    rfid_user: string;
+}
+
+export interface PqcCheckRequest {
+    rfid_garment: string;
+    status_pqc: PqcCheckStatus;
+    rfid_user: string;
+}
+
+export interface QcPqcCheckResponse {
+    success?: boolean;
+    message?: string;
+    detail?: string;
+    error?: string;
+    [key: string]: unknown;
+}
+
+/** QC check — status GOOD, REWORK, atau REJECT (user QC/ROBOTIC). */
+export const postQcCheck = async (body: QcCheckRequest): Promise<ApiResponse<QcPqcCheckResponse>> => {
+    return await apiPost<QcPqcCheckResponse>('/qc/check', body);
+};
+
+/** PQC check — status PQC_GOOD, PQC_REWORK, atau PQC_REJECT (user PQC/ROBOTIC). */
+export const postPqcCheck = async (body: PqcCheckRequest): Promise<ApiResponse<QcPqcCheckResponse>> => {
+    return await apiPost<QcPqcCheckResponse>('/pqc/check', body);
+};
+
+// ============================================
 // ACTIVE USERS API ENDPOINTS
 // ============================================
 
@@ -1930,6 +1972,8 @@ export interface InputRfidCuttingBody {
     /** Jumlah pcs per bundle (opsional; dikirim juga sebagai `wty` untuk kompatibilitas backend) */
     qty?: number;
     wty?: number;
+    /** Total batch register cutting (Daftar RFID Cutting) */
+    total_batch?: number;
     /** Field opsional untuk endpoint GCC output */
     barcode?: string;
     placing?: string;
@@ -2300,6 +2344,10 @@ function buildGccCuttingBundlePayload(body: InputRfidCuttingBody): Record<string
         season: body.season ?? '',
         country: body.country ?? '',
         qty_bundles: q ?? '',
+        total_batch:
+            body.total_batch != null && !Number.isNaN(Number(body.total_batch))
+                ? Number(body.total_batch)
+                : '',
         placing: body.placing ?? '',
         id_user: body.id_user ?? '',
         nik: body.nik ?? getLoggedNik(),

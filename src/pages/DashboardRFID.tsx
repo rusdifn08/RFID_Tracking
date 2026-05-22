@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { Suspense, lazy, useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -19,6 +19,11 @@ const OutputSewingCard = lazy(() => import('../components/dashboard/OutputSewing
 const DataLineCard = lazy(() => import('../components/dashboard/DataLineCard'));
 const RoomStatusCard = lazy(() => import('../components/dashboard/RoomStatusCard'));
 import StatusCard from '../components/dashboard/StatusCard';
+import RfidQcPqcScanModal, {
+    type RfidScanCompletePayload,
+    type RfidScanStage,
+    type RfidScanStatusType,
+} from '../components/dashboard/RfidQcPqcScanModal';
 
 import { COLORS, DEFAULT_REWORK_POPUP_ENABLED, ENABLE_WIRA_DASHBOARD_WEBSOCKET } from '../components/dashboard/constants';
 import { HIDE_ROOM_STATUS_CARD } from '../config/hide';
@@ -44,6 +49,16 @@ const MAX_LINE = Math.max(...DASHBOARD_RFID_LINE_IDS);
 export default function DashboardRFID() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
+
+    type RfidScanModalState = {
+        stage: RfidScanStage;
+        statusType: RfidScanStatusType;
+        titleLabel: string;
+    } | null;
+
+    const [rfidScanModal, setRfidScanModal] = useState<RfidScanModalState>(null);
+    const [scanResultToast, setScanResultToast] = useState<RfidScanCompletePayload | null>(null);
 
     // Normalisasi lineId - ekstrak angka dari format "LINE 3" atau "LINE%203"
     const normalizedLineId = useMemo(() => {
@@ -66,6 +81,23 @@ export default function DashboardRFID() {
     // Gunakan normalizedLineId untuk fetch data (selalu angka)
     const lineId = normalizedLineId;
     const lineTitle = `LINE ${lineId}`;
+
+    const openRfidScanModal = useCallback(
+        (stage: RfidScanStage, statusType: RfidScanStatusType, titleLabel: string) => {
+            setRfidScanModal({ stage, statusType, titleLabel });
+        },
+        [],
+    );
+
+    const handleRfidScanSuccess = useCallback(() => {
+        void queryClient.invalidateQueries({ queryKey: ['dashboard-tracking'] });
+        void queryClient.invalidateQueries({ queryKey: ['dashboard-wo'] });
+    }, [queryClient]);
+
+    const handleRfidScanComplete = useCallback((payload: RfidScanCompletePayload) => {
+        setScanResultToast(payload);
+        window.setTimeout(() => setScanResultToast(null), 4500);
+    }, []);
 
     // Navigasi prev/next untuk pindah ke Dashboard RFID line lain
     const currentLineNum = useMemo(() => parseInt(lineId, 10) || 1, [lineId]);
@@ -998,7 +1030,7 @@ export default function DashboardRFID() {
                                         </Suspense>
                                     </div>
                                     {/* Grid 2: Data Output Sewing - Output sewing saja */}
-                                    <div className="w-full min-h-[200px] sm:min-h-[250px]">
+                                    <div className="w-full min-h-[200px] sm:min-h-[250px] overflow-visible">
                                         <Suspense fallback={<ChartSkeleton />}>
                                             <OutputSewingCard outputLine={outputLine} targetOutput={targetOutput} onClick={fetchOutputDetail} />
                                         </Suspense>
@@ -1034,10 +1066,10 @@ export default function DashboardRFID() {
                             <div className="flex-none w-full">
                                 <h2 className="text-sm sm:text-base font-semibold text-gray-900 tracking-wide mb-2 sm:mb-3 px-1" style={{ fontWeight: 600 }}>QC Status</h2>
                                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                                    <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} />
-                                    <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} />
+                                    <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} onScanClick={() => openRfidScanModal('QC', 'REJECT', 'REJECT QC')} />
+                                    <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} onScanClick={() => openRfidScanModal('QC', 'REWORK', 'REWORK QC')} />
                                     <StatusCard type="WIRA" count={qcData.wira} label="WIRA QC" onClick={() => fetchDetailData('WIRA', 'QC')} />
-                                    <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} loginLed={ledStatus?.qc?.status ?? null} />
+                                    <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} onScanClick={() => openRfidScanModal('QC', 'GOOD', 'GOOD QC')} loginLed={ledStatus?.qc?.status ?? null} />
                                 </div>
                             </div>
 
@@ -1045,10 +1077,10 @@ export default function DashboardRFID() {
                             <div className="flex-none w-full">
                                 <h2 className="text-sm sm:text-base font-semibold text-gray-900 tracking-wide mb-2 sm:mb-3 px-1" style={{ fontWeight: 600 }}>PQC Status</h2>
                                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                                    <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} />
-                                    <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} />
+                                    <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'REJECT', 'REJECT PQC')} />
+                                    <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'REWORK', 'REWORK PQC')} />
                                     <StatusCard type="WIRA" count={pqcData.wira} label="WIRA PQC" onClick={() => fetchDetailData('WIRA', 'PQC')} />
-                                    <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} loginLed={ledStatus?.pqc?.status ?? null} />
+                                    <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'GOOD', 'GOOD PQC')} loginLed={ledStatus?.pqc?.status ?? null} />
                                 </div>
                             </div>
 
@@ -1084,7 +1116,7 @@ export default function DashboardRFID() {
                             >
                                 {/* Bagian Kiri: 2 square cards */}
                                 <div
-                                    className="flex-[2] min-w-0 flex flex-row overflow-hidden"
+                                    className="flex-[2] min-w-0 flex flex-row overflow-visible"
                                     style={{
                                         flex: '2 1 40%',
                                         maxWidth: '40%',
@@ -1098,7 +1130,7 @@ export default function DashboardRFID() {
                                         </Suspense>
                                     </div>
                                     {/* Grid 2: Data Output Sewing - Output sewing saja */}
-                                    <div className="flex-[1] min-w-0 overflow-hidden" style={{ flex: '1 1 50%', maxWidth: '50%' }}>
+                                    <div className="flex-[1] min-w-0 overflow-visible" style={{ flex: '1 1 50%', maxWidth: '50%' }}>
                                         <Suspense fallback={<ChartSkeleton />}>
                                             <OutputSewingCard outputLine={outputLine} targetOutput={targetOutput} onClick={fetchOutputDetail} />
                                         </Suspense>
@@ -1155,10 +1187,10 @@ export default function DashboardRFID() {
                                             gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
                                         }}
                                     >
-                                        <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} />
-                                        <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} />
+                                        <StatusCard type="REJECT" count={qcData.reject} label="REJECT QC" onClick={() => fetchDetailData('REJECT', 'QC')} onScanClick={() => openRfidScanModal('QC', 'REJECT', 'REJECT QC')} />
+                                        <StatusCard type="REWORK" count={qcData.rework} label="REWORK QC" onClick={() => fetchDetailData('REWORK', 'QC')} onScanClick={() => openRfidScanModal('QC', 'REWORK', 'REWORK QC')} />
                                         <StatusCard type="WIRA" count={qcData.wira} label="WIRA QC" onClick={() => fetchDetailData('WIRA', 'QC')} />
-                                        <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} loginLed={ledStatus?.qc?.status ?? null} />
+                                        <StatusCard type="GOOD" count={qcData.good} label="GOOD QC" onClick={() => fetchDetailData('GOOD', 'QC')} onScanClick={() => openRfidScanModal('QC', 'GOOD', 'GOOD QC')} loginLed={ledStatus?.qc?.status ?? null} />
                                     </div>
                                     {/* ROW 3: PQC Cards - min-height sama dengan QC */}
                                     <div
@@ -1169,10 +1201,10 @@ export default function DashboardRFID() {
                                             gap: 'clamp(0.25rem, 0.6vw + 0.15rem, 0.625rem)'
                                         }}
                                     >
-                                        <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} />
-                                        <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} />
+                                        <StatusCard type="REJECT" count={pqcData.reject} label="REJECT PQC" onClick={() => fetchDetailData('REJECT', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'REJECT', 'REJECT PQC')} />
+                                        <StatusCard type="REWORK" count={pqcData.rework} label="REWORK PQC" onClick={() => fetchDetailData('REWORK', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'REWORK', 'REWORK PQC')} />
                                         <StatusCard type="WIRA" count={pqcData.wira} label="WIRA PQC" onClick={() => fetchDetailData('WIRA', 'PQC')} />
-                                        <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} loginLed={ledStatus?.pqc?.status ?? null} />
+                                        <StatusCard type="GOOD" count={pqcData.good} label="GOOD PQC" onClick={() => fetchDetailData('GOOD', 'PQC')} onScanClick={() => openRfidScanModal('PQC', 'GOOD', 'GOOD PQC')} loginLed={ledStatus?.pqc?.status ?? null} />
                                     </div>
                                 </div>
                                 {/* Bagian Kanan: Room Status (hanya render jika tidak di-hide) */}
@@ -1196,6 +1228,60 @@ export default function DashboardRFID() {
                 onExport={handleExport}
                 lineId={lineId}
             />
+
+            {rfidScanModal && (
+                <RfidQcPqcScanModal
+                    isOpen
+                    onClose={() => setRfidScanModal(null)}
+                    stage={rfidScanModal.stage}
+                    statusType={rfidScanModal.statusType}
+                    titleLabel={rfidScanModal.titleLabel}
+                    lineTitle={lineTitle}
+                    onSuccess={handleRfidScanSuccess}
+                    onScanComplete={handleRfidScanComplete}
+                />
+            )}
+
+            {scanResultToast && (
+                <div
+                    className={`fixed top-20 right-4 z-[1100] flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 text-white animate-in fade-in slide-in-from-right-4 duration-300 ${
+                        scanResultToast.ok
+                            ? 'border-emerald-400/40 bg-gradient-to-r from-emerald-600 to-green-600 shadow-[0_12px_40px_rgba(16,185,129,0.45)]'
+                            : 'border-red-400/40 bg-gradient-to-r from-red-600 to-rose-600 shadow-[0_12px_40px_rgba(239,68,68,0.45)]'
+                    }`}
+                    role="status"
+                >
+                    {scanResultToast.ok ? (
+                        <CheckCircle className="h-6 w-6 shrink-0 text-emerald-100" strokeWidth={2.5} />
+                    ) : (
+                        <AlertCircle className="h-6 w-6 shrink-0 text-red-100" strokeWidth={2.5} />
+                    )}
+                    <div className="min-w-0">
+                        <p className="text-sm font-bold">
+                            {scanResultToast.ok ? 'Scan berhasil' : 'Scan gagal'}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${scanResultToast.ok ? 'text-emerald-100/90' : 'text-red-100/90'}`}>
+                            {scanResultToast.titleLabel}
+                        </p>
+                        {scanResultToast.rfid && (
+                            <p className="font-mono text-[11px] text-white/90 mt-1 truncate">{scanResultToast.rfid}</p>
+                        )}
+                        {scanResultToast.message && (
+                            <p className={`text-[10px] mt-0.5 line-clamp-3 ${scanResultToast.ok ? 'text-emerald-100/80' : 'text-red-100/80'}`}>
+                                {scanResultToast.message}
+                            </p>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setScanResultToast(null)}
+                        className="shrink-0 rounded-lg p-1 text-white/70 hover:bg-white/15 hover:text-white"
+                        aria-label="Tutup notifikasi"
+                    >
+                        <XCircle className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
 
             {/* Rework Notification Popup */}
             {showReworkNotification && (

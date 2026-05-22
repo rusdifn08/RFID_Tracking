@@ -5,7 +5,7 @@
  */
 
 /** Room Status card (Dryroom, Folding, Reject Room, Hourly Data) di Dashboard RFID */
-export const HIDE_ROOM_STATUS_CARD = false;
+export const HIDE_ROOM_STATUS_CARD = true;
 
 /** Kartu Cutting Proses di halaman RFID Tracking (dashboard utama) */
 export const HIDE_CARD_CUTTING_PROSES = false;
@@ -36,6 +36,15 @@ export const HIDE_FORM_EXPORT_CARD_WAITING = true;
 
 /** Tracking Join — Data tracking gabungan (`/tracking/join`) */
 export const HIDE_FORM_EXPORT_TRACKING_JOIN = true;
+
+/**
+ * Export Daily Output (Per WO & Line) — kolom PIC / NIK karyawan.
+ * true = kolom tidak ditulis ke Excel (data API tetap di-fetch, hanya disembunyikan di file).
+ */
+export const HIDE_FORM_EXPORT_DAILY_OUTPUT_PIC_NIK = true;
+
+/** Prefix header yang dihilangkan dari Excel saat HIDE_FORM_EXPORT_DAILY_OUTPUT_PIC_NIK = true */
+export const HIDE_DAILY_OUTPUT_HEADER_PREFIXES: readonly string[] = ['PIC -', 'NIK -'];
 
 /**
  * Kotak kiri atas di kartu Production Line / Sewing Line:

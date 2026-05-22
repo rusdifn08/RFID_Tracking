@@ -16,6 +16,7 @@ export function isCuttingCheckingArea(pathname: string): boolean {
         pathname.startsWith('/daftar-rfid-cutting') ||
         pathname.startsWith('/dashboard-qc-cutting') ||
         pathname.startsWith('/dashboard-supermarket-cutting') ||
+        pathname.startsWith('/dashboard-supply-sewing-cutting') ||
         pathname === '/checking-rfid-cutting'
     );
 }

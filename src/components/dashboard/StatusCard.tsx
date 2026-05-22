@@ -1,5 +1,6 @@
-import { memo } from 'react';
+import { memo, type MouseEvent } from 'react';
 import { Settings } from 'lucide-react';
+import DashboardScanButton from './DashboardScanButton';
 import goodIcon from '../../../assets/good.png';
 import reworkIcon from '../../../assets/rework.png';
 import rejectIcon from '../../../assets/reject.png';
@@ -12,11 +13,19 @@ interface StatusCardProps {
     count: number;
     label?: string;
     onClick?: () => void;
+    onScanClick?: () => void;
     /** Indikator LED: success = hijau, unsuccess = merah, login = abu gelap (alat baru nyala), null = abu (standby) */
     loginLed?: LoginLedStatus | null;
 }
 
-const StatusCard = memo(({ type, count, label, onClick, loginLed }: StatusCardProps) => {
+/** Ukuran angka count — sedikit lebih kecil agar tombol Scan lebih menonjol */
+const COUNT_FONT_SIZE = 'clamp(1.15rem, 3.1vw + 0.32rem, 3.35rem)';
+
+const StatusCard = memo(({ type, count, label, onClick, onScanClick, loginLed }: StatusCardProps) => {
+    const handleScanClick = (e: MouseEvent<HTMLButtonElement>) => {
+        e.stopPropagation();
+        onScanClick?.();
+    };
     const config = {
         GOOD: { label: 'GOOD', iconSrc: goodIcon, Icon: null, iconColor: '#00e676', textColor: '#2563eb' },
         REWORK: { label: 'REWORK', iconSrc: reworkIcon, Icon: null, iconColor: '#ff9100', textColor: '#2563eb' },
@@ -26,6 +35,7 @@ const StatusCard = memo(({ type, count, label, onClick, loginLed }: StatusCardPr
     };
 
     const style = config[type];
+    const showScanButton = type === 'REJECT' || type === 'REWORK' || type === 'GOOD';
     const displayLabel = label || style.label;
     const labelColor = '#111827'; /* gray-900: hitam untuk label (konsisten dengan Data Line) */
     const countColor = style.textColor; /* biru untuk nilai angka */
@@ -103,12 +113,19 @@ const StatusCard = memo(({ type, count, label, onClick, loginLed }: StatusCardPr
                     className="font-bold leading-none tracking-tighter transition-all duration-500 ease-in-out transform scale-100 hover:scale-105 text-center flex-shrink-0" 
                     style={{ 
                         color: countColor,
-                        fontSize: 'clamp(1.75rem, 4.5vw + 0.5rem, 5rem)',
+                        fontSize: COUNT_FONT_SIZE,
                         fontWeight: 700
                     }}
                 >
                     {count}
                 </span>
+                {showScanButton && onScanClick && (
+                    <DashboardScanButton
+                        onClick={handleScanClick}
+                        status={type as 'REJECT' | 'REWORK' | 'GOOD'}
+                        className="mt-0.5"
+                    />
+                )}
             </div>
         </div>
     );
