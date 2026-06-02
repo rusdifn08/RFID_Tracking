@@ -377,7 +377,7 @@ export function mapGccCuttingPayloadToForm(barcode: string, payload: unknown): G
 }
 
 /** Default URL daftar bundle (service cutting). Override: VITE_GCC_CUTTING_LIST_URL (base atau path penuh). */
-const DEFAULT_GCC_CUTTING_FULL_LIST_URL = 'http://10.5.0.201:9000/api/gcc/cutting/list';
+const DEFAULT_GCC_CUTTING_FULL_LIST_URL = 'http://10.5.0.107:9000/api/gcc/cutting/list';
 
 /** Header API service cutting (:9000). Override: VITE_GCC_CUTTING_RFID_KEY_HEADER, VITE_GCC_CUTTING_RFID_KEY */
 const GCC_CUTTING_RFID_KEY_HEADER_DEFAULT = 'rfid-key';
@@ -425,7 +425,7 @@ export function resolveGccCuttingCheckUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/check`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/check';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/check';
 }
 
 /** Satu baris history dari GET `/api/gcc/cutting/check?rfid_bundles=`. */
@@ -518,7 +518,7 @@ export async function getGccCuttingCheck(rfid_bundles: string): Promise<{
     }
 }
 
-const DEFAULT_GCC_HOME_DASHBOARD_URL = 'http://10.5.0.201:9000/api/homedashboard';
+const DEFAULT_GCC_HOME_DASHBOARD_URL = 'http://10.5.0.107:9000/api/homedashboard';
 
 /** Resolve URL GET dashboard cutting home (`/api/homedashboard`, service :9000). */
 export function resolveGccHomeDashboardUrl(): string {
@@ -2019,7 +2019,7 @@ function resolveGccCuttingRegUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/reg`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/reg';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/reg';
 }
 
 /** Resolve URL POST bundle GCC output (`/api/gcc/cutting/output`) untuk Scanning Station Bundle. */
@@ -2038,7 +2038,7 @@ function resolveGccCuttingOutputUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/output`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/output';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/output';
 }
 
 /** Resolve URL POST QC bundle GCC (`/api/gcc/cutting/qc`) untuk Scanning Station Quality Control. */
@@ -2057,7 +2057,7 @@ function resolveGccCuttingQcUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc';
 }
 
 /** Resolve URL GET GCC qty QC (`/api/gcc/cutting/qc/qty`) untuk pre-check RFID QC. */
@@ -2082,7 +2082,7 @@ function resolveGccCuttingQcQtyUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc/qty`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/qty';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/qty';
 }
 
 /** Resolve URL GET qty repair (`/api/gcc/cutting/qc/qty/repair`). */
@@ -2094,7 +2094,7 @@ export function resolveGccCuttingQcQtyRepairUrl(): string {
     }
     const qtyUrl = resolveGccCuttingQcQtyUrl();
     if (qtyUrl.includes('/qc/qty')) return `${qtyUrl.replace(/\/$/, '')}/repair`;
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/qty/repair';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/qty/repair';
 }
 
 /** Resolve URL POST repair → good (`/api/gcc/cutting/qc/repair/good`). */
@@ -2106,7 +2106,7 @@ export function resolveGccCuttingQcRepairGoodUrl(): string {
     }
     const qcUrl = resolveGccCuttingQcUrl();
     if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/good`;
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/repair/good';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/good';
 }
 
 /** Resolve URL POST repair → reject (`/api/gcc/cutting/qc/repair/reject`). */
@@ -2118,7 +2118,7 @@ export function resolveGccCuttingQcRepairRejectUrl(): string {
     }
     const qcUrl = resolveGccCuttingQcUrl();
     if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/reject`;
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/repair/reject';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/reject';
 }
 
 export interface GccCuttingQcQtyRepairResponse {
@@ -2274,7 +2274,7 @@ function resolveGccCuttingSmarketUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/smarket`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/smarket';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/smarket';
 }
 
 /** Resolve URL GET dashboard Supermarket (`/api/gcc/cutting/smarket/data`). */
@@ -2299,7 +2299,7 @@ function resolveGccCuttingSmarketDataUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/smarket/data`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/smarket/data';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/smarket/data';
 }
 
 /** Resolve URL GET dashboard QC (`/api/gcc/cutting/qc/data`). */
@@ -2324,7 +2324,7 @@ function resolveGccCuttingQcDataUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc/data`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/data';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/data';
 }
 
 /** Builder payload umum untuk endpoint GCC reg/output. */
@@ -3102,7 +3102,7 @@ function resolveGccCuttingQcReportUrl(): string {
     }
     const dataUrl = resolveGccCuttingQcDataUrl();
     if (dataUrl.includes('/qc/data')) return dataUrl.replace('/qc/data', '/qc/report');
-    return 'http://10.5.0.201:9000/api/gcc/cutting/qc/report';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/report';
 }
 
 export interface GccCuttingQcReportSummary {
@@ -3222,7 +3222,7 @@ function resolveGccCuttingSmarketOutReportUrl(): string {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/report/smarket/out`;
     }
-    return 'http://10.5.0.201:9000/api/gcc/cutting/report/smarket/out';
+    return 'http://10.5.0.107:9000/api/gcc/cutting/report/smarket/out';
 }
 
 export interface GccCuttingSmarketOutReportItem {

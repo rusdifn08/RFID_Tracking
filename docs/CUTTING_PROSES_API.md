@@ -1,8 +1,8 @@
-# Dokumentasi API Cutting (Khusus IP 10.5.0.201:9000)
+# Dokumentasi API Cutting (Khusus IP 10.5.0.107:9000)
 
 Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 
-- Base URL: `http://10.5.0.201:9000`
+- Base URL: `http://10.5.0.107:9000`
 - Prefix endpoint: `/api/gcc/cutting/*`
 
 ## Header
@@ -17,13 +17,13 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 
 ## 1) List & Register Bundle
 
-### `GET http://10.5.0.201:9000/api/gcc/cutting/list`
+### `GET http://10.5.0.107:9000/api/gcc/cutting/list`
 - **Method**: `GET`
 - **Query (opsional)**:
   - `barcode=<kode_barcode>`
 - **Request body**: tidak ada
 
-### `POST http://10.5.0.201:9000/api/gcc/cutting/reg`
+### `POST http://10.5.0.107:9000/api/gcc/cutting/reg`
 - **Method**: `POST`
 - **Request body**:
 ```json
@@ -54,7 +54,7 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 
 ## 2) Scanning Bundle / QC / Supermarket
 
-### `POST http://10.5.0.201:9000/api/gcc/cutting/output`
+### `POST http://10.5.0.107:9000/api/gcc/cutting/output`
 - **Method**: `POST`
 - **Request body**:
 ```json
@@ -64,13 +64,13 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 }
 ```
 
-### `GET http://10.5.0.201:9000/api/gcc/cutting/qc/qty`
+### `GET http://10.5.0.107:9000/api/gcc/cutting/qc/qty`
 - **Method utama**: `GET`
 - **Query**:
   - `rfid_bundles=RFID001`
 - **Request body**: tidak ada
 
-### `POST http://10.5.0.201:9000/api/gcc/cutting/qc/qty` (fallback)
+### `POST http://10.5.0.107:9000/api/gcc/cutting/qc/qty` (fallback)
 - **Method fallback** (jika GET tidak diterima gateway): `POST`
 - **Request body**:
 ```json
@@ -79,7 +79,7 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 }
 ```
 
-### `POST http://10.5.0.201:9000/api/gcc/cutting/qc`
+### `POST http://10.5.0.107:9000/api/gcc/cutting/qc`
 - **Method**: `POST`
 - **Request body**:
 ```json
@@ -92,7 +92,7 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 }
 ```
 
-### `POST http://10.5.0.201:9000/api/gcc/cutting/smarket`
+### `POST http://10.5.0.107:9000/api/gcc/cutting/smarket`
 - **Method**: `POST`
 - **Request body**:
 ```json
@@ -110,7 +110,7 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
 
 ## 3) Dashboard Data Cutting
 
-### `GET http://10.5.0.201:9000/api/gcc/cutting/qc/data`
+### `GET http://10.5.0.107:9000/api/gcc/cutting/qc/data`
 - **Method**: `GET`
 - **Request body**: tidak ada
 - **Field response utama**:
@@ -119,7 +119,7 @@ Dokumen ini **hanya** berisi endpoint Cutting yang mengarah ke backend:
   - `repair`
   - `reject`
 
-### `GET http://10.5.0.201:9000/api/gcc/cutting/smarket/data`
+### `GET http://10.5.0.107:9000/api/gcc/cutting/smarket/data`
 - **Method**: `GET`
 - **Request body**: tidak ada
 - **Field response utama**:

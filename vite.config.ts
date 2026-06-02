@@ -35,7 +35,7 @@ const devNodeProxyRewrite = (port: number) => (path: string) => {
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const trackingProxyTarget = env.VITE_DEV_API_TARGET || DEFAULT_DEV_API_TARGET
-  const gccCuttingListTarget = env.VITE_GCC_CUTTING_PROXY_TARGET || 'http://10.5.0.201:9000'
+  const gccCuttingListTarget = env.VITE_GCC_CUTTING_PROXY_TARGET || 'http://10.5.0.107:9000'
 
   // Dev default HTTP → http://10.5.0.2:5173/home tanpa sertifikat.
   // HTTPS (kamera di HP / secure context): set VITE_DEV_HTTPS=true atau 1 lalu restart dev.
