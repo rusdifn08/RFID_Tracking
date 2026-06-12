@@ -1,10 +1,66 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
+import http from 'node:http'
 import os from 'node:os'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
 const DEFAULT_DEV_API_TARGET = 'http://10.5.0.106:7000'
+
+/**
+ * Browser tidak boleh GET + body. Frontend POST ke `/api/gcc/cutting/reg/batch`,
+ * middleware ini meneruskan GET + body ke service cutting (:9000).
+ */
+function gccCuttingRegBatchProxyPlugin(target: string): Plugin {
+  return {
+    name: 'gcc-cutting-reg-batch-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0] ?? ''
+        if (url !== '/api/gcc/cutting/reg/batch') return next()
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end('Method Not Allowed')
+          return
+        }
+        const chunks: Buffer[] = []
+        req.on('data', (chunk) => chunks.push(chunk))
+        req.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8')
+          const targetUrl = new URL(target)
+          const rfidKey = String(req.headers['rfid-key'] ?? '0011779933')
+          const proxyReq = http.request(
+            {
+              hostname: targetUrl.hostname,
+              port: targetUrl.port || 9000,
+              path: '/api/gcc/cutting/reg/batch',
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+                'rfid-key': rfidKey,
+              },
+            },
+            (proxyRes) => {
+              res.statusCode = proxyRes.statusCode ?? 500
+              const ct = proxyRes.headers['content-type']
+              if (ct) res.setHeader('Content-Type', ct)
+              proxyRes.pipe(res)
+            }
+          )
+          proxyReq.on('error', (err) => {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ message: err.message }))
+          })
+          proxyReq.write(body)
+          proxyReq.end()
+        })
+      })
+    },
+  }
+}
 
 /** IPv4 non-loopback — agar HMR/WebSocket tidak mengarah ke localhost saat akses http(s)://IP-LAN:5173 */
 function getPrimaryLanIPv4(): string | undefined {
@@ -23,12 +79,128 @@ function getPrimaryLanIPv4(): string | undefined {
   return preferred || candidates[0]
 }
 
-/** Proxy server.js (localhost) — dipakai saat dev HTTPS agar tidak mixed content ke http://IP:port */
-const devNodeProxyRewrite = (port: number) => (path: string) => {
-  const prefix = `/__dev_node_proxy__${port}`
-  if (!path.startsWith(prefix)) return path
-  const rest = path.slice(prefix.length)
-  return rest.startsWith('/') ? rest : `/${rest}`
+const VITE_HANDLED_PREFIXES = [
+  '/api/gcc/cutting',
+  '/api/homedashboard',
+  '/api/sewing',
+  '/api/smv',
+  '/rework',
+  '/qc-pqc',
+  '/pqc-rework',
+  '/pqc-indryroom',
+  '/indryroom-outdryroom',
+  '/outdryroom-infolding',
+  '/infolding-outfolding',
+  '/last-status',
+  '/line',
+  '/cycletime',
+]
+
+function isStaticDevAsset(path: string): boolean {
+  return /\.(html|js|css|tsx?|jsx?|json|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|map|wasm)(\?|$)/i.test(path)
+}
+
+function shouldProxyToServerJs(url: string): boolean {
+  const path = url.split('?')[0] ?? ''
+  if (!path || path === '/' || isStaticDevAsset(path)) return false
+  if (path.startsWith('/@') || path.startsWith('/src/') || path.startsWith('/node_modules/')) return false
+  if (VITE_HANDLED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return false
+  if (path.startsWith('/user') && url.includes('bagian=')) return false
+
+  const serverJsPrefixes = [
+    '/api/',
+    '/garment',
+    '/tracking',
+    '/wira',
+    '/card',
+    '/scrap',
+    '/monitoring',
+    '/inputUser',
+    '/inputRFID',
+    '/output',
+    '/daily-output',
+    '/report',
+    '/total-per-wo',
+    '/finishing',
+    '/user',
+    '/wo/',
+    '/health',
+  ]
+  return serverJsPrefixes.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/'))
+}
+
+/** GET /user?bagian=SEWING → service :9000; login /user?nik= → server.js. */
+function sewingUserProxyPlugin(target: string): Plugin {
+  return {
+    name: 'sewing-user-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || ''
+        if (!url.startsWith('/user') || !url.includes('bagian=')) return next()
+        const targetUrl = new URL(target)
+        const proxyReq = http.request(
+          {
+            hostname: targetUrl.hostname,
+            port: targetUrl.port || 9000,
+            path: url,
+            method: req.method,
+            headers: req.headers as http.OutgoingHttpHeaders,
+          },
+          (proxyRes) => {
+            res.statusCode = proxyRes.statusCode ?? 500
+            const ct = proxyRes.headers['content-type']
+            if (ct) res.setHeader('Content-Type', ct)
+            proxyRes.pipe(res)
+          }
+        )
+        proxyReq.on('error', (err) => {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ message: err.message }))
+        })
+        req.pipe(proxyReq)
+      })
+    },
+  }
+}
+
+/** Dev: same-origin path backend → proxy ke server.js (localhost:8000). */
+function devServerJsProxyPlugin(nodePort: number): Plugin {
+  return {
+    name: 'dev-server-js-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || ''
+        if (!shouldProxyToServerJs(url)) return next()
+        const proxyReq = http.request(
+          {
+            hostname: '127.0.0.1',
+            port: nodePort,
+            path: url,
+            method: req.method,
+            headers: {
+              ...(req.headers as http.IncomingHttpHeaders),
+              host: `127.0.0.1:${nodePort}`,
+            },
+          },
+          (proxyRes) => {
+            res.statusCode = proxyRes.statusCode ?? 500
+            const ct = proxyRes.headers['content-type']
+            if (ct) res.setHeader('Content-Type', ct)
+            proxyRes.pipe(res)
+          }
+        )
+        proxyReq.on('error', (err) => {
+          if (!res.headersSent) {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ message: err.message }))
+          }
+        })
+        req.pipe(proxyReq)
+      })
+    },
+  }
 }
 
 // https://vite.dev/config/
@@ -36,6 +208,7 @@ export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const trackingProxyTarget = env.VITE_DEV_API_TARGET || DEFAULT_DEV_API_TARGET
   const gccCuttingListTarget = env.VITE_GCC_CUTTING_PROXY_TARGET || 'http://10.5.0.107:9000'
+  const sewingServiceTarget = env.VITE_SEWING_SERVICE_PROXY_TARGET || 'http://10.5.0.107:9000'
 
   // Dev default HTTP → http://10.5.0.2:5173/home tanpa sertifikat.
   // HTTPS (kamera di HP / secure context): set VITE_DEV_HTTPS=true atau 1 lalu restart dev.
@@ -47,10 +220,16 @@ export default defineConfig(({ mode, command }) => {
     env.VITE_DEV_HOST ||
     (command === 'serve' ? getPrimaryLanIPv4() : undefined)
 
+  const devServerPort = Number(env.VITE_DEV_SERVER_PORT || 5173) || 5173
+  const nodeProxyPort = devServerPort === 5174 ? 8001 : devServerPort === 5175 ? 8002 : 8000
+
   return {
     plugins: [
       react(),
       tailwindcss(),
+      gccCuttingRegBatchProxyPlugin(sewingServiceTarget),
+      sewingUserProxyPlugin(sewingServiceTarget),
+      ...(command === 'serve' ? [devServerJsProxyPlugin(nodeProxyPort)] : []),
       ...(useDevHttps ? [basicSsl()] : [])
     ],
     logLevel: 'warn', // sembunyikan "[vite] (client) hmr update ..." di terminal saat dev
@@ -89,30 +268,6 @@ export default defineConfig(({ mode, command }) => {
           : undefined,
 
       proxy: {
-        // Dev HTTPS: same-origin → proxy ke server Node di mesin dev (hindari mixed content)
-        ...(useDevHttps
-          ? {
-            '/__dev_node_proxy__8000': {
-              target: 'http://127.0.0.1:8000',
-              changeOrigin: true,
-              rewrite: devNodeProxyRewrite(8000),
-              secure: false, // Tambahan untuk membiarkan proxy bypass SSL self-signed
-            },
-            '/__dev_node_proxy__8001': {
-              target: 'http://127.0.0.1:8001',
-              changeOrigin: true,
-              rewrite: devNodeProxyRewrite(8001),
-              secure: false,
-            },
-            '/__dev_node_proxy__8002': {
-              target: 'http://127.0.0.1:8002',
-              changeOrigin: true,
-              rewrite: devNodeProxyRewrite(8002),
-              secure: false,
-            },
-          }
-          : {}),
-
         // Proxy khusus untuk dashboard Production Tracking Time
         '/rework': { target: trackingProxyTarget, changeOrigin: true, secure: false },
         '/qc-pqc': { target: trackingProxyTarget, changeOrigin: true, secure: false },
@@ -126,12 +281,40 @@ export default defineConfig(({ mode, command }) => {
         // Single query API untuk cycle time
         '/cycletime': { target: 'http://localhost:8000', changeOrigin: true, secure: false },
 
-        // Daftar bundle cutting (GET penuh) — same-origin di dev agar tidak kena CORS browser
-        '/__gcc_cutting': {
+        // GCC cutting (:9000) — path sama dengan backend agar Network tab konsisten
+        '/api/gcc/cutting': {
           target: gccCuttingListTarget,
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/__gcc_cutting/, '') || '/',
+          router: (req: { url?: string }) => {
+            const path = req.url?.split('?')[0] ?? ''
+            if (
+              path === '/api/gcc/cutting/reg' ||
+              path.startsWith('/api/gcc/cutting/reg/') ||
+              path === '/api/gcc/cutting/sewing'
+            ) {
+              return sewingServiceTarget
+            }
+            return gccCuttingListTarget
+          },
+        },
+
+        '/api/homedashboard': {
+          target: gccCuttingListTarget,
+          changeOrigin: true,
+          secure: false,
+        },
+
+        // Sewing user + SMV master (:9000 MJL)
+        '/api/sewing': {
+          target: sewingServiceTarget,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/api/smv': {
+          target: sewingServiceTarget,
+          changeOrigin: true,
+          secure: false,
         },
       },
     },

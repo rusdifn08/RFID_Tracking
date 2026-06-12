@@ -46,10 +46,10 @@ export const getLocalIP = (): string => {
  * @param port - Port number (default: 7000 untuk proxy server)
  */
 export const getApiBaseUrl = (port: number = 7000): string => {
-    // Dev + HTTPS (Vite + @vitejs/plugin-basic-ssl): hindari mixed content ke http://IP:8000.
-    // Permintaan API lewat origin yang sama → Vite mem-proxy ke server.js di localhost.
-    if (typeof window !== 'undefined' && import.meta.env.DEV && window.location.protocol === 'https:') {
-        return `${window.location.origin}/__dev_node_proxy__${port}`;
+    // Dev: same-origin agar Network tab menampilkan path backend (`/wira`, `/api/...`).
+    // Vite mem-proxy ke server.js (:8000) atau backend sesuai route.
+    if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        return window.location.origin;
     }
     const ip = getLocalIP();
     return `http://${ip}:${port}`;

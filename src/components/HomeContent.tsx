@@ -1,43 +1,69 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import rfidIcon from '../assets/rfid.webp';
 import needleIcon from '../assets/needle.webp';
+import sewingIcon from '../assets/sewing.webp';
+import {
+    HIDE_HOME_CARD_NEEDLE_MANAGER,
+    HIDE_HOME_CARD_RFID_SEWING_PROSES,
+    HIDE_HOME_CARD_RFID_TRACKING,
+    isHomeCardHidden,
+    type HomeCardId,
+} from '../config/hide';
 
 export default function HomeContent() {
     const navigate = useNavigate();
-    const [hoveredCard, setHoveredCard] = useState<number | null>(null);
+    const [hoveredCard, setHoveredCard] = useState<HomeCardId | null>(null);
 
-    const modules = [
+    const allModules: Array<{
+        id: HomeCardId;
+        title: string;
+        subtitle: string;
+        path: string;
+        icon: string;
+        bgStart: string;
+        bgEnd: string;
+    }> = [
         {
-            id: 1,
+            id: 'rfid-tracking',
             title: 'RFID Tracking',
             subtitle: 'Real-time Tracking of Garment Data',
-            location: '9 Locations',
+            path: '/rfid-tracking',
             icon: rfidIcon,
-            color: 'text-[#0073EE]',
             bgStart: 'from-sky-400',
             bgEnd: 'to-blue-800',
-            shadow: 'shadow-blue-200',
-            lightBg: 'bg-blue-50'
         },
         {
-            id: 2,
+            id: 'needle-manager',
             title: 'Needle Manager',
             subtitle: 'Monitoring picking and putting needle',
-            location: 'Needle Module',
+            path: '/needle-manager',
             icon: needleIcon,
-            color: 'text-[#7C3AED]',
-            bgStart: 'from-violet-400',
-            bgEnd: 'to-purple-700',
-            shadow: 'shadow-purple-200',
-            lightBg: 'bg-purple-50'
+            bgStart: 'from-blue-400',
+            bgEnd: 'to-blue-700',
         },
-       
+        {
+            id: 'sewing-proses',
+            title: 'RFID Sewing Proses',
+            subtitle: 'Monitor dan kelola proses sewing',
+            path: '/sewing',
+            icon: sewingIcon,
+            bgStart: 'from-sky-400',
+            bgEnd: 'to-blue-800',
+        },
     ];
 
-    const handleModuleClick = (moduleId: number) => {
-        if (moduleId === 1) navigate('/rfid-tracking');
-        if (moduleId === 2) navigate('/needle-manager');
+    const modules = useMemo(
+        () => allModules.filter((m) => !isHomeCardHidden(m.id)),
+        [
+            HIDE_HOME_CARD_RFID_TRACKING,
+            HIDE_HOME_CARD_NEEDLE_MANAGER,
+            HIDE_HOME_CARD_RFID_SEWING_PROSES,
+        ]
+    );
+
+    const handleModuleClick = (path: string) => {
+        navigate(path);
     };
 
     return (
@@ -56,7 +82,7 @@ export default function HomeContent() {
                     return (
                         <div
                             key={module.id}
-                            onClick={() => handleModuleClick(module.id)}
+                            onClick={() => handleModuleClick(module.path)}
                             onMouseEnter={() => setHoveredCard(module.id)}
                             onMouseLeave={() => setHoveredCard(null)}
                             className={`

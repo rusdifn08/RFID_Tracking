@@ -1,0 +1,14 @@
+{
+  "hubCard": {
+    "title": "Daftar Layout",
+    "subtitle": "Gabungkan data SMV & operator menjadi layout line",
+    "highlights": [
+      "Assign operator",
+      "SMV per proses",
+      "Backend ready"
+    ]
+  },
+  "defaults": {
+    "style": "G81449"
+  }
+}

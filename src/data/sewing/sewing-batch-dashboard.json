@@ -1,0 +1,194 @@
+{
+  "defaults": {
+    "factory": "GM1",
+    "line": "Line 1",
+    "viewMode": "all",
+    "pcsPerBundle": 15
+  },
+  "factories": [
+    "GM1",
+    "GM2"
+  ],
+  "lines": [
+    "Line 1",
+    "Line 2",
+    "Line 3",
+    "Line 4",
+    "Line 5",
+    "Line 6",
+    "Line 7",
+    "Line 8",
+    "Line 9",
+    "Line 10"
+  ],
+  "viewModes": [
+    {
+      "value": "all",
+      "label": "Semua proses"
+    },
+    {
+      "value": "early",
+      "label": "Batch 1–5 / Proses awal"
+    },
+    {
+      "value": "final",
+      "label": "Batch 6 / Assembling akhir"
+    },
+    {
+      "value": "qc",
+      "label": "QC Awal, Tengah, Akhir"
+    }
+  ],
+  "kpis": {
+    "factoryLine": "GM1 / Line 1",
+    "bundles": 123,
+    "pcsFromCutting": 1230,
+    "avgActualSmv": 0.72,
+    "smvFoot": "Avg target 0.70 | variance 0.02",
+    "qcPassRate": "96.8%",
+    "bottleneck": "B4-002 • 0.05"
+  },
+  "hourlyBatchOutput": [
+    { "hour": "07:00", "batch1": 16, "batch2": 14, "batch3": 18, "batch4": 15, "batch5": 13, "batch6": 12, "batch7": 17, "batch8": 16 },
+    { "hour": "08:00", "batch1": 20, "batch2": 18, "batch3": 16, "batch4": 22, "batch5": 17, "batch6": 14, "batch7": 15, "batch8": 21 },
+    { "hour": "09:00", "batch1": 17, "batch2": 21, "batch3": 19, "batch4": 15, "batch5": 20, "batch6": 16, "batch7": 23, "batch8": 14 },
+    { "hour": "10:00", "batch1": 22, "batch2": 15, "batch3": 23, "batch4": 18, "batch5": 14, "batch6": 19, "batch7": 17, "batch8": 22 },
+    { "hour": "11:00", "batch1": 15, "batch2": 19, "batch3": 17, "batch4": 21, "batch5": 18, "batch6": 20, "batch7": 16, "batch8": 15 },
+    { "hour": "12:00", "batch1": 19, "batch2": 16, "batch3": 14, "batch4": 20, "batch5": 22, "batch6": 15, "batch7": 18, "batch8": 19 },
+    { "hour": "13:00", "batch1": 21, "batch2": 22, "batch3": 18, "batch4": 16, "batch5": 19, "batch6": 17, "batch7": 14, "batch8": 23 },
+    { "hour": "14:00", "batch1": 14, "batch2": 17, "batch3": 21, "batch4": 19, "batch5": 16, "batch6": 22, "batch7": 20, "batch8": 16 },
+    { "hour": "15:00", "batch1": 18, "batch2": 20, "batch3": 15, "batch4": 14, "batch5": 21, "batch6": 18, "batch7": 22, "batch8": 17 },
+    { "hour": "16:00", "batch1": 23, "batch2": 13, "batch3": 22, "batch4": 23, "batch5": 18, "batch6": 21, "batch7": 15, "batch8": 20 }
+  ],
+  "batches": [
+    {
+      "batch": 1,
+      "type": "Lapis Kelim",
+      "processCount": 3,
+      "doneCount": 360,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 75,
+      "qcCount": 0,
+      "avgActual": 0.58,
+      "avgTarget": 0.65,
+      "currentBundle": 32,
+      "activePcs": 360
+    },
+    {
+      "batch": 2,
+      "type": "Plaket",
+      "processCount": 11,
+      "doneCount": 270,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 64,
+      "qcCount": 0,
+      "avgActual": 0.66,
+      "avgTarget": 0.53,
+      "currentBundle": 28,
+      "activePcs": 270
+    },
+    {
+      "batch": 3,
+      "type": "Proses Hoodie",
+      "processCount": 16,
+      "doneCount": 330,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 63,
+      "qcCount": 0,
+      "avgActual": 0.39,
+      "avgTarget": 0.55,
+      "currentBundle": 35,
+      "activePcs": 330
+    },
+    {
+      "batch": 4,
+      "type": "Proses Body",
+      "processCount": 5,
+      "doneCount": 300,
+      "runningCount": 2,
+      "holdCount": 0,
+      "progressPct": 67,
+      "qcCount": 1,
+      "avgActual": 0.43,
+      "avgTarget": 0.72,
+      "currentBundle": 30,
+      "activePcs": 300
+    },
+    {
+      "batch": 5,
+      "type": "Proses Back",
+      "processCount": 5,
+      "doneCount": 315,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 81,
+      "qcCount": 0,
+      "avgActual": 0.33,
+      "avgTarget": 0.53,
+      "currentBundle": 26,
+      "activePcs": 315
+    },
+    {
+      "batch": 6,
+      "type": "Assembling",
+      "processCount": 5,
+      "doneCount": 180,
+      "runningCount": 2,
+      "holdCount": 0,
+      "progressPct": 67,
+      "qcCount": 0,
+      "avgActual": 1.15,
+      "avgTarget": 0.96,
+      "currentBundle": 18,
+      "activePcs": 180
+    },
+    {
+      "batch": 7,
+      "type": "Ironing",
+      "processCount": 5,
+      "doneCount": 12,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 8,
+      "qcCount": 1,
+      "avgActual": 0.82,
+      "avgTarget": 0.75,
+      "currentBundle": 5,
+      "activePcs": 12
+    },
+    {
+      "batch": 8,
+      "type": "Final Release",
+      "processCount": 5,
+      "doneCount": 8,
+      "runningCount": 1,
+      "holdCount": 0,
+      "progressPct": 6,
+      "qcCount": 0,
+      "avgActual": 0.45,
+      "avgTarget": 0.42,
+      "currentBundle": 4,
+      "activePcs": 8
+    }
+  ],
+  "order": {
+    "wo": "187233",
+    "style": "G81449",
+    "size": "L",
+    "buyer": "ZUG MANUFACTURING COMPANY LIMI",
+    "item": "M FROST DOWN PUFFER",
+    "color": "BLACK"
+  },
+  "hubCard": {
+    "title": "RFID Sewing Batch Dashboard",
+    "subtitle": "Overview IN/OUT bundle, trend per jam & detail RFID per batch",
+    "highlights": [
+      "6 batch aktif",
+      "96.8% QC pass",
+      "Bottleneck B4-002"
+    ]
+  }
+}

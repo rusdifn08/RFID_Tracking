@@ -15,12 +15,13 @@ import backgroundImage from '../assets/background.jpg';
 import cuttingIcon from '../assets/cutting.webp';
 import sewingIcon from '../assets/sewing.webp';
 import reportIcon from '../assets/report.webp';
+import batchIcon from '../assets/batch.webp';
 // Path string - akan mencari di public/assets/ saat runtime
 const productionIcon = '/assets/production.webp';
 const rejectIcon = '/assets/reject.webp';
 const finishingIcon = '/assets/finishing.webp';
 const timeIcon = '/assets/time.webp';
-import { HIDE_CARD_CUTTING_PROSES, HIDE_CARD_SEWING_PROSES } from '../config/hide';
+import { HIDE_CARD_BATCH_SYSTEM, HIDE_CARD_CUTTING_PROSES, HIDE_CARD_SEWING_PROSES } from '../config/hide';
 
 export default function RFIDTracking() {
     const navigate = useNavigate();
@@ -102,12 +103,24 @@ export default function RFIDTracking() {
             bgEnd: 'to-blue-700',
             shadow: 'shadow-sky-200',
             onClick: () => navigate('/form-report')
+        },
+        {
+            id: 'batch-system',
+            title: 'Batch System',
+            subtitle: 'Layout, dashboard, preparation, assembly & hybrid',
+            icon: null,
+            iconImage: batchIcon,
+            bgStart: 'from-blue-400',
+            bgEnd: 'to-blue-700',
+            shadow: 'shadow-blue-200',
+            onClick: () => navigate('/batch-system')
         }
     ];
 
     const cards = allCards.filter((c) => {
         if (c.id === 'cutting' && HIDE_CARD_CUTTING_PROSES) return false;
         if (c.id === 'sewing' && HIDE_CARD_SEWING_PROSES) return false;
+        if (c.id === 'batch-system' && HIDE_CARD_BATCH_SYSTEM) return false;
         return true;
     });
 
@@ -126,7 +139,7 @@ export default function RFIDTracking() {
 
             {/* Main Content Area */}
             <div
-                className="flex flex-col w-full min-h-screen transition-all duration-300 ease-in-out relative"
+                className="flex flex-col w-full h-screen min-h-0 overflow-hidden transition-all duration-300 ease-in-out relative"
                 style={{ marginLeft: 'var(--layout-sidebar-offset)', width: 'var(--layout-sidebar-width)' }}
             >
                 {/* Header */}
@@ -137,12 +150,12 @@ export default function RFIDTracking() {
 
                 {/* Content */}
                 <main
-                    className="flex-1 w-full overflow-y-auto relative"
+                    className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden relative overscroll-y-contain"
                     style={{
                         padding: 'clamp(0.5rem, 2vw, 2rem) clamp(0.5rem, 3vw, 1rem)',
                         paddingBottom: '5rem',
                         marginTop: '0',
-                        overflow: 'hidden',
+                        WebkitOverflowScrolling: 'touch',
                     }}
                 >
                     {/* Grid Container */}
@@ -183,7 +196,7 @@ export default function RFIDTracking() {
                                         <div className="relative mb-1 xs:mb-1.5 sm:mb-2 md:mb-2.5 lg:mb-3 flex items-center justify-center transform transition-transform duration-300 group-hover:scale-105 flex-shrink-0">
                                             <div className="relative" style={{
                                                 width: 'clamp(3rem, 7vw, 6rem)',
-                                                height: 'clamp(3rem, 7vw, 6rem)'
+                                                height: 'clamp(3rem, 7vw, 6rem)',
                                             }}>
                                                 {card.iconImage && (
                                                     <img 

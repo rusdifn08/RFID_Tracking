@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { API_BASE_URL, getDefaultHeaders, getBackendEnvironment, type BackendEnvironment } from '../config/api';
+import { API_BASE_URL, getDefaultHeaders, getBackendEnvironment, getSupervisorDataFromAPI, type BackendEnvironment } from '../config/api';
 import ExportModal from '../components/ExportModal';
 import type { ExportType } from '../components/ExportModal';
 import { exportToExcel } from '../utils/exportToExcel';
@@ -78,9 +78,30 @@ export default function DashboardRFID() {
         return '1';
     }, [id]);
 
-    // Gunakan normalizedLineId untuk fetch data (selalu angka)
     const lineId = normalizedLineId;
-    const lineTitle = `LINE ${lineId}`;
+    
+    // Tarik data Supervisor untuk mempersonalisasi judul (contoh: LINE IYAH)
+    const [supervisorName, setSupervisorName] = useState<string>('');
+    
+    useEffect(() => {
+        const fetchSupervisor = async () => {
+            try {
+                const env = await getBackendEnvironment();
+                if (!env) return;
+                const data = await getSupervisorDataFromAPI(env);
+                if (data && data.supervisors && data.supervisors[lineId] && data.supervisors[lineId] !== '-') {
+                    setSupervisorName(data.supervisors[lineId]);
+                } else {
+                    setSupervisorName('');
+                }
+            } catch (e) {
+                // ignore
+            }
+        };
+        fetchSupervisor();
+    }, [lineId]);
+
+    const lineTitle = supervisorName ? `LINE ${supervisorName.toUpperCase()}` : `LINE ${lineId}`;
 
     const openRfidScanModal = useCallback(
         (stage: RfidScanStage, statusType: RfidScanStatusType, titleLabel: string) => {

@@ -1,8 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Settings, X, Target } from 'lucide-react';
+import { Home, Settings, X, Target, Tag, User, Clock, Save, Trash2, AlertTriangle, Frown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { API_BASE_URL, getDefaultHeaders, getInitialEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache, type BackendEnvironment } from '../config/api';
 import { productionLinesCLN, productionLinesMJL, productionLinesMJL2, productionLinesGCC } from '../data/production_line';
+import { resolveLineDisplayTitle } from '../utils/lineDisplayTitle';
+import { filterVisibleProductionLines } from '../config/hide';
 
 interface BreadcrumbItem {
     label: string;
@@ -17,17 +19,45 @@ export default function Breadcrumb() {
     const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
     const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
     const [targetsData, setTargetsData] = useState<Record<string, number>>({});
+    const [displayTitlesData, setDisplayTitlesData] = useState<Record<string, string>>({});
     const [editingLine, setEditingLine] = useState<number | null>(null);
     const [editingSupervisor, setEditingSupervisor] = useState<string>('');
     const [editingStartTime, setEditingStartTime] = useState<string>('07:30');
     const [editingTarget, setEditingTarget] = useState<number>(0);
+    const [editingDisplayTitle, setEditingDisplayTitle] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [environment, setEnvironment] = useState<BackendEnvironment>(getInitialEnvironment);
+
+    // --- DELETE MODAL STATE ---
+    const [deleteModalStep, setDeleteModalStep] = useState<0 | 1 | 2 | 3>(0);
+    const [lineToDelete, setLineToDelete] = useState<{ id: number, title: string } | null>(null);
 
     // Fetch environment (1x shared request)
     useEffect(() => {
         getEnvironmentFromAPI().then(env => setEnvironment(env));
     }, []);
+
+    // Muat displayTitles untuk breadcrumb & modal (real-time via supervisorUpdated)
+    useEffect(() => {
+        if (!environment) return;
+        const loadDisplayTitles = async () => {
+            try {
+                const data = await getSupervisorDataFromAPI(environment);
+                if (data?.displayTitles) {
+                    setDisplayTitlesData(data.displayTitles);
+                }
+            } catch {
+                // silent
+            }
+        };
+        loadDisplayTitles();
+        const onSupervisorUpdated = () => {
+            invalidateSupervisorDataCache(environment);
+            loadDisplayTitles();
+        };
+        window.addEventListener('supervisorUpdated', onSupervisorUpdated);
+        return () => window.removeEventListener('supervisorUpdated', onSupervisorUpdated);
+    }, [environment]);
 
     // Mapping route ke breadcrumb
     const getBreadcrumbs = (): BreadcrumbItem[] => {
@@ -67,6 +97,35 @@ export default function Breadcrumb() {
         } else if (path.startsWith('/rfid-tracking')) {
             breadcrumbs.push({
                 label: 'RFID Tracking',
+                isActive: true,
+            });
+        } else if (path === '/batch-system' || path === '/batch-system/') {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Batch System',
+                isActive: true,
+            });
+        } else if (path.startsWith('/batch-system/')) {
+            const batchModuleTitles: Record<string, string> = {
+                '/batch-system/daftar-layout': 'Daftar Layout',
+                '/batch-system/dashboard': 'Dashboard',
+                '/batch-system/preparation': 'Preparation',
+                '/batch-system/assembly': 'Assembly',
+                '/batch-system/hybrid': 'Hybrid',
+            };
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Batch System',
+                path: '/batch-system',
+            });
+            breadcrumbs.push({
+                label: batchModuleTitles[path] ?? 'Modul Batch System',
                 isActive: true,
             });
         } else if (path.startsWith('/monitoring-rfid')) {
@@ -129,8 +188,9 @@ export default function Breadcrumb() {
                 label: 'Sewing Lines',
                 path: '/sewing',
             });
+            const defaultSewingLabel = lineTitles[lineId || '1'] || `Sewing Line ${lineId}`;
             breadcrumbs.push({
-                label: lineTitles[lineId || '1'] || `Sewing Line ${lineId}`,
+                label: resolveLineDisplayTitle(Number(lineId || '1'), defaultSewingLabel, displayTitlesData),
                 isActive: true,
             });
         } else if (path.startsWith('/sewing/all')) {
@@ -188,8 +248,9 @@ export default function Breadcrumb() {
                 label: 'Production Lines',
                 path: '/monitoring-rfid',
             });
+            const defaultLineLabel = lineTitles[lineId || '1'] || `Line ${lineId}`;
             breadcrumbs.push({
-                label: lineTitles[lineId || '1'] || `Line ${lineId}`,
+                label: resolveLineDisplayTitle(Number(lineId || '1'), defaultLineLabel, displayTitlesData),
                 isActive: true,
             });
         } else if (path.startsWith('/dashboard-rfid/')) {
@@ -217,8 +278,9 @@ export default function Breadcrumb() {
                 label: 'Production Lines',
                 path: '/monitoring-rfid',
             });
+            const defaultDashLabel = lineTitles[lineId || '1'] || `Line ${lineId}`;
             breadcrumbs.push({
-                label: lineTitles[lineId || '1'] || `Line ${lineId}`,
+                label: resolveLineDisplayTitle(Number(lineId || '1'), defaultDashLabel, displayTitlesData),
                 isActive: true,
             });
         } else if (path.startsWith('/checking-rfid-cutting')) {
@@ -263,6 +325,78 @@ export default function Breadcrumb() {
             });
             breadcrumbs.push({
                 label: 'Daftar RFID Cutting',
+                isActive: true,
+            });
+        } else if (path.startsWith('/sewing/rfid-identity')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Proses',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: 'RFID Identity Model',
+                isActive: true,
+            });
+        } else if (path.startsWith('/dashboard-sewing-line')) {
+            const dashboardLineMatch = path.match(/\/dashboard-sewing-line\/(\d+)/);
+            const dashboardLineId = dashboardLineMatch?.[1] ?? '1';
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Proses',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Lines',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: `Sewing Line ${dashboardLineId}`,
+                path: `/sewing/line/${dashboardLineId}`,
+            });
+            breadcrumbs.push({
+                label: 'RFID Sewing Batch Dashboard',
+                isActive: true,
+            });
+        } else if (path.startsWith('/sewing/report/')) {
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Proses',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: 'Report Data RFID',
+                isActive: true,
+            });
+        } else if (path.startsWith('/sewing/layout/')) {
+            const layoutLineMatch = path.match(/\/sewing\/layout\/(\d+)/);
+            const layoutLineId = layoutLineMatch?.[1] ?? '1';
+            breadcrumbs.push({
+                label: 'RFID Tracking',
+                path: '/rfid-tracking',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Proses',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: 'Sewing Lines',
+                path: '/sewing',
+            });
+            breadcrumbs.push({
+                label: `Sewing Line ${layoutLineId}`,
+                path: `/sewing/line/${layoutLineId}`,
+            });
+            breadcrumbs.push({
+                label: 'Daftar Layout',
                 isActive: true,
             });
         } else if (path.startsWith('/daftar-rfid')) {
@@ -368,6 +502,7 @@ export default function Breadcrumb() {
                 setSupervisorData(data.supervisors || {});
                 setStartTimesData(data.startTimes || {});
                 setTargetsData(data.targets || {});
+                setDisplayTitlesData(data.displayTitles || {});
             }
         } catch {
             // silent
@@ -377,7 +512,13 @@ export default function Breadcrumb() {
     };
 
     // Save supervisor, startTime, dan target
-    const saveSupervisor = async (lineId: number, supervisor: string, startTime?: string, target?: number) => {
+    const saveSupervisor = async (
+        lineId: number,
+        supervisor: string,
+        startTime?: string,
+        target?: number,
+        displayTitle?: string
+    ) => {
         try {
             setIsLoading(true);
             const response = await fetch(`${API_BASE_URL}/api/supervisor-data`, {
@@ -391,6 +532,7 @@ export default function Breadcrumb() {
                     supervisor: supervisor,
                     startTime: startTime,
                     target: typeof target === 'number' && target >= 0 ? target : undefined,
+                    displayTitle: displayTitle !== undefined ? displayTitle.trim() : undefined,
                     environment: environment
                 })
             });
@@ -408,6 +550,7 @@ export default function Breadcrumb() {
                     setEditingSupervisor('');
                     setEditingStartTime('07:30');
                     setEditingTarget(0);
+                    setEditingDisplayTitle('');
                     invalidateSupervisorDataCache(environment);
                     await loadSupervisorData();
                     // Dispatch custom event agar RFIDLineContent & device lain refetch (real-time)
@@ -426,20 +569,87 @@ export default function Breadcrumb() {
         }
     };
 
-    // Get production lines data berdasarkan environment (filter out "All Production Line")
+    const handleDeleteConfirmed = () => {
+        if (!lineToDelete || !environment) return;
+        const currentEnv = environment;
+        const targetId = lineToDelete.id;
+
+        // Stage 3: Bye Bye Animation
+        setDeleteModalStep(3);
+        
+        setTimeout(() => {
+            // Lakukan penghapusan secara logika
+            let customLines: any[] = [];
+            try { customLines = JSON.parse(localStorage.getItem(`rfid_custom_lines_${currentEnv}`) || '[]'); } catch {}
+            
+            const isCustom = customLines.some(l => l.id === targetId);
+            if (isCustom) {
+                const updated = customLines.filter(l => l.id !== targetId);
+                localStorage.setItem(`rfid_custom_lines_${currentEnv}`, JSON.stringify(updated));
+            } else {
+                const hidden = JSON.parse(localStorage.getItem(`rfid_hidden_lines_${currentEnv}`) || '[]');
+                if (!hidden.includes(targetId)) {
+                    hidden.push(targetId);
+                    localStorage.setItem(`rfid_hidden_lines_${currentEnv}`, JSON.stringify(hidden));
+                }
+            }
+            
+            // Tutup modal delete dan refresh data
+            setDeleteModalStep(0);
+            setLineToDelete(null);
+            
+            // Dispatch event to RFIDLineContent so it refreshes its UI
+            window.dispatchEvent(new Event('lineDeleted'));
+            
+        }, 2500); // Tahan animasi bye bye selama 2.5 detik
+    };
+
+    // Get production lines data berdasarkan environment (filter out "All Production Line") dan urutkan sesuai konfigurasi puzzle
     const getProductionLines = () => {
         let lines;
-        if (environment === 'MJL2') {
+        const currentEnv = environment || 'MJL'; // Fallback aman
+        if (currentEnv === 'MJL2') {
             lines = productionLinesMJL2;
-        } else if (environment === 'MJL') {
+        } else if (currentEnv === 'MJL') {
             lines = productionLinesMJL;
-        } else if (environment === 'GCC') {
+        } else if (currentEnv === 'GCC') {
             lines = productionLinesGCC;
         } else {
             lines = productionLinesCLN;
         }
-        // Filter out "All Production Line" (id 0 untuk CLN, id 111 untuk MJL, id 112 untuk MJL2, id 113 untuk GCC)
-        return lines.filter(line => line.id !== 0 && line.id !== 111 && line.id !== 112 && line.id !== 113);
+        let customLines: any[] = [];
+        const savedCustom = localStorage.getItem(`rfid_custom_lines_${currentEnv}`);
+        if (savedCustom) {
+            try { customLines = JSON.parse(savedCustom); } catch { /* ignore */ }
+        }
+
+        const allLines = [...lines, ...customLines];
+        
+        // Filter out "All Production Line" + line tersembunyi (hide.ts)
+        const visibleLines = filterVisibleProductionLines(
+            allLines.filter(line => line.id !== 0 && line.id !== 111 && line.id !== 112 && line.id !== 113),
+            currentEnv
+        );
+
+        // Baca urutan dari localStorage layaknya fitur drag-and-drop di dashboard
+        const savedOrderStr = localStorage.getItem(`rfid_line_order_${currentEnv}`);
+        if (savedOrderStr) {
+            try {
+                const cardOrder = JSON.parse(savedOrderStr);
+                if (Array.isArray(cardOrder) && cardOrder.length > 0) {
+                    const orderMap = new Map(cardOrder.map((id, idx) => [id, idx]));
+                    return visibleLines.sort((a, b) => {
+                        const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999;
+                        const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999;
+                        return indexA - indexB;
+                    });
+                }
+            } catch {
+                // Abaikan jika gagal parsing JSON
+            }
+        }
+
+        return visibleLines;
     };
 
     // Jangan tampilkan breadcrumb di Home dan Dashboard RFID
@@ -555,7 +765,7 @@ export default function Breadcrumb() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white mb-1">Pengaturan Supervisor</h2>
-                                    <p className="text-blue-100 text-sm">Kelola data supervisor, jam masuk, dan target untuk setiap production line. Perubahan tersimpan di server dan ter-update real-time di semua device.</p>
+                                    <p className="text-blue-100 text-sm">Kelola nama tampilan line, supervisor, jam masuk, dan target. Nama tampilan tidak mengubah query data (line ID tetap).</p>
                                 </div>
                                 <button
                                     onClick={() => {
@@ -564,6 +774,7 @@ export default function Breadcrumb() {
                                         setEditingSupervisor('');
                                         setEditingStartTime('07:30');
                                         setEditingTarget(0);
+                                        setEditingDisplayTitle('');
                                     }}
                                     className="p-2 hover:bg-white/20 rounded-full transition-all duration-200 group"
                                 >
@@ -586,6 +797,8 @@ export default function Breadcrumb() {
                                         const currentSupervisor = supervisorData[lineIdStr] || '-';
                                         const currentStartTime = startTimesData[lineIdStr] || '07:30';
                                         const currentTarget = typeof targetsData[lineIdStr] === 'number' ? targetsData[lineIdStr] : 0;
+                                        const currentDisplayTitle = displayTitlesData[lineIdStr] || '';
+                                        const shownTitle = resolveLineDisplayTitle(line.id, line.title, displayTitlesData);
                                         const isEditing = editingLine === line.id;
 
                                         return (
@@ -598,66 +811,112 @@ export default function Breadcrumb() {
                                                         <span className="text-white font-bold text-lg">{line.id}</span>
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="font-semibold text-gray-900 text-base mb-1">{line.title}</p>
-                                                        {isEditing ? (
-                                                            <div className="space-y-3 mt-3">
-                                                                <div className="flex items-center gap-3">
-                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px]">Supervisor:</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={editingSupervisor}
-                                                                        onChange={(e) => setEditingSupervisor(e.target.value)}
-                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                                                        placeholder="Masukkan nama supervisor"
-                                                                        autoFocus
-                                                                    />
+                                                        <p className="font-semibold text-gray-900 text-base mb-0.5">{shownTitle}</p>
+                                                        <p className="text-xs text-gray-500 mb-1">Query data: Line {line.id} · Default: {line.title}</p>
+                                                        {isEditing ? (() => {
+                                                            const titlePrefix = line.title.replace(/[\d]+$/, '').trim(); 
+                                                            const currentNumberOnly = editingDisplayTitle ? editingDisplayTitle.replace(titlePrefix, '').trim() : '';
+
+                                                            return (
+                                                                <div className="mt-5 p-5 bg-gradient-to-br from-blue-50/60 to-indigo-50/60 rounded-xl border border-blue-100 shadow-[inset_0_2px_15px_rgba(59,130,246,0.06)] relative overflow-hidden transition-all duration-300">
+                                                                    <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-blue-500 to-indigo-600"></div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 ml-2">
+                                                                        
+                                                                        {/* Nama Tampilan */}
+                                                                        <div className="space-y-1.5">
+                                                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                <Tag size={14} className="text-blue-500" /> Nama Tampilan
+                                                                            </label>
+                                                                            <div className="flex shadow-sm rounded-lg overflow-hidden border border-gray-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all bg-white group">
+                                                                                <span className="px-3.5 py-2.5 bg-gray-50 border-r border-gray-200 text-gray-500 text-sm font-semibold whitespace-nowrap select-none">
+                                                                                    {titlePrefix}
+                                                                                </span>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={currentNumberOnly}
+                                                                                    onChange={(e) => setEditingDisplayTitle(`${titlePrefix} ${e.target.value}`)}
+                                                                                    className="flex-1 w-full px-3 py-2.5 text-sm font-bold text-gray-900 focus:outline-none bg-transparent placeholder-gray-300"
+                                                                                    placeholder="Contoh: 1A"
+                                                                                    autoFocus
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Supervisor */}
+                                                                        <div className="space-y-1.5">
+                                                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                <User size={14} className="text-indigo-500" /> Supervisor
+                                                                            </label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={editingSupervisor}
+                                                                                onChange={(e) => setEditingSupervisor(e.target.value)}
+                                                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all shadow-sm placeholder-gray-300"
+                                                                                placeholder="NAMA SUPERVISOR"
+                                                                            />
+                                                                        </div>
+
+                                                                        {/* Jam Masuk */}
+                                                                        <div className="space-y-1.5">
+                                                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                <Clock size={14} className="text-emerald-500" /> Jam Masuk
+                                                                            </label>
+                                                                            <input
+                                                                                type="time"
+                                                                                value={editingStartTime}
+                                                                                onChange={(e) => setEditingStartTime(e.target.value)}
+                                                                                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 transition-all shadow-sm"
+                                                                            />
+                                                                        </div>
+
+                                                                        {/* Target */}
+                                                                        <div className="space-y-1.5">
+                                                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                <Target size={14} className="text-amber-500" /> Target / Jam
+                                                                            </label>
+                                                                            <div className="relative">
+                                                                                <input
+                                                                                    type="number"
+                                                                                    min={0}
+                                                                                    value={editingTarget || ''}
+                                                                                    onChange={(e) => {
+                                                                                        const v = parseInt(e.target.value, 10);
+                                                                                        setEditingTarget(Number.isNaN(v) || v < 0 ? 0 : v);
+                                                                                    }}
+                                                                                    className="w-full pl-4 pr-12 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-500 transition-all shadow-sm placeholder-gray-300"
+                                                                                    placeholder="0"
+                                                                                />
+                                                                                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 pointer-events-none bg-white pl-1">PCS</span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                    </div>
+                                                                    
+                                                                    <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-blue-200/50 ml-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingLine(null);
+                                                                                setEditingSupervisor('');
+                                                                                setEditingStartTime('07:30');
+                                                                                setEditingTarget(0);
+                                                                                setEditingDisplayTitle('');
+                                                                            }}
+                                                                            className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all shadow-sm"
+                                                                        >
+                                                                            Batalkan
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => saveSupervisor(line.id, editingSupervisor, editingStartTime, editingTarget, editingDisplayTitle)}
+                                                                            disabled={isLoading || !editingSupervisor.trim()}
+                                                                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20 active:scale-[0.98]"
+                                                                        >
+                                                                            {isLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Save size={16} />} 
+                                                                            Simpan Perubahan
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px]">Jam Masuk:</label>
-                                                                    <input
-                                                                        type="time"
-                                                                        value={editingStartTime}
-                                                                        onChange={(e) => setEditingStartTime(e.target.value)}
-                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                                                        placeholder="07:30"
-                                                                    />
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <label className="text-sm font-medium text-gray-700 min-w-[100px] flex items-center gap-1"><Target size={14} className="text-blue-600" /> Target:</label>
-                                                                    <input
-                                                                        type="number"
-                                                                        min={0}
-                                                                        value={editingTarget}
-                                                                        onChange={(e) => {
-                                                                            const v = parseInt(e.target.value, 10);
-                                                                            setEditingTarget(Number.isNaN(v) || v < 0 ? 0 : v);
-                                                                        }}
-                                                                        className="flex-1 px-4 py-2.5 border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-24"
-                                                                        placeholder="0"
-                                                                    />
-                                                                </div>
-                                                                <div className="flex items-center gap-3 pt-2">
-                                                                    <button
-                                                                        onClick={() => saveSupervisor(line.id, editingSupervisor, editingStartTime, editingTarget)}
-                                                                        disabled={isLoading || !editingSupervisor.trim()}
-                                                                        className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
-                                                                    >
-                                                                        Simpan
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setEditingLine(null);
-                                                                            setEditingSupervisor('');
-                                                                            setEditingStartTime('07:30');
-                                                                            setEditingTarget(0);
-                                                                        }}
-                                                                        className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-all duration-200"
-                                                                    >
-                                                                        Batal
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
+                                                            );
+                                                        })() : (
                                                             <div className="flex items-center gap-2 mt-2 flex-wrap">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-gray-500 text-sm">Supervisor:</span>
@@ -681,20 +940,33 @@ export default function Breadcrumb() {
                                                         )}
                                                     </div>
                                                     {!isEditing && (
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingLine(line.id);
-                                                                const supervisorFromJson = supervisorData[lineIdStr];
-                                                                const startTimeFromJson = startTimesData[lineIdStr];
-                                                                const targetFromJson = targetsData[lineIdStr];
-                                                                setEditingSupervisor(supervisorFromJson && supervisorFromJson !== '-' ? supervisorFromJson : '');
-                                                                setEditingStartTime(startTimeFromJson || '07:30');
-                                                                setEditingTarget(typeof targetFromJson === 'number' && targetFromJson >= 0 ? targetFromJson : 0);
-                                                            }}
-                                                            className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 border border-blue-200 hover:border-blue-300"
-                                                        >
-                                                            Edit
-                                                        </button>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingLine(line.id);
+                                                                    const supervisorFromJson = supervisorData[lineIdStr];
+                                                                    const startTimeFromJson = startTimesData[lineIdStr];
+                                                                    const targetFromJson = targetsData[lineIdStr];
+                                                                    setEditingSupervisor(supervisorFromJson && supervisorFromJson !== '-' ? supervisorFromJson : '');
+                                                                    setEditingStartTime(startTimeFromJson || '07:30');
+                                                                    setEditingTarget(typeof targetFromJson === 'number' && targetFromJson >= 0 ? targetFromJson : 0);
+                                                                    setEditingDisplayTitle(currentDisplayTitle);
+                                                                }}
+                                                                className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 border border-blue-200 hover:border-blue-300"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setLineToDelete({ id: line.id, title: shownTitle });
+                                                                    setDeleteModalStep(1);
+                                                                }}
+                                                                className="p-2.5 text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-600 rounded-lg transition-all border border-red-100 hover:border-red-300 shadow-sm"
+                                                                title="Hapus / Sembunyikan Line"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -703,6 +975,78 @@ export default function Breadcrumb() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MULTI-STEP DELETE MODAL --- */}
+            {deleteModalStep > 0 && lineToDelete && (
+                <div className="fixed inset-0 flex items-center justify-center z-[200] p-4" style={{ background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)' }}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full flex flex-col border border-gray-100 animate-in zoom-in duration-200 overflow-hidden relative">
+                        
+                        {deleteModalStep === 1 && (
+                            <div className="p-6 text-center">
+                                <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                                    <AlertTriangle size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Yakin Dihapus?</h3>
+                                <p className="text-gray-600 text-sm font-medium leading-relaxed mb-6">
+                                    Apakah Anda Yakin <strong>{lineToDelete.title}</strong> akan di hapus? <br/>
+                                    <span className="text-red-500">Nanti Penghasilan Gistex Berkurang Loh 🥺</span>
+                                </p>
+                                <div className="flex gap-3">
+                                    <button 
+                                        onClick={() => { setDeleteModalStep(0); setLineToDelete(null); }}
+                                        className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                                    >
+                                        Gak Jadi
+                                    </button>
+                                    <button 
+                                        onClick={() => setDeleteModalStep(2)}
+                                        className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors shadow-md shadow-red-500/30"
+                                    >
+                                        Yakin
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {deleteModalStep === 2 && (
+                            <div className="p-6 text-center animate-in slide-in-from-right duration-300">
+                                <div className="w-16 h-16 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center mx-auto mb-4 scale-110 transition-transform">
+                                    <Frown size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Beneran Nih?</h3>
+                                <p className="text-gray-600 text-sm font-medium leading-relaxed mb-6">
+                                    Yauda deh kalau yakin click Delete saja 😔
+                                </p>
+                                <div className="flex gap-3 flex-col sm:flex-row">
+                                    <button 
+                                        onClick={() => { setDeleteModalStep(0); setLineToDelete(null); }}
+                                        className="w-full sm:flex-1 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button 
+                                        onClick={handleDeleteConfirmed}
+                                        className="w-full sm:flex-1 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold rounded-lg hover:from-red-700 hover:to-rose-700 transition-all shadow-lg shadow-red-500/40 active:scale-95"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {deleteModalStep === 3 && (
+                            <div className="p-10 text-center animate-in fade-in zoom-in duration-500">
+                                <div className="text-6xl mb-4 animate-bounce">😭</div>
+                                <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-purple-600 mb-2">
+                                    Bye Bye
+                                </h3>
+                                <p className="text-gray-500 font-bold text-lg">{lineToDelete.title}</p>
+                            </div>
+                        )}
+                        
                     </div>
                 </div>
             )}

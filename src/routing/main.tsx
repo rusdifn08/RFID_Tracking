@@ -40,6 +40,12 @@ const DashboardSupplySewingCutting = lazy(() => import('../pages/DashboardSupply
 const DaftarRFIDCutting = lazy(() => import('../pages/DaftarRFIDCutting.tsx'));
 const SewingLine = lazy(() => import('../pages/SewingLine.tsx'));
 const DashboardSewingLine = lazy(() => import('../pages/DashboardSewingLine.tsx'));
+const SewingRfidIdentityPage = lazy(() => import('../pages/sewing/SewingRfidIdentityPage.tsx'));
+const SewingReportPage = lazy(() => import('../pages/sewing/SewingReportPage.tsx'));
+const SewingLayoutPage = lazy(() => import('../pages/sewing/SewingLayoutPage.tsx'));
+const SewingPositioningPage = lazy(() => import('../pages/sewing/SewingPositioningPage.tsx'));
+const BatchSystemHub = lazy(() => import('../pages/BatchSystemHub.tsx'));
+const BatchSystemModule = lazy(() => import('../pages/BatchSystemModule.tsx'));
 
 // Loading component untuk Suspense (ringan agar paint cepat)
 const PageLoader = () => (
@@ -190,11 +196,55 @@ const router = createBrowserRouter([
         ),
     },
     {
-        path: '/dashboard-sewing-line',
+        path: '/dashboard-sewing-line/:id',
         element: (
             <ProtectedRoute>
                 <LazyWrapper>
                     <DashboardSewingLine />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/dashboard-sewing-line',
+        element: <Navigate to="/dashboard-sewing-line/1" replace />,
+    },
+    {
+        path: '/sewing/rfid-identity',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <SewingRfidIdentityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/sewing/report/:id',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <SewingReportPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/sewing/layout/:id',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <SewingLayoutPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/sewing/positioning/:id',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <SewingPositioningPage />
                 </LazyWrapper>
             </ProtectedRoute>
         ),
@@ -435,6 +485,66 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <FormData />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemHub />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system/daftar-layout',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemModule />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system/dashboard',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemModule />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system/preparation',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemModule />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system/assembly',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemModule />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/batch-system/hybrid',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <BatchSystemModule />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

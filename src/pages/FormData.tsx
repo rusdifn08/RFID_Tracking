@@ -4,7 +4,6 @@ import {
   Download,
   Loader2,
   CalendarRange,
-  Sparkles,
   Database,
   ArrowUpRight,
   Layers,
@@ -158,7 +157,7 @@ const REPORT_CARDS: ReportCard[] = [
   {
     id: 'daily-output-line',
     title: 'Daily Output Line',
-    subtitle: 'Data /daily-output (GCC), diurut per tanggal lalu Line 1 → terbesar',
+    subtitle: 'Data /daily-output (GCC)',
     endpoint: '/daily-output',
     paramsBuilder: (from, to) => ({ ...(from ? { tanggalfrom: from } : {}), ...(to ? { tanggalto: to } : {}) }),
     tone: {
@@ -186,7 +185,7 @@ const REPORT_CARDS: ReportCard[] = [
   {
     id: 'wip-wo',
     title: 'Work In Progress (WO)',
-    subtitle: 'WIP per WO (color/size) — GET /report/wip, tanggalfrom & tanggalto',
+    subtitle: 'WIP per WO (color/size)',
     endpoint: '/report/wip',
     paramsBuilder: (from, to) => ({ ...(from ? { tanggalfrom: from } : {}), ...(to ? { tanggalto: to } : {}) }),
     tone: {
@@ -485,7 +484,7 @@ export default function FormData() {
 
   return (
     <div
-      className="flex min-h-screen w-full h-screen fixed inset-0 m-0 p-0 font-poppins selection:bg-indigo-100 selection:text-indigo-900"
+      className="flex min-h-screen w-full h-screen fixed inset-0 m-0 p-0 font-poppins selection:bg-blue-100 selection:text-blue-900"
       style={{
         backgroundImage: `url(${backgroundImage})`,
         backgroundSize: '100% 100%',
@@ -508,10 +507,10 @@ export default function FormData() {
         >
           <div className="w-full space-y-4">
             <div className="relative overflow-hidden bg-white/95 border border-slate-200 rounded-2xl p-4 shadow-sm">
-              <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.08),transparent_40%)]" />
+              <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.16),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(37,99,235,0.10),transparent_40%)]" />
               <div className="relative flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-sm">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center shadow-sm">
                     <FileSpreadsheet className="w-5 h-5" />
                   </div>
                   <div>
@@ -519,17 +518,13 @@ export default function FormData() {
                     <p className="text-xs text-slate-500">Generate report sesuai data API secara cepat</p>
                   </div>
                 </div>
-                <span className="hidden md:inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-sky-200 bg-sky-50 text-sky-700 font-semibold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Professional Report Hub
-                </span>
               </div>
               <p className="relative text-sm text-slate-600 mb-3">
                 Pilih report yang sudah siap lalu export ke Excel sesuai format data API.
               </p>
               <div className="relative grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-slate-200 bg-white/80 p-3">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
+                <div className="rounded-xl border border-blue-100 bg-gradient-to-b from-blue-50/80 to-white p-3 shadow-sm">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-blue-800 mb-1">
                     <CalendarRange className="w-3.5 h-3.5" />
                     Tanggal From
                   </label>
@@ -537,11 +532,12 @@ export default function FormData() {
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-[inset_0_1px_2px_rgba(30,64,175,0.06)] focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
                   />
+                  <p className="mt-1.5 text-[11px] text-blue-600/80">Tanggal awal periode report.</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white/80 p-3">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
+                <div className="rounded-xl border border-blue-100 bg-gradient-to-b from-blue-50/80 to-white p-3 shadow-sm">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-blue-800 mb-1">
                     <CalendarRange className="w-3.5 h-3.5" />
                     Tanggal To
                   </label>
@@ -549,8 +545,9 @@ export default function FormData() {
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-[inset_0_1px_2px_rgba(30,64,175,0.06)] focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
                   />
+                  <p className="mt-1.5 text-[11px] text-blue-600/80">Tanggal akhir periode report.</p>
                 </div>
                 <div className="flex items-end">
                   <button
@@ -560,7 +557,7 @@ export default function FormData() {
                       setDateTo(today);
                       setMessage(null);
                     }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition shadow-sm"
+                    className="w-full px-4 py-2.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold transition shadow-sm"
                   >
                     Reset Filter
                   </button>
@@ -586,16 +583,16 @@ export default function FormData() {
                 return (
                   <div
                     key={card.id}
-                    className={`group relative overflow-hidden bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-xl ${card.tone.glow} hover:-translate-y-0.5 transition`}
+                    className="group relative overflow-hidden bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition"
                   >
-                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${card.tone.accent} opacity-90`} />
-                    <div className="absolute -right-10 -top-10 w-28 h-28 rounded-full bg-sky-100/50 blur-2xl group-hover:bg-sky-200/60 transition pointer-events-none" />
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 opacity-95" />
+                    <div className="absolute -right-10 -top-10 w-28 h-28 rounded-full bg-blue-200/45 blur-2xl group-hover:bg-blue-300/55 transition pointer-events-none" />
 
                     <div className="relative flex items-start justify-between gap-3 mb-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-sm md:text-base font-bold text-slate-800 truncate">{card.title}</h3>
-                          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold ${card.tone.chip}`}>
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold bg-blue-50 text-blue-800 border-blue-200">
                             <Database className="w-3 h-3" />
                             API
                           </span>
@@ -603,7 +600,7 @@ export default function FormData() {
                         <p className="text-xs text-slate-500">{card.subtitle}</p>
                         <p className="text-[11px] text-slate-400 mt-1 font-mono">{card.endpoint}</p>
                       </div>
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center shadow-sm shrink-0">
                         <FileSpreadsheet className="w-4.5 h-4.5" />
                       </div>
                     </div>
@@ -626,7 +623,7 @@ export default function FormData() {
                       className={`relative mt-2 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-white transition ${
                         isLoading
                           ? 'bg-slate-400 cursor-not-allowed'
-                          : `bg-gradient-to-r ${card.tone.button} ${card.tone.buttonHover} shadow-md shadow-sky-500/20`
+                          : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-700 shadow-md shadow-blue-600/25'
                       }`}
                     >
                       {isLoading ? (

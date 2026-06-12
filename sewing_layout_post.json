@@ -1,0 +1,805 @@
+{
+  "entries": [
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T10:41:26.642Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 1,
+      "updatedAt": "2026-06-05T10:52:10.096Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0006219810",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 1,
+      "updatedAt": "2026-06-05T11:24:54.610Z",
+      "data": [
+        {
+          "smv_id": 10227,
+          "rfid_user": "0010642847",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 1,
+      "updatedAt": "2026-06-05T11:30:04.760Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0006219810",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:33:24.282Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:33:30.024Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 1,
+      "updatedAt": "2026-06-05T11:52:51.312Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0006219810",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:55:55.363Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:56:03.760Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:57:54.558Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T11:59:24.817Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T12:00:14.641Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-05T12:01:24.481Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 2,
+      "updatedAt": "2026-06-06T03:33:04.469Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0006219810",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0002418016",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 3,
+      "updatedAt": "2026-06-06T03:42:58.771Z",
+      "data": [
+        {
+          "smv_id": 10227,
+          "rfid_user": "0010642847",
+          "batch": 1
+        },
+        {
+          "smv_id": 10229,
+          "rfid_user": "0006235430",
+          "batch": 1
+        },
+        {
+          "smv_id": 10230,
+          "rfid_user": "0003028152",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 3,
+      "updatedAt": "2026-06-06T03:43:20.583Z",
+      "data": [
+        {
+          "smv_id": 10227,
+          "rfid_user": "0010642847",
+          "batch": 1
+        },
+        {
+          "smv_id": 10229,
+          "rfid_user": "0006235430",
+          "batch": 1
+        },
+        {
+          "smv_id": 10230,
+          "rfid_user": "0003028152",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 2,
+      "updatedAt": "2026-06-06T04:22:34.595Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0006219810",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0002418016",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 2,
+      "updatedAt": "2026-06-06T04:23:43.032Z",
+      "data": [
+        {
+          "smv_id": 10247,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 10248,
+          "rfid_user": "0010642847",
+          "batch": 2
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 15,
+      "updatedAt": "2026-06-06T05:05:27.100Z",
+      "data": [
+        {
+          "smv_id": 10247,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 10248,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 129874,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 129904,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 129907,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130111,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130114,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130117,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130120,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130129,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130147,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130258,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130270,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130273,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130276,
+          "rfid_user": "0013468654",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 15,
+      "updatedAt": "2026-06-06T05:06:06.434Z",
+      "data": [
+        {
+          "smv_id": 10247,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 10248,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 129874,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 129904,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 129907,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130111,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130114,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130117,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130120,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130129,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130147,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130258,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130270,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130273,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130276,
+          "rfid_user": "0013468654",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "6",
+      "style": "1128733",
+      "environment": "MJL",
+      "count": 15,
+      "updatedAt": "2026-06-06T05:07:09.666Z",
+      "data": [
+        {
+          "smv_id": 10247,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 10248,
+          "rfid_user": "0010642847",
+          "batch": 2
+        },
+        {
+          "smv_id": 129874,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 129904,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 129907,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130111,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130114,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130117,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130120,
+          "rfid_user": "0013651564",
+          "batch": 1
+        },
+        {
+          "smv_id": 130129,
+          "rfid_user": "0013537448",
+          "batch": 1
+        },
+        {
+          "smv_id": 130147,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130258,
+          "rfid_user": "0013468654",
+          "batch": 1
+        },
+        {
+          "smv_id": 130270,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130273,
+          "rfid_user": "0004950667",
+          "batch": 1
+        },
+        {
+          "smv_id": 130276,
+          "rfid_user": "0013468654",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-06T05:20:55.209Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "1",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 5,
+      "updatedAt": "2026-06-06T06:42:46.794Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98064,
+          "rfid_user": "0009530732",
+          "batch": 1
+        },
+        {
+          "smv_id": 98067,
+          "rfid_user": "0003944043",
+          "batch": 1
+        },
+        {
+          "smv_id": 98070,
+          "rfid_user": "0012036778",
+          "batch": 1
+        },
+        {
+          "smv_id": 98073,
+          "rfid_user": "0003145469",
+          "batch": 1
+        }
+      ]
+    },
+    {
+      "line": "3",
+      "style": "G81449",
+      "environment": "MJL",
+      "count": 1,
+      "updatedAt": "2026-06-09T02:40:57.589Z",
+      "data": [
+        {
+          "smv_id": 98061,
+          "rfid_user": "8484",
+          "batch": 1
+        }
+      ]
+    }
+  ]
+}

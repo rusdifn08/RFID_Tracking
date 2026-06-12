@@ -1,0 +1,89 @@
+{
+  "hero": {
+    "eyebrow": "Demo Dashboard RFID Sewing • Source Simulasi GCC",
+    "title": "RFID Sewing Production Batch System",
+    "subtitle": "Monitoring alur RFID dari Cutting, pembuatan RFID per pcs sejak awal, Batch 1–7 Sewing, QC awal/tengah/akhir, Assembling, hingga ironing/final release."
+  },
+  "flowSteps": [
+    {
+      "no": "01",
+      "title": "Create Bundle + Pcs RFID at Cutting",
+      "desc": "Di Cutting dibuat reference bundle dan RFID per pcs. Demo rule: 1 bundle = 10 pcs.",
+      "dot": "blue"
+    },
+    {
+      "no": "02",
+      "title": "Attach Pcs Tag to Main Panel",
+      "desc": "RFID per pcs ditempel atau terbawa pada panel terbesar di setiap batch.",
+      "dot": "purple"
+    },
+    {
+      "no": "03",
+      "title": "Batch 1–5 Proses Awal",
+      "desc": "Panel preparation, komponen, pocket, sleeve, hood, body preparation.",
+      "dot": "cyan"
+    },
+    {
+      "no": "04",
+      "title": "QC Awal & Tengah",
+      "desc": "Gate kontrol untuk mencegah defect mengalir ke assembly.",
+      "dot": "orange"
+    },
+    {
+      "no": "05",
+      "title": "Batch 6 Assembling",
+      "desc": "Penggabungan komponen menggunakan RFID pcs yang sudah ada sejak Cutting.",
+      "dot": "blue"
+    },
+    {
+      "no": "06",
+      "title": "Verify Existing Pcs RFID",
+      "desc": "Saat assembling hanya scan dan validasi RFID pcs, bukan membuat tag baru.",
+      "dot": "green"
+    },
+    {
+      "no": "07",
+      "title": "Batch 7 Final",
+      "desc": "Final stitch, ironing, QC akhir, final release ke proses berikutnya.",
+      "dot": "purple"
+    },
+    {
+      "no": "08",
+      "title": "Output Sewing",
+      "desc": "GCC menerima status output final per pcs, dengan summary bundle tetap bisa ditarik.",
+      "dot": "green"
+    }
+  ],
+  "rfidCards": [
+    {
+      "chip": "Bundling",
+      "chipTone": "blue",
+      "title": "Bundle Reference at Cutting",
+      "foot": "Dibuat di Cutting sebagai reference bundle. Satu bundle berisi 10 pcs.",
+      "code": "RFID-BDL-GM1-L01-WO-MBJ-2026-001-0001"
+    },
+    {
+      "chip": "Batch",
+      "chipTone": "purple",
+      "title": "Create Tag Batch",
+      "foot": "Tag proses/batch untuk scan di pos sewing.",
+      "code": "RFID-BATCH-01-BDL-0001"
+    },
+    {
+      "chip": "Per Pcs",
+      "chipTone": "green",
+      "title": "Pcs RFID from Cutting",
+      "foot": "RFID per pcs sudah dibuat di Cutting dan ikut panel terbesar.",
+      "code": "CUT-PCS-GM1-L01-WO-MBJ-2026-001-BDL0001-PCS01"
+    }
+  ],
+  "hubCard": {
+    "title": "RFID Identity Model",
+    "subtitle": "Bundle reference, tag batch & RFID per pcs dari Cutting",
+    "highlights": [
+      "3 model ID",
+      "8 langkah alur",
+      "Traceable GCC"
+    ]
+  }
+}

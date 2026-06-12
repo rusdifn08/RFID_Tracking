@@ -140,7 +140,14 @@ body,
     scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
-/* Filter date Data Line: sembunyikan icon kalender bawaan, pakai icon custom di kanan */
+/* ── Opsi B: Root font scaling dashboard (aktifkan class di wrapper SewingPageShell) ──
+ * Tambahkan SEWING_DASHBOARD_ROOT_SCALE_CLASS pada div konten dashboard.
+ * Semua ukuran rem (FLUID + Tailwind) ikut membesar — satu knob global.
+ *
+ * .sewing-dashboard-fluid-root {
+ *   font-size: clamp(14px, 0.52vw + 0.88vh, 25px);
+ * }
+ */
 .date-filter-input::-webkit-calendar-picker-indicator {
     opacity: 0;
     position: absolute;

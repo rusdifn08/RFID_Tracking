@@ -1,0 +1,22 @@
+{
+  "line": "1",
+  "style": "G81449",
+  "environment": "MJL",
+  "data": [
+    {
+      "smv_id": 98061,
+      "rfid_user": "123456123",
+      "batch": 1
+    },
+    {
+      "smv_id": 98064,
+      "rfid_user": "0009530732",
+      "batch": 2
+    },
+    {
+      "smv_id": 98067,
+      "rfid_user": "0010807112",
+      "batch": 1
+    }
+  ]
+}

@@ -541,6 +541,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const [modalStoreUrgentLocation, setModalStoreUrgentLocation] = useState<'GM 1' | 'GM 2'>('GM 1');
     const [modalSupplyRfid, setModalSupplyRfid] = useState('');
     const [modalSupplyLineNum, setModalSupplyLineNum] = useState(1);
+    const [modalSupplyQty, setModalSupplyQty] = useState('1');
     const [modalSupplyLocation, setModalSupplyLocation] = useState<'GM 1' | 'GM 2'>('GM 1');
     const [tableDetail, setTableDetail] = useState<{
         open: boolean;
@@ -794,22 +795,31 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
     const submitSupply = useCallback(
         async (
             rfid: string,
-            line: string,
-            location: 'GM 1' | 'GM 2'
-        ): Promise<{ ok: true } | { ok: false; error: string }> => {
+            lineNum: number,
+            qty: number,
+            location: 'GM 1' | 'GM 2',
+            nik: string
+        ): Promise<{ ok: true; message?: string } | { ok: false; error: string }> => {
             setBusySu(true);
             try {
-                const res = await postCuttingSupplySewingScan({ rfid_garment: rfid, line, location });
-                if (!res.success) return { ok: false, error: res.error || 'Gagal' };
+                const res = await postCuttingSupplySewingScan({
+                    rfid_bundles: rfid,
+                    nik,
+                    line: lineNum,
+                    location,
+                    qty_receive: String(qty),
+                });
+                if (!res.success) return { ok: false, error: res.error || 'Gagal proses supply sewing' };
                 void queryClient.invalidateQueries({ queryKey: QUERY_SCAN });
-                return { ok: true };
+                if (homeDashboardApi) void queryClient.invalidateQueries({ queryKey: QUERY_HOME_DASH });
+                return { ok: true, message: res.data?.message };
             } catch (e) {
                 return { ok: false, error: e instanceof Error ? e.message : 'Gagal' };
             } finally {
                 setBusySu(false);
             }
         },
-        [queryClient]
+        [queryClient, homeDashboardApi]
     );
 
     const runSupplySubmit = useCallback(async () => {
@@ -828,8 +838,24 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             alert('Line minimal 1.');
             return;
         }
-        const lineStr = String(lineNum);
-        const res = await submitSupply(v, lineStr, loc);
+        const qtyRaw = modalSupplyQty.trim();
+        if (!qtyRaw) {
+            alert('Isi Quantity terlebih dahulu.');
+            return;
+        }
+        const qtyNum = Math.floor(Number(qtyRaw));
+        if (!Number.isFinite(qtyNum) || qtyNum < 1 || qtyNum > 9999) {
+            alert('Quantity harus angka 1–9999.');
+            return;
+        }
+        const nik = operator.nik && operator.nik !== '—' ? operator.nik.trim() : '';
+        if (!nik) {
+            alert('NIK operator tidak ditemukan. Silakan login ulang.');
+            return;
+        }
+        const lineStr = `L${String(lineNum).padStart(2, '0')}`;
+        const branchStr = loc.replace(/\s+/g, '');
+        const res = await submitSupply(v, lineNum, qtyNum, loc, nik);
         const id = newCuttingScanRowId();
         if (res.ok) {
             playSound('success');
@@ -839,7 +865,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                     rfid: v,
                     time: new Date(),
                     ok: true,
-                    message: `Line ${lineStr} Â· ${loc}`,
+                    message: res.message || `${lineStr} · ${branchStr} · Qty ${qtyNum}`,
                 },
                 ...prev,
             ]);
@@ -857,7 +883,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             ]);
         }
         setModalSupplyRfid('');
-    }, [modalSupplyRfid, modalSupplyLineNum, modalSupplyLocation, submitSupply, playSound]);
+    }, [modalSupplyRfid, modalSupplyLineNum, modalSupplyQty, modalSupplyLocation, operator.nik, submitSupply, playSound]);
 
     const qcRows = useMemo(() => {
         if (homeDashboardApi) {
@@ -1187,7 +1213,7 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
             <div className="font-semibold text-violet-900" style={{ fontSize: STORE_FORM_LABEL_FS }}>
                 Supply Sewing — isi sebelum scan
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
                 <div className="min-w-0">
                     <span className="block font-semibold text-slate-700 mb-1" style={{ fontSize: STORE_FORM_LABEL_FS }}>
                         Location
@@ -1239,6 +1265,22 @@ const CuttingProcessSection = memo(function CuttingProcessSection({
                             <Plus className="h-4 w-4" strokeWidth={2.5} />
                         </button>
                     </div>
+                </div>
+                <div className="min-w-0">
+                    <span className="block font-semibold text-slate-700 mb-1" style={{ fontSize: STORE_FORM_LABEL_FS }}>
+                        Quantity
+                    </span>
+                    <input
+                        type="number"
+                        min={1}
+                        max={9999}
+                        inputMode="numeric"
+                        value={modalSupplyQty}
+                        onChange={(e) => setModalSupplyQty(e.target.value)}
+                        placeholder="24"
+                        className="w-full max-w-[14rem] rounded-lg border border-violet-200 bg-white px-2.5 py-2 tabular-nums font-bold text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                        style={{ fontSize: 'clamp(1rem, 0.85rem + 0.55vmin, 1.35rem)' }}
+                    />
                 </div>
             </div>
         </div>

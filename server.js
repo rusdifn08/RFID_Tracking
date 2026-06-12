@@ -6,6 +6,7 @@ import './set-no-debug.js';
 
 import express from 'express';
 import cors from 'cors';
+import http from 'node:http';
 import mysql from 'mysql2/promise';
 import os from 'os';
 import fs from 'fs';
@@ -165,6 +166,10 @@ const DRYROOM_HOURLY_FILE = path.join(__dirname, 'dryroom_hourly_data.json');
 const SHIFT_DATA_FILE = path.join(__dirname, 'shift_data.json');
 // Path file untuk menyimpan data supervisor per line
 const SUPERVISOR_DATA_FILE = path.join(__dirname, 'supervisor_data.json');
+/** Layout sewing: mapping operator per proses SMV per line (dibaca embedded backend) */
+const SEWING_LAYOUT_DATA_FILE = path.join(__dirname, 'sewing_layout_data.json');
+/** Uji coba layout POST — format ringkas: smv_id, rfid_user, batch */
+const SEWING_LAYOUT_POST_FILE = path.join(__dirname, 'sewing_layout_post.json');
 /** Master target/hari, target/jam, SPV, NIK per line (Form Report — db target) */
 const LINE_PRODUCTION_TARGETS_FILE = path.join(__dirname, 'line_production_targets.json');
 /** Operator + detail scan terakhir per mode (check in / check out terpisah) — sinkron via proxy */
@@ -1025,6 +1030,61 @@ async function proxyRequest(endpoint, req, res, options = {}) {
             message: errorMessage,
             error: error.message,
             timestamp: new Date().toISOString()
+        });
+    }
+}
+
+// ============================================
+// GCC CUTTING SERVICE (:9000) — path sama dengan backend
+// ============================================
+
+const GCC_CUTTING_SERVICE_HOST = process.env.GCC_CUTTING_SERVICE_HOST || '10.5.0.107';
+const GCC_CUTTING_SERVICE_107 = process.env.GCC_CUTTING_SERVICE_107_HOST || '10.5.0.107';
+const GCC_CUTTING_SERVICE_PORT = Number(process.env.GCC_CUTTING_SERVICE_PORT || 9000);
+
+function resolveGccCutting9000Host(endpointPath) {
+    if (
+        endpointPath === '/api/gcc/cutting/reg' ||
+        endpointPath.startsWith('/api/gcc/cutting/reg/') ||
+        endpointPath === '/api/gcc/cutting/sewing'
+    ) {
+        return GCC_CUTTING_SERVICE_HOST;
+    }
+    return GCC_CUTTING_SERVICE_107;
+}
+
+/** Forward request ke service GCC cutting (:9000) dengan path backend asli. */
+async function forwardToGccCuttingService9000(req, res, endpointPath, host) {
+    try {
+        const queryParams = new URLSearchParams();
+        Object.entries(req.query || {}).forEach(([key, val]) => {
+            if (val != null && String(val) !== '') queryParams.append(key, String(val));
+        });
+        const queryString = queryParams.toString();
+        const url = `http://${host}:${GCC_CUTTING_SERVICE_PORT}${endpointPath}${queryString ? `?${queryString}` : ''}`;
+        const method = req.method || 'GET';
+        const headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'rfid-key': String(req.headers['rfid-key'] || '0011779933'),
+        };
+        const hasBody = !['GET', 'HEAD'].includes(String(method).toUpperCase());
+        const body =
+            hasBody && req.body && Object.keys(req.body).length > 0 ? JSON.stringify(req.body) : undefined;
+        const response = await fetch(url, { method, headers, body });
+        const text = await response.text();
+        const trimmed = text.replace(/^\uFEFF/, '').trim();
+        if (!trimmed) {
+            return res.status(response.status).end();
+        }
+        try {
+            return res.status(response.status).json(JSON.parse(trimmed));
+        } catch {
+            return res.status(502).json({ message: 'Respons service cutting bukan JSON' });
+        }
+    } catch (error) {
+        return res.status(502).json({
+            message: error instanceof Error ? error.message : 'Gagal menghubungi service cutting',
         });
     }
 }
@@ -2101,7 +2161,12 @@ app.post('/api/auth/login', async (req, res) => {
  * Endpoint ini memanggil API backend menggunakan BACKEND_API_URL (port dinamis berdasarkan environment)
  */
 app.get('/user', async (req, res) => {
-    const { nik, rfid_user } = req.query;
+    const { nik, rfid_user, bagian } = req.query;
+
+    // Sewing layout: GET /user?bagian=SEWING → service cutting :9000 (10.5.0.107)
+    if (bagian) {
+        return forwardToGccCuttingService9000(req, res, '/user', GCC_CUTTING_SERVICE_HOST);
+    }
 
     // Log removed for successful requests - only errors will be logged
 
@@ -3068,10 +3133,75 @@ app.get('/output/gcc', async (req, res) => {
 });
 
 /**
- * GET /api/gcc/cutting/list?barcode= — data label cutting (backend GCC / Django).
+ * POST /api/gcc/cutting/reg/batch — proxy browser → GET + body ke service cutting (:9000).
+ * Backend upstream: GET /api/gcc/cutting/reg/batch dengan body `{ barcode }`.
  */
-app.get('/api/gcc/cutting/list', async (req, res) => {
-    return await proxyRequest('/api/gcc/cutting/list', req, res);
+app.post('/api/gcc/cutting/reg/batch', async (req, res) => {
+    const body = JSON.stringify(req.body && Object.keys(req.body).length > 0 ? req.body : {});
+    const rfidKey = String(req.headers['rfid-key'] || '0011779933');
+    await new Promise((resolve) => {
+        const proxyReq = http.request(
+            {
+                hostname: GCC_CUTTING_SERVICE_HOST,
+                port: GCC_CUTTING_SERVICE_PORT,
+                path: '/api/gcc/cutting/reg/batch',
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Content-Length': Buffer.byteLength(body),
+                    'rfid-key': rfidKey,
+                },
+            },
+            (proxyRes) => {
+                let text = '';
+                proxyRes.on('data', (chunk) => {
+                    text += chunk;
+                });
+                proxyRes.on('end', () => {
+                    const trimmed = text.replace(/^\uFEFF/, '').trim();
+                    if (!trimmed) {
+                        res.status(proxyRes.statusCode || 502).json({ message: 'Respons batch register kosong' });
+                        resolve();
+                        return;
+                    }
+                    try {
+                        res.status(proxyRes.statusCode || 200).json(JSON.parse(trimmed));
+                    } catch {
+                        res.status(502).json({ message: 'Respons batch register bukan JSON' });
+                    }
+                    resolve();
+                });
+            }
+        );
+        proxyReq.on('error', (err) => {
+            res.status(502).json({ message: err.message || 'Gagal menghubungi service cutting' });
+            resolve();
+        });
+        proxyReq.write(body);
+        proxyReq.end();
+    });
+});
+
+/** Proxy GCC cutting (:9000) — path sama dengan backend (`/api/gcc/cutting/...`). */
+app.use('/api/gcc/cutting', async (req, res, next) => {
+    if (req.method === 'POST' && req.path === '/reg/batch') {
+        return next();
+    }
+    const endpointPath = `/api/gcc/cutting${req.path === '/' ? '' : req.path}`;
+    const host = resolveGccCutting9000Host(endpointPath);
+    return forwardToGccCuttingService9000(req, res, endpointPath, host);
+});
+
+/** GET /api/homedashboard — dashboard cutting home (:9000). */
+app.get('/api/homedashboard', async (req, res) => {
+    return forwardToGccCuttingService9000(req, res, '/api/homedashboard', GCC_CUTTING_SERVICE_107);
+});
+
+/** Proxy SMV master sewing (:9000). */
+app.use('/api/smv', async (req, res) => {
+    const endpointPath = `/api/smv${req.path === '/' ? '' : req.path}`;
+    return forwardToGccCuttingService9000(req, res, endpointPath, GCC_CUTTING_SERVICE_HOST);
 });
 
 /**
@@ -4956,6 +5086,7 @@ app.get('/api/supervisor-data', (req, res) => {
         const allSupervisors = supervisorData.supervisors || {};
         const allStartTimes = supervisorData.startTimes || {};
         const allTargets = supervisorData.targets || {};
+        const allDisplayTitles = supervisorData.displayTitles || {};
 
         // Filter data berdasarkan environment
         // CLN: line 0, 1-5
@@ -4965,6 +5096,16 @@ app.get('/api/supervisor-data', (req, res) => {
         const filteredSupervisors = {};
         const filteredStartTimes = {};
         const filteredTargets = {};
+        const filteredDisplayTitles = {};
+
+        const resolveDisplayTitleStorageKey = (lineId) => {
+            const id = parseInt(lineId, 10);
+            if (environment === 'CLN' && id >= 1 && id <= 5) return `CLN_${lineId}`;
+            if (environment === 'MJL' && (id >= 1 && id <= 9 || id >= 10 && id <= 16 || id === 21)) return `MJL_${lineId}`;
+            if (environment === 'MJL2' && id >= 1 && id <= 9) return `MJL2_${lineId}`;
+            if (environment === 'GCC' && id >= 1 && id <= 21) return `GCC_${lineId}`;
+            return lineId;
+        };
 
         // Default startTimes untuk fallback
         const defaultStartTimesCLN = {
@@ -5092,12 +5233,19 @@ app.get('/api/supervisor-data', (req, res) => {
             });
         }
 
+        Object.keys(filteredSupervisors).forEach((lineId) => {
+            const storageKey = resolveDisplayTitleStorageKey(lineId);
+            filteredDisplayTitles[lineId] =
+                allDisplayTitles[storageKey] || allDisplayTitles[lineId] || '';
+        });
+
         return res.json({
             success: true,
             data: {
                 supervisors: filteredSupervisors,
                 startTimes: filteredStartTimes,
-                targets: filteredTargets
+                targets: filteredTargets,
+                displayTitles: filteredDisplayTitles
             },
             environment: environment,
             lastUpdated: supervisorData.lastUpdated,
@@ -5250,7 +5398,7 @@ app.get('/api/target-data', (req, res) => {
  */
 app.post('/api/supervisor-data', (req, res) => {
     try {
-        const { lineId, supervisor, startTime, target, environment: reqEnv } = req.body;
+        const { lineId, supervisor, startTime, target, displayTitle, environment: reqEnv } = req.body;
 
         if (lineId === undefined || lineId === null) {
             console.error(`❌ [SUPERVISOR DATA] Missing lineId in request`);
@@ -5275,6 +5423,9 @@ app.post('/api/supervisor-data', (req, res) => {
         }
         if (!supervisorData.targets) {
             supervisorData.targets = {};
+        }
+        if (!supervisorData.displayTitles) {
+            supervisorData.displayTitles = {};
         }
 
         const lineIdStr = lineId.toString();
@@ -5346,9 +5497,24 @@ app.post('/api/supervisor-data', (req, res) => {
             }
         }
 
+        // Update nama tampilan line (hanya label UI, lineId query tidak berubah)
+        if (displayTitle !== undefined && displayTitle !== null) {
+            const trimmedTitle = typeof displayTitle === 'string' ? displayTitle.trim() : '';
+            if (trimmedTitle) {
+                supervisorData.displayTitles[storageKey] = trimmedTitle;
+            } else {
+                delete supervisorData.displayTitles[storageKey];
+            }
+            if (storageKey !== lineIdStr && supervisorData.displayTitles[lineIdStr] !== undefined) {
+                delete supervisorData.displayTitles[lineIdStr];
+            }
+        }
+
         saveSupervisorData(supervisorData);
 
         const currentTarget = typeof supervisorData.targets[storageKey] === 'number' ? supervisorData.targets[storageKey] : (typeof supervisorData.targets[lineIdStr] === 'number' ? supervisorData.targets[lineIdStr] : 0);
+        const currentDisplayTitle =
+            supervisorData.displayTitles[storageKey] || supervisorData.displayTitles[lineIdStr] || '';
         return res.json({
             success: true,
             message: `Data updated for line ${lineId}`,
@@ -5357,6 +5523,7 @@ app.post('/api/supervisor-data', (req, res) => {
                 supervisor: supervisorData.supervisors[storageKey] || supervisorData.supervisors[lineIdStr] || '-',
                 startTime: supervisorData.startTimes[storageKey] || supervisorData.startTimes[lineIdStr] || '07:30',
                 target: currentTarget,
+                displayTitle: currentDisplayTitle,
                 environment: environment
             },
             timestamp: new Date().toISOString()
@@ -5368,6 +5535,259 @@ app.post('/api/supervisor-data', (req, res) => {
             message: 'Error updating supervisor data',
             error: error.message,
             timestamp: new Date().toISOString()
+        });
+    }
+});
+
+function loadSewingLayoutStore() {
+    try {
+        if (!fs.existsSync(SEWING_LAYOUT_DATA_FILE)) {
+            const initial = { layouts: {} };
+            fs.writeFileSync(SEWING_LAYOUT_DATA_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+            return initial;
+        }
+        const raw = fs.readFileSync(SEWING_LAYOUT_DATA_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { layouts: {} };
+        if (!parsed.layouts || typeof parsed.layouts !== 'object') parsed.layouts = {};
+        return parsed;
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT] load error:', error.message);
+        return { layouts: {} };
+    }
+}
+
+function saveSewingLayoutStore(store) {
+    fs.writeFileSync(SEWING_LAYOUT_DATA_FILE, JSON.stringify(store, null, 2), 'utf-8');
+}
+
+function sewingLayoutStorageKey(environment, lineId) {
+    const line = String(lineId ?? '').trim().replace(/^LINE\s*/i, '');
+    const env = environment === 'MJL' || environment === 'MJL2' || environment === 'CLN' || environment === 'GCC'
+        ? environment
+        : CURRENT_ENV;
+    return `${env}_${line}`;
+}
+
+/**
+ * GET /api/sewing-layout-data - Ambil layout sewing per line (embedded backend / frontend)
+ * Query: ?line=1&environment=MJL
+ */
+app.get('/api/sewing-layout-data', (req, res) => {
+    try {
+        const line = req.query.line;
+        const environment = req.query.environment || CURRENT_ENV;
+        if (!line) {
+            return res.status(400).json({
+                success: false,
+                error: 'Parameter line wajib diisi',
+                timestamp: new Date().toISOString(),
+            });
+        }
+        const key = sewingLayoutStorageKey(environment, line);
+        const store = loadSewingLayoutStore();
+        const data = store.layouts[key] || null;
+        return res.json({
+            success: true,
+            data,
+            key,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT] GET error:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * POST /api/sewing-layout-data - Simpan layout sewing (gabungan SMV + operator)
+ * Body: { line, style, environment, slots: [...] }
+ */
+app.post('/api/sewing-layout-data', (req, res) => {
+    try {
+        const body = req.body || {};
+        const line = body.line;
+        const style = body.style;
+        const environment = body.environment || CURRENT_ENV;
+        const slots = body.slots;
+
+        if (!line || !style || !Array.isArray(slots)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Body wajib berisi line, style, dan slots (array)',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        const key = sewingLayoutStorageKey(environment, line);
+        const payload = {
+            line: String(line).trim().replace(/^LINE\s*/i, ''),
+            style: String(style).trim(),
+            environment,
+            buyer: body.buyer || undefined,
+            item: body.item || undefined,
+            updatedAt: new Date().toISOString(),
+            slots,
+        };
+
+        const store = loadSewingLayoutStore();
+        store.layouts[key] = payload;
+        saveSewingLayoutStore(store);
+
+        return res.json({
+            success: true,
+            data: payload,
+            key,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT] POST error:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+function loadSewingLayoutPostStore() {
+    try {
+        if (!fs.existsSync(SEWING_LAYOUT_POST_FILE)) {
+            const initial = { entries: [] };
+            fs.writeFileSync(SEWING_LAYOUT_POST_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+            return initial;
+        }
+        const raw = fs.readFileSync(SEWING_LAYOUT_POST_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { entries: [] };
+        if (!Array.isArray(parsed.entries)) parsed.entries = [];
+        return parsed;
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT POST] load error:', error.message);
+        return { entries: [] };
+    }
+}
+
+function saveSewingLayoutPostStore(store) {
+    fs.writeFileSync(SEWING_LAYOUT_POST_FILE, JSON.stringify(store, null, 2), 'utf-8');
+}
+
+function normalizeSewingLayoutPostRow(row) {
+    const smv_id = Number(row?.smv_id);
+    const rfid_user = String(row?.rfid_user ?? '').trim();
+    let batch = Number(row?.batch);
+    if (!Number.isFinite(batch)) batch = 1;
+    batch = Math.min(10, Math.max(1, Math.round(batch)));
+    if (!Number.isFinite(smv_id) || smv_id <= 0) return null;
+    if (!rfid_user) return null;
+    return { smv_id, rfid_user, batch };
+}
+
+/**
+ * GET /api/sewing-layout-post — baca hasil POST layout uji coba
+ * Query opsional: ?line=1&style=G81449&environment=MJL
+ */
+app.get('/api/sewing-layout-post', (req, res) => {
+    try {
+        const { line, style, environment } = req.query;
+        const store = loadSewingLayoutPostStore();
+        let entries = store.entries;
+        if (line) {
+            const lineNorm = String(line).trim().replace(/^LINE\s*/i, '');
+            entries = entries.filter((e) => String(e.line) === lineNorm);
+        }
+        if (style) {
+            const styleNorm = String(style).trim().toUpperCase();
+            entries = entries.filter((e) => String(e.style || '').trim().toUpperCase() === styleNorm);
+        }
+        if (environment) {
+            entries = entries.filter((e) => String(e.environment) === String(environment));
+        }
+        const latest = entries.length > 0 ? entries[entries.length - 1] : null;
+        return res.json({
+            success: true,
+            count: entries.length,
+            latest,
+            entries,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT POST] GET error:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * POST /api/sewing-layout-post — simpan layout uji coba ke sewing_layout_post.json
+ * Body:
+ *   { line, style, environment?, data: [{ smv_id, rfid_user, batch }, ...] }
+ * atau array langsung: [{ smv_id, rfid_user, batch }, ...]
+ */
+app.post('/api/sewing-layout-post', (req, res) => {
+    try {
+        const body = req.body || {};
+        const isArrayBody = Array.isArray(body);
+        const line = isArrayBody ? req.query.line || '1' : body.line;
+        const style = isArrayBody ? req.query.style || '' : body.style;
+        const environment = isArrayBody
+            ? (req.query.environment || CURRENT_ENV)
+            : (body.environment || CURRENT_ENV);
+        const rawRows = isArrayBody ? body : body.data;
+
+        if (!line || !style || !Array.isArray(rawRows)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Body wajib berisi line, style, dan data (array { smv_id, rfid_user, batch })',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        const data = rawRows
+            .map(normalizeSewingLayoutPostRow)
+            .filter(Boolean);
+
+        if (data.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Tidak ada baris valid. Setiap item wajib smv_id dan rfid_user.',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        const payload = {
+            line: String(line).trim().replace(/^LINE\s*/i, ''),
+            style: String(style).trim(),
+            environment,
+            count: data.length,
+            updatedAt: new Date().toISOString(),
+            data,
+        };
+
+        const store = loadSewingLayoutPostStore();
+        store.entries.push(payload);
+        saveSewingLayoutPostStore(store);
+
+        return res.json({
+            success: true,
+            message: 'Layout uji coba tersimpan ke sewing_layout_post.json',
+            data: payload,
+            file: 'sewing_layout_post.json',
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('❌ [SEWING LAYOUT POST] POST error:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
         });
     }
 });

@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, User, Sun, Moon, Edit, Tag } from 'lucide-react';
+import { ArrowRight, User, Sun, Moon, Edit, Tag, Plus, X, Save, Clock, Target } from 'lucide-react';
 import { API_BASE_URL, getDefaultHeaders, getInitialEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI, invalidateSupervisorDataCache, type BackendEnvironment } from '../config/api';
 import type { ProductionLine } from '../data/production_line';
 import {
@@ -11,7 +11,8 @@ import {
 } from '../data/production_line';
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 import { preloadLineDetail } from '../utils/preload';
-import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD } from '../config/hide';
+import { resolveLineDisplayTitle } from '../utils/lineDisplayTitle';
+import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines } from '../config/hide';
 import brandIconMontbell from '../assets/montbell.svg';
 
 // Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
@@ -48,6 +49,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
     const [supervisorData, setSupervisorData] = useState<Record<string, string>>({});
     const [startTimesData, setStartTimesData] = useState<Record<string, string>>({});
     const [targetsData, setTargetsData] = useState<Record<string, number>>({});
+    const [displayTitlesData, setDisplayTitlesData] = useState<Record<string, string>>({});
     // Style per line untuk card (fetch 1x saja, bukan real-time)
     const [stylesData, setStylesData] = useState<Record<string, string>>({});
 
@@ -57,6 +59,223 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
     // State untuk edit modal
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedLine, setSelectedLine] = useState<ProductionLine | null>(null);
+
+    // --- DRAG AND DROP PUZZLE STATE ---
+    const [cardOrder, setCardOrder] = useState<number[]>([]);
+    const [longPressedId, setLongPressedId] = useState<number | null>(null);
+    const [draggedId, setDraggedId] = useState<number | null>(null);
+    const [dragOverId, setDragOverId] = useState<number | null>(null);
+    const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // --- CUSTOM LINES STATE ---
+    const [customLines, setCustomLines] = useState<ProductionLine[]>([]);
+    
+    // --- ADD LINE MODAL STATE ---
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newLineId, setNewLineId] = useState('');
+    const [newLineTitlePrefix, setNewLineTitlePrefix] = useState('Production Line');
+    const [newLineTitleSuffix, setNewLineTitleSuffix] = useState('');
+    const [newLineSupervisor, setNewLineSupervisor] = useState('');
+    const [newLineStartTime, setNewLineStartTime] = useState('07:30');
+    const [newLineTarget, setNewLineTarget] = useState<number>(0);
+    const [newLineError, setNewLineError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const [hiddenLines, setHiddenLines] = useState<number[]>([]);
+
+    const loadCustomAndHiddenLines = () => {
+        if (!environment) return;
+        const savedOrder = localStorage.getItem(`rfid_line_order_${environment}`);
+        if (savedOrder) {
+            try {
+                setCardOrder(JSON.parse(savedOrder));
+            } catch { /* ignore */ }
+        }
+
+        const savedCustom = localStorage.getItem(`rfid_custom_lines_${environment}`);
+        if (savedCustom) {
+            try {
+                setCustomLines(JSON.parse(savedCustom));
+            } catch { /* ignore */ }
+        }
+
+        const savedHidden = localStorage.getItem(`rfid_hidden_lines_${environment}`);
+        if (savedHidden) {
+            try {
+                setHiddenLines(JSON.parse(savedHidden));
+            } catch { /* ignore */ }
+        }
+    };
+
+    // Load saved data and listen to delete events
+    useEffect(() => {
+        loadCustomAndHiddenLines();
+        
+        window.addEventListener('lineDeleted', loadCustomAndHiddenLines);
+        return () => window.removeEventListener('lineDeleted', loadCustomAndHiddenLines);
+    }, [environment]);
+
+    // Apply sorting
+    const sortedLines = useMemo(() => {
+        let lines;
+        if (environment === 'MJL2') {
+            lines = productionLinesMJL2;
+        } else if (environment === 'MJL') {
+            lines = productionLinesMJL;
+        } else if (environment === 'GCC') {
+            lines = productionLinesGCC;
+        } else {
+            lines = productionLinesCLN;
+        }
+        const allLines = [...lines, ...customLines].filter(l => !hiddenLines.includes(l.id));
+        const visibleLines = filterVisibleProductionLines(allLines, environment);
+
+        if (cardOrder.length === 0) return visibleLines;
+
+        const orderMap = new Map(cardOrder.map((id, idx) => [id, idx]));
+        return [...visibleLines].sort((a, b) => {
+            const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999;
+            const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999;
+            return indexA - indexB;
+        });
+    }, [environment, cardOrder, customLines, hiddenLines]);
+
+    const handleDragStart = (e: React.DragEvent, id: number) => {
+        if (longPressedId !== id) {
+            e.preventDefault(); // Mencegah drag normal (harus di-long-press dulu)
+            return;
+        }
+        setDraggedId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e: React.DragEvent, id: number) => {
+        e.preventDefault(); // Harus di-prevent untuk mengizinkan drop
+        if (draggedId !== null && dragOverId !== id) {
+            setDragOverId(id);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent, targetId: number) => {
+        e.preventDefault();
+        if (draggedId === null || draggedId === targetId) {
+            resetDrag();
+            return;
+        }
+
+        setCardOrder(prev => {
+            // Gunakan order dari prev, atau inisialisasi dari default jika kosong
+            let currentOrder = prev.length ? prev : sortedLines.map(l => l.id);
+            // Tambahkan elemen baru yang mungkin belum masuk di memori
+            const missingIds = sortedLines.map(l => l.id).filter(id => !currentOrder.includes(id));
+            if (missingIds.length > 0) currentOrder = [...currentOrder, ...missingIds];
+
+            const newOrder = [...currentOrder];
+            const draggedIdx = newOrder.indexOf(draggedId);
+            const targetIdx = newOrder.indexOf(targetId);
+
+            if (draggedIdx > -1 && targetIdx > -1) {
+                newOrder.splice(draggedIdx, 1);
+                newOrder.splice(targetIdx, 0, draggedId);
+                localStorage.setItem(`rfid_line_order_${environment}`, JSON.stringify(newOrder));
+                return newOrder;
+            }
+            return currentOrder;
+        });
+
+        resetDrag();
+    };
+
+    const resetDrag = () => {
+        setDraggedId(null);
+        setDragOverId(null);
+        setLongPressedId(null);
+    };
+
+    const handleAddCustomLine = async () => {
+        setNewLineError('');
+        const numId = parseInt(newLineId, 10);
+        if (isNaN(numId) || numId <= 0) {
+            setNewLineError('Line ID harus berupa angka positif yang valid.');
+            return;
+        }
+        
+        let allLines;
+        if (environment === 'MJL2') allLines = productionLinesMJL2;
+        else if (environment === 'MJL') allLines = productionLinesMJL;
+        else if (environment === 'GCC') allLines = productionLinesGCC;
+        else allLines = productionLinesCLN;
+
+        const exists = [...allLines, ...customLines].some(l => l.id === numId);
+        if (exists) {
+            setNewLineError(`Gagal: Line ID ${numId} sudah ada! Harap gunakan ID lain.`);
+            return;
+        }
+
+        if (!newLineTitleSuffix.trim()) {
+            setNewLineError('Nama Tampilan (sufiks/angka) tidak boleh kosong.');
+            return;
+        }
+
+        setIsSubmitting(true);
+        const newTitle = `${newLineTitlePrefix} ${newLineTitleSuffix}`.trim();
+        const newLineObj: ProductionLine = {
+            id: numId,
+            title: newTitle,
+            supervisor: newLineSupervisor.trim() || '-',
+            borderColor: 'border-blue-500',
+            accentColor: 'text-blue-600',
+            line: String(numId)
+        };
+
+        const updatedCustom = [...customLines, newLineObj];
+        setCustomLines(updatedCustom);
+        localStorage.setItem(`rfid_custom_lines_${environment}`, JSON.stringify(updatedCustom));
+        
+        // Simpan data pelengkap ke API supervisor-data
+        try {
+            await fetch(`${API_BASE_URL}/api/supervisor-data`, {
+                method: 'POST',
+                headers: { ...getDefaultHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lineId: numId,
+                    supervisor: newLineSupervisor.trim() || '-',
+                    startTime: newLineStartTime,
+                    target: newLineTarget > 0 ? newLineTarget : undefined,
+                    displayTitle: newTitle,
+                    environment: environment
+                })
+            });
+            await loadSupervisorData();
+            invalidateSupervisorDataCache(environment);
+        } catch(e) {
+            // silent
+        }
+        
+        setIsSubmitting(false);
+        setIsAddModalOpen(false);
+        setNewLineId('');
+        setNewLineTitleSuffix('');
+        setNewLineSupervisor('');
+        setNewLineStartTime('07:30');
+        setNewLineTarget(0);
+    };
+
+    const handlePointerDown = (id: number) => {
+        if (pressTimer.current) clearTimeout(pressTimer.current);
+        pressTimer.current = setTimeout(() => {
+            setLongPressedId(id);
+            if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback untuk HP
+        }, 500); // 500ms tekan lama
+    };
+
+    const handlePointerUpOrCancel = () => {
+        if (pressTimer.current) clearTimeout(pressTimer.current);
+        // Reset efek pulse bila batal diseret (kasih jeda supaya onClick tetap kena)
+        setTimeout(() => {
+            if (!draggedId) setLongPressedId(null);
+        }, 100);
+    };
 
     // Fetch environment (1x shared request)
     useEffect(() => {
@@ -71,16 +290,19 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
 
     // Pilih data berdasarkan environment
     const productionLines = useMemo(() => {
+        let lines;
         if (environment === 'MJL2') {
-            return productionLinesMJL2;
+            lines = productionLinesMJL2;
         } else if (environment === 'MJL') {
-            return productionLinesMJL;
+            lines = productionLinesMJL;
         } else if (environment === 'GCC') {
-            return productionLinesGCC;
+            lines = productionLinesGCC;
         } else {
-            return productionLinesCLN;
+            lines = productionLinesCLN;
         }
-    }, [environment]);
+        const allLines = [...lines, ...customLines].filter(l => !hiddenLines.includes(l.id));
+        return filterVisibleProductionLines(allLines, environment);
+    }, [environment, customLines, hiddenLines]);
 
 
     // Load supervisor data (1x shared request per env via getSupervisorDataFromAPI)
@@ -91,6 +313,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
             setSupervisorData(data.supervisors || {});
             setStartTimesData(data.startTimes || {});
             setTargetsData(data.targets || {});
+            setDisplayTitlesData(data.displayTitles || {});
         }
     };
 
@@ -416,11 +639,27 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
     };
 
     return (
-        <div className="w-full h-full font-sans"
-        >
+        <div className="w-full h-full font-sans">
+            {/* Custom Styles for Premium Drag & Drop Animations */}
+            <style>
+                {`
+                    @keyframes floatWiggle {
+                        0% { transform: scale(1.04) rotate(-1.5deg); }
+                        50% { transform: scale(1.04) rotate(1.5deg); }
+                        100% { transform: scale(1.04) rotate(-1.5deg); }
+                    }
+                    .drag-active-card {
+                        animation: floatWiggle 0.5s ease-in-out infinite;
+                        box-shadow: 0 30px 60px -15px rgba(0, 115, 238, 0.5), 0 0 0 4px rgba(0, 115, 238, 0.3) !important;
+                        z-index: 50 !important;
+                        border-color: transparent !important;
+                    }
+                `}
+            </style>
+
             {/* Grid System */}
             <div className="w-full max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 xs:gap-4 sm:gap-5 md:gap-6 px-2 xs:px-3 sm:px-4 pt-4 xs:pt-5 sm:pt-6 pb-3 xs:pb-4">
-                {productionLines.map((line, index) => {
+                {sortedLines.map((line, index) => {
                     const isHovered = hoveredCard === line.id;
 
                     // Capture current line object untuk menghindari closure issue
@@ -431,14 +670,31 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
 
                     // Di konteks Sewing: tampilkan "Sewing Line" / "All Sewing Line", bukan "Production Line"
                     const isAllLine = line.id === 0 || line.id === 111 || line.id === 112 || line.id === 113;
-                    const cardTitle = linePathPrefix === '/sewing'
-                        ? (isAllLine ? 'All Sewing Line' : line.title.replace(/^Production Line /i, 'Sewing Line '))
-                        : line.title;
+                    const hasCustomTitle = !!displayTitlesData[line.id.toString()]?.trim();
+                    const resolvedTitle = resolveLineDisplayTitle(line.id, line.title, displayTitlesData);
+                    const cardTitle = linePathPrefix === '/sewing' && !hasCustomTitle
+                        ? (isAllLine ? 'All Sewing Line' : resolvedTitle.replace(/^Production Line /i, 'Sewing Line '))
+                        : resolvedTitle;
 
                     return (
                         <div
                             key={`line-${currentLine.line || currentLine.id}-${index}`}
-                            onClick={() => {
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, currentLine.id)}
+                            onDragOver={(e) => handleDragOver(e, currentLine.id)}
+                            onDrop={(e) => handleDrop(e, currentLine.id)}
+                            onDragEnd={resetDrag}
+                            onPointerDown={() => handlePointerDown(currentLine.id)}
+                            onPointerUp={handlePointerUpOrCancel}
+                            onPointerLeave={handlePointerUpOrCancel}
+                            onPointerCancel={handlePointerUpOrCancel}
+                            onClick={(e) => {
+                                if (draggedId || longPressedId === currentLine.id) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setLongPressedId(null);
+                                    return;
+                                }
                                 // Gunakan currentLine untuk memastikan data yang benar
                                 if (currentLine.id === 0 || currentLine.id === 111 || currentLine.id === 112 || currentLine.id === 113) {
                                     navigate(allPath);
@@ -455,18 +711,23 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                             }}
                             onMouseLeave={() => setHoveredCard(null)}
                             style={{
-                                backgroundColor: isHovered ? '#0073ee' : 'white',
-                                transition: 'background-color 0.3s ease-out, transform 0.3s ease-out, box-shadow 0.3s ease-out',
-                                zIndex: 1,
-                                position: 'relative'
+                                backgroundColor: isHovered ? '#0073ee' : (dragOverId === currentLine.id ? '#f0f9ff' : 'white'),
+                                transition: longPressedId === currentLine.id ? 'none' : 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Efek Pantulan Spring
+                                zIndex: longPressedId === currentLine.id ? 50 : 1,
+                                position: 'relative',
+                                transform: dragOverId === currentLine.id ? 'scale(0.92)' : 
+                                           draggedId === currentLine.id ? 'scale(0.85) translateY(10px)' :
+                                           isHovered && longPressedId !== currentLine.id ? 'translateY(-6px) scale(1.02)' : 'scale(1)',
+                                boxShadow: dragOverId === currentLine.id ? 'inset 0 0 25px rgba(0, 115, 238, 0.2)' :
+                                           isHovered && longPressedId !== currentLine.id ? '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' : '0 1px 3px rgba(0,0,0,0.05)',
+                                opacity: draggedId === currentLine.id ? 0.4 : 1,
+                                filter: draggedId === currentLine.id ? 'grayscale(0.5)' : 'none'
                             }}
                             className={`
                                 group relative 
                                 rounded-lg xs:rounded-xl sm:rounded-2xl 
-                                shadow-sm
-                                border border-gray-300
-                                hover:shadow-md
-                                hover:-translate-y-1
+                                border ${dragOverId === currentLine.id ? 'border-dashed border-[3px] border-[#0073ee]' : 'border-gray-200'}
+                                ${longPressedId === currentLine.id ? 'drag-active-card' : ''}
                                 cursor-pointer
                                 flex flex-col
                                 overflow-visible
@@ -550,14 +811,15 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                             {/* --- FLOATING BOX kiri atas: brand (nama/style) ukuran sama seperti box shift, atau shift (matahari/bulan) --- */}
                             {showBrandOnCard ? (
                                 <div
-                                    className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-50 transition-all duration-300 group-hover:scale-110 border-2 border-white overflow-hidden bg-white/95"
-                                    style={{ pointerEvents: 'auto', zIndex: 50 }}
+                                    className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-40 transition-all duration-300 group-hover:scale-110 border-2 border-white overflow-hidden bg-white/95"
+                                    style={{ pointerEvents: 'auto' }}
                                     title="Brand"
                                 >
                                     <img
                                         src={getBrandIcon()}
                                         alt="Brand"
                                         className="w-8 xs:w-9 sm:w-10 h-8 xs:h-9 sm:h-10 object-contain"
+                                        draggable={false}
                                     />
                                 </div>
                             ) : !HIDE_SHIFT_ICON && (
@@ -569,7 +831,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                     }}
                                     onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                     onMouseUp={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                    className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-50 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 border-2 border-white overflow-hidden cursor-pointer hover:shadow-2xl active:scale-95"
+                                    className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-40 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 border-2 border-white overflow-hidden cursor-pointer hover:shadow-2xl active:scale-95"
                                     style={{
                                         background: (lineShifts[line.id] || 'day') === 'day'
                                             ? 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)'
@@ -577,8 +839,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                         boxShadow: (lineShifts[line.id] || 'day') === 'day'
                                             ? '0 4px 12px rgba(255,165,0,0.4), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3)'
                                             : '0 4px 12px rgba(59,130,246,0.4), 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
-                                        pointerEvents: 'auto',
-                                        zIndex: 50
+                                        pointerEvents: 'auto'
                                     }}
                                 >
                                     {renderShiftIcon(line.id)}
@@ -586,7 +847,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                             )}
 
                             {/* --- CARD CONTENT --- */}
-                            <div className="flex flex-col justify-between h-full flex-1" style={{ paddingTop: '1.5rem' }}>
+                            <div className="flex flex-col justify-between h-full flex-1" style={{ paddingTop: '1.5rem', pointerEvents: 'none' }}>
 
                                 {/* Title Section - Centered, di tengah antara logo brand dan garis putih */}
                                 <div className="flex items-center justify-center flex-1" style={{ minHeight: 0 }}>
@@ -597,7 +858,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                 </div>
 
                                 {/* Footer: untuk All Production Line hanya Arrow; untuk line lain: Supervisor + Jam Masuk + Arrow */}
-                                <div className="flex items-center justify-between pt-1.5 xs:pt-2 border-t border-slate-200 gap-2">
+                                <div className="flex items-center justify-between pt-1.5 xs:pt-2 border-t border-slate-200 gap-2" style={{ pointerEvents: 'auto' }}>
                                     {(() => {
                                         const isAllProductionLine = line.id === 0 || line.id === 111 || line.id === 112 || line.id === 113;
                                         if (isAllProductionLine) {
@@ -674,7 +935,166 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                         </div>
                     );
                 })}
+                
+                {/* Tombol Tambah Line Baru di akhir grid */}
+                <div 
+                    onClick={() => {
+                        setNewLineError('');
+                        setIsAddModalOpen(true);
+                    }}
+                    className="group relative rounded-lg xs:rounded-xl sm:rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-500 bg-gray-50/50 hover:bg-blue-50/40 cursor-pointer flex flex-col items-center justify-center overflow-hidden p-4 aspect-[2/1] transition-all duration-300"
+                >
+                    <div className="w-10 xs:w-12 h-10 xs:h-12 rounded-full bg-white shadow-sm flex items-center justify-center mb-2 xs:mb-3 group-hover:scale-110 group-hover:shadow-md group-hover:bg-blue-600 transition-all duration-300">
+                        <Plus size={24} className="text-gray-400 group-hover:text-white transition-colors duration-300" strokeWidth={2.5} />
+                    </div>
+                    <span className="font-bold text-xs xs:text-sm text-gray-500 group-hover:text-blue-600 transition-colors duration-300">Tambah Line Baru</span>
+                </div>
             </div>
+
+            {/* Modal Tambah Line Baru */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 flex items-center justify-center z-[100] p-4" style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(8px)' }}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col border border-gray-100 animate-in fade-in zoom-in duration-200">
+                        {/* Header Modal */}
+                        <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 px-6 py-5 border-b border-blue-400 rounded-t-2xl">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-xl font-bold text-white mb-1">Tambah Production Line Baru</h2>
+                                    <p className="text-blue-100 text-sm">Buat card monitoring kustom yang belum ada di sistem bawaan.</p>
+                                </div>
+                                <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-all group">
+                                    <X className="w-5 h-5 text-white group-hover:rotate-90 transition-transform" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Konten Form */}
+                        <div className="p-6 bg-gray-50 rounded-b-2xl max-h-[80vh] overflow-y-auto">
+                            {newLineError && (
+                                <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-semibold flex items-center gap-2 relative overflow-hidden shadow-sm">
+                                    <div className="w-1.5 h-full bg-red-500 absolute left-0 top-0"></div>
+                                    <span className="relative z-10">{newLineError}</span>
+                                </div>
+                            )}
+                            
+                            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-6">
+                                {/* Line ID (Wajib) */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Tag size={14} className="text-blue-500" /> Line ID (Kunci Data API)
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={newLineId}
+                                            onChange={(e) => setNewLineId(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition-all shadow-inner"
+                                            placeholder="Contoh: 25"
+                                            autoFocus
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500 font-bold" title="Wajib Diisi">*</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">ID ini mutlak digunakan untuk query ke API backend dan <span className="font-semibold text-red-500">tidak dapat diubah</span> nantinya.</p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 pt-2 border-t border-gray-100">
+                                    {/* Nama Tampilan */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Edit size={14} className="text-indigo-500" /> Nama Tampilan
+                                        </label>
+                                        <div className="flex shadow-sm rounded-lg overflow-hidden border border-gray-300 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all bg-white group">
+                                            <select
+                                                value={newLineTitlePrefix}
+                                                onChange={(e) => setNewLineTitlePrefix(e.target.value)}
+                                                className="px-2 py-2.5 bg-gray-50 border-r border-gray-300 text-gray-600 text-xs font-semibold focus:outline-none cursor-pointer outline-none"
+                                            >
+                                                <option value="Production Line">Production Line</option>
+                                                <option value="Sewing Line">Sewing Line</option>
+                                                <option value="Cutting Gm">Cutting Gm</option>
+                                                <option value="Line">Line</option>
+                                            </select>
+                                            <input
+                                                type="text"
+                                                value={newLineTitleSuffix}
+                                                onChange={(e) => setNewLineTitleSuffix(e.target.value)}
+                                                className="flex-1 w-full px-3 py-2.5 text-sm font-bold text-gray-900 focus:outline-none bg-transparent placeholder-gray-300"
+                                                placeholder="Sufiks (cth: 25A)"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Supervisor */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                            <User size={14} className="text-blue-500" /> Supervisor
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newLineSupervisor}
+                                            onChange={(e) => setNewLineSupervisor(e.target.value)}
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all shadow-sm placeholder-gray-300"
+                                            placeholder="NAMA SUPERVISOR"
+                                        />
+                                    </div>
+
+                                    {/* Jam Masuk */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Clock size={14} className="text-emerald-500" /> Jam Masuk
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={newLineStartTime}
+                                            onChange={(e) => setNewLineStartTime(e.target.value)}
+                                            className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 transition-all shadow-sm"
+                                        />
+                                    </div>
+
+                                    {/* Target */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Target size={14} className="text-amber-500" /> Target / Jam
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={newLineTarget || ''}
+                                                onChange={(e) => {
+                                                    const v = parseInt(e.target.value, 10);
+                                                    setNewLineTarget(Number.isNaN(v) || v < 0 ? 0 : v);
+                                                }}
+                                                className="w-full pl-4 pr-12 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-500 transition-all shadow-sm placeholder-gray-300"
+                                                placeholder="0"
+                                            />
+                                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 pointer-events-none bg-white pl-1">PCS</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Tombol Aksi */}
+                            <div className="flex items-center justify-end gap-3 mt-6">
+                                <button
+                                    onClick={() => setIsAddModalOpen(false)}
+                                    className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm"
+                                >
+                                    Batalkan
+                                </button>
+                                <button
+                                    onClick={handleAddCustomLine}
+                                    disabled={isSubmitting || !newLineId}
+                                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md active:scale-[0.98]"
+                                >
+                                    {isSubmitting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Save size={16} />}
+                                    Tambahkan Line
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Edit Supervisor & Shift Modal */}
             {selectedLine && (
@@ -685,7 +1105,9 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                         setSelectedLine(null);
                     }}
                     lineId={selectedLine.id}
-                    lineTitle={selectedLine.title}
+                    lineTitle={resolveLineDisplayTitle(selectedLine.id, selectedLine.title, displayTitlesData)}
+                    currentDisplayTitle={displayTitlesData[selectedLine.id.toString()] || ''}
+                    defaultLineTitle={selectedLine.title}
                     currentSupervisor={(() => {
                         const supervisorFromAPI = supervisorData[selectedLine.id.toString()];
                         return supervisorFromAPI || selectedLine.supervisor;

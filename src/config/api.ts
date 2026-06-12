@@ -49,12 +49,9 @@ export const getNodeProxyBaseUrl = (): string => {
 };
 
 // Base URL untuk API Server (Proxy Server)
-// FLEKSIBILITAS: Otomatis menyesuaikan dengan IP/hostname dari mesin yang menjalankan frontend
-// - Jika akses dari localhost → proxy di localhost:8000
-// - Jika akses dari 10.5.0.2 → proxy di 10.5.0.2:8000
-// - Jika akses dari IP lain → proxy di IP tersebut:8000
-// 
-// Server.js kemudian akan memanggil backend API di 10.8.0.104:7000 atau 10.5.0.106:7000
+// Dev: same-origin (mis. http://10.5.0.2:5173) — path Network tab = path backend (`/wira`, `/api/...`).
+// Vite mem-proxy ke server.js (:8000) atau backend sesuai route.
+// Prod: proxy di hostname:port (server.js) → backend :7000.
 export const API_BASE_URL = isDevelopment
     ? (() => {
         // Untuk development, gunakan hostname dari window.location yang otomatis menyesuaikan
@@ -228,6 +225,7 @@ export interface SupervisorDataPayload {
     supervisors: Record<string, string>;
     startTimes: Record<string, string>;
     targets?: Record<string, number>;
+    displayTitles?: Record<string, string>;
 }
 
 const supervisorDataCache: Partial<Record<BackendEnvironment, SupervisorDataPayload>> = {};
@@ -252,12 +250,22 @@ export async function getSupervisorDataFromAPI(environment: BackendEnvironment):
                 supervisors: data.data.supervisors || {},
                 startTimes: data.data.startTimes || {},
                 targets: undefined,
+                displayTitles: {},
             };
             if (data.data.targets && typeof data.data.targets === 'object') {
                 payload.targets = {};
                 Object.keys(data.data.targets).forEach(key => {
                     const v = data.data.targets[key];
                     payload.targets![key] = typeof v === 'number' && v >= 0 ? v : 0;
+                });
+            }
+            if (data.data.displayTitles && typeof data.data.displayTitles === 'object') {
+                payload.displayTitles = {};
+                Object.keys(data.data.displayTitles).forEach(key => {
+                    const v = data.data.displayTitles[key];
+                    if (typeof v === 'string' && v.trim()) {
+                        payload.displayTitles![key] = v.trim();
+                    }
                 });
             }
             supervisorDataCache[environment] = payload;
@@ -383,6 +391,15 @@ const DEFAULT_GCC_CUTTING_FULL_LIST_URL = 'http://10.5.0.107:9000/api/gcc/cuttin
 const GCC_CUTTING_RFID_KEY_HEADER_DEFAULT = 'rfid-key';
 const GCC_CUTTING_RFID_KEY_DEFAULT = '0011779933';
 
+/** Same-origin di browser agar Network tab menampilkan path API backend (`/api/...`). */
+function resolveSameOriginServiceUrl(apiPath: string, directUrl: string): string {
+    if (typeof window !== 'undefined') {
+        const p = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+        return `${window.location.origin}${p}`;
+    }
+    return directUrl;
+}
+
 function getGccCuttingBundlesRequestHeaders(): HeadersInit {
     const name =
         (import.meta.env.VITE_GCC_CUTTING_RFID_KEY_HEADER as string | undefined)?.trim() ||
@@ -396,17 +413,14 @@ function getGccCuttingBundlesRequestHeaders(): HeadersInit {
     };
 }
 
-/** Resolves URL GET daftar bundle: env → dev proxy Vite `/__gcc_cutting/...` → default langsung ke :9000. */
+/** Resolves URL GET daftar bundle: env → same-origin `/api/gcc/cutting/list` → default langsung ke :9000. */
 export function resolveGccCuttingBundlesListUrl(): string {
     const fromEnv = (import.meta.env.VITE_GCC_CUTTING_LIST_URL as string | undefined)?.trim();
     if (fromEnv) {
         const t = fromEnv.replace(/\/$/, '');
         return t.includes('/api/gcc/cutting/list') ? t : `${t}/api/gcc/cutting/list`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/list`;
-    }
-    return DEFAULT_GCC_CUTTING_FULL_LIST_URL;
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/list', DEFAULT_GCC_CUTTING_FULL_LIST_URL);
 }
 
 /** Resolve URL GET checking history bundle cutting (`/api/gcc/cutting/check`). */
@@ -422,10 +436,7 @@ export function resolveGccCuttingCheckUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/check');
         return `${t}/api/gcc/cutting/check`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/check`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/check';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/check', 'http://10.5.0.107:9000/api/gcc/cutting/check');
 }
 
 /** Satu baris history dari GET `/api/gcc/cutting/check?rfid_bundles=`. */
@@ -527,10 +538,7 @@ export function resolveGccHomeDashboardUrl(): string {
         const t = fromEnv.replace(/\/$/, '');
         return t.includes('/api/homedashboard') ? t : `${t}/api/homedashboard`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/homedashboard`;
-    }
-    return DEFAULT_GCC_HOME_DASHBOARD_URL;
+    return resolveSameOriginServiceUrl('/api/homedashboard', DEFAULT_GCC_HOME_DASHBOARD_URL);
 }
 
 /** Satu baris dari GET `/api/homedashboard` (aggregate status bundle → supermarket). */
@@ -551,7 +559,7 @@ export interface HomeDashboardItem {
 
 /**
  * GET — snapshot dashboard cutting command center (`/api/homedashboard`).
- * Dev: proxy Vite `/__gcc_cutting/api/homedashboard`. Prod: URL langsung atau `VITE_GCC_HOME_DASHBOARD_URL`.
+ * Browser: same-origin `/api/homedashboard`. Prod/dev override: `VITE_GCC_HOME_DASHBOARD_URL`.
  */
 export async function getHomeDashboard(): Promise<ApiResponse<HomeDashboardItem[]>> {
     try {
@@ -664,7 +672,7 @@ export function extractGccCuttingBundlesData(payload: unknown): GccCuttingBundle
 
 /**
  * GET — daftar bundle penuh dari service cutting (`/api/gcc/cutting/list`).
- * Dev: lewat proxy Vite `/__gcc_cutting` (hindari CORS). Prod: URL langsung atau VITE_GCC_CUTTING_LIST_URL.
+ * Browser: same-origin `/api/gcc/cutting/list` (hindari CORS). Override: VITE_GCC_CUTTING_LIST_URL.
  */
 export async function fetchGccCuttingBundlesList(): Promise<unknown> {
     const url = resolveGccCuttingBundlesListUrl();
@@ -892,11 +900,39 @@ export const apiRequest = async <T = any>(
         const contentType = response.headers.get('content-type');
         let data;
 
+        const tryParseJsonText = (text: string): unknown | null => {
+            const trimmed = text.replace(/^\uFEFF/, '').trim();
+            if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+            try {
+                return JSON.parse(trimmed);
+            } catch {
+                return null;
+            }
+        };
+
         if (contentType && contentType.includes('application/json')) {
             try {
                 data = await response.json();
             } catch (jsonError) {
                 const text = await response.text();
+                const parsed = tryParseJsonText(text);
+                if (parsed != null) {
+                    data = parsed;
+                } else {
+                    return {
+                        success: false,
+                        error: text || `HTTP ${response.status}: ${response.statusText}`,
+                        data: undefined,
+                        status: response.status
+                    };
+                }
+            }
+        } else {
+            const text = await response.text();
+            const parsed = tryParseJsonText(text);
+            if (parsed != null) {
+                data = parsed;
+            } else {
                 return {
                     success: false,
                     error: text || `HTTP ${response.status}: ${response.statusText}`,
@@ -904,14 +940,6 @@ export const apiRequest = async <T = any>(
                     status: response.status
                 };
             }
-        } else {
-            const text = await response.text();
-            return {
-                success: false,
-                error: text || `HTTP ${response.status}: ${response.statusText}`,
-                data: undefined,
-                status: response.status
-            };
         }
 
         // Jika response tidak OK, return error response dengan data yang ada
@@ -1991,6 +2019,41 @@ export interface InputRfidCuttingBody {
     output_time?: string;
 }
 
+export interface GccCuttingRfidBatchItem {
+    batch: number;
+    rfid_batch: string;
+}
+
+export interface GccCuttingRegisterBatchBody {
+    barcode: string;
+    rfid_bundles: string;
+    rfid_batch: GccCuttingRfidBatchItem[];
+}
+
+/** Pesan UI saat batch belum di-plot di sistem DT. */
+export const GCC_CUTTING_REG_BATCH_NOT_PLOTTED_MSG =
+    'Hubungi Team DT karena data batch belum di plot';
+
+/** Satu baris batch dari GET `/api/gcc/cutting/reg/batch` (body `{ barcode }`). */
+export interface GccCuttingRegBatchRow {
+    id_bundles?: number;
+    cutting_order_breakdown_bundle_id?: number;
+    barcode?: string;
+    batch?: string | number;
+    ket_batch?: string;
+    rfid_batch?: string | null;
+    qty_bundles?: number;
+}
+
+/** Respons GET `/api/gcc/cutting/reg/batch` (body `{ barcode }`). */
+export interface GccCuttingRegBatchResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    count?: number;
+    data?: GccCuttingRegBatchRow[];
+}
+
 function getLoggedNik(): string {
     if (typeof window === 'undefined') return '';
     try {
@@ -2016,10 +2079,119 @@ function resolveGccCuttingRegUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/reg');
         return `${t}/api/gcc/cutting/reg`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/reg`;
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/reg', 'http://10.5.0.107:9000/api/gcc/cutting/reg');
+}
+
+/** Resolve URL GET daftar batch register (`/api/gcc/cutting/reg/batch`). */
+function resolveGccCuttingRegBatchUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_REG_BATCH_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/reg/batch') ? t : `${t}/api/gcc/cutting/reg/batch`;
     }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/reg';
+    const regEnv = (import.meta.env.VITE_GCC_CUTTING_REG_URL as string | undefined)?.trim();
+    if (regEnv) {
+        const t = regEnv.replace(/\/$/, '');
+        if (t.includes('/api/gcc/cutting/reg')) return t.replace('/api/gcc/cutting/reg', '/api/gcc/cutting/reg/batch');
+        return `${t}/api/gcc/cutting/reg/batch`;
+    }
+    const listEnv = (import.meta.env.VITE_GCC_CUTTING_LIST_URL as string | undefined)?.trim();
+    if (listEnv) {
+        const t = listEnv.replace(/\/$/, '');
+        if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/reg/batch');
+        return `${t}/api/gcc/cutting/reg/batch`;
+    }
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/reg/batch', 'http://10.5.0.107:9000/api/gcc/cutting/reg/batch');
+}
+
+/** Normalisasi pesan error batch register — batch belum di-plot → arahkan ke Team DT. */
+export function resolveGccCuttingRegBatchError(
+    body: GccCuttingRegBatchResponse | unknown,
+    fallback = 'Gagal memuat daftar batch register'
+): string {
+    const b = body as GccCuttingRegBatchResponse;
+    const msg = String(b?.message ?? '').trim();
+    const dataNull = b?.data == null;
+    const dataEmpty = Array.isArray(b?.data) && b.data.length === 0;
+    if (dataNull || dataEmpty || /data batch tidak ditemukan/i.test(msg)) {
+        return GCC_CUTTING_REG_BATCH_NOT_PLOTTED_MSG;
+    }
+    return msg || fallback;
+}
+
+/** Urutkan baris batch berdasarkan nomor batch ascending. */
+export function sortGccCuttingRegBatchRows(rows: GccCuttingRegBatchRow[]): GccCuttingRegBatchRow[] {
+    return [...rows].sort((a, b) => {
+        const na = Number(a?.batch);
+        const nb = Number(b?.batch);
+        if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+        return String(a?.batch ?? '').localeCompare(String(b?.batch ?? ''), undefined, { numeric: true });
+    });
+}
+
+/** Ambil array batch dari respons GET `/api/gcc/cutting/reg/batch`. */
+export function extractGccCuttingRegBatchRows(data: unknown): GccCuttingRegBatchRow[] {
+    if (!data || typeof data !== 'object') return [];
+    const body = data as GccCuttingRegBatchResponse;
+    const raw = Array.isArray(body.data) ? body.data : [];
+    return sortGccCuttingRegBatchRows(raw);
+}
+
+/**
+ * Ambil daftar batch untuk register cutting.
+ * Browser POST ke proxy lokal; proxy meneruskan GET + body `{ barcode }` ke
+ * `http://10.5.0.107:9000/api/gcc/cutting/reg/batch`.
+ */
+export async function fetchGccCuttingRegBatchList(
+    barcode: string
+): Promise<ApiResponse<GccCuttingRegBatchResponse>> {
+    const bc = String(barcode || '').trim();
+    if (!bc) {
+        return { success: false, error: 'Barcode wajib diisi', status: 400 };
+    }
+    const baseUrl = resolveGccCuttingRegBatchUrl();
+    try {
+        const res = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+                ...getGccCuttingBundlesRequestHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ barcode: bc }),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons batch register bukan JSON', status: 502 };
+        }
+        const body = data as GccCuttingRegBatchResponse;
+        const rows = extractGccCuttingRegBatchRows(data);
+        if (!res.ok || !isGccCuttingApiBodyOk(data) || rows.length === 0) {
+            return {
+                success: false,
+                error: resolveGccCuttingRegBatchError(
+                    body,
+                    body.message || body.status || `HTTP ${res.status}`
+                ),
+                data: body,
+                status: res.status,
+            };
+        }
+        return { success: true, data: body, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal memuat daftar batch register',
+            status: 500,
+        };
+    }
+}
+
+/** URL register cutting — selalu same-origin `/api/gcc/cutting/reg` di browser. */
+function resolveGccCuttingRegFallbackUrls(): string[] {
+    return [resolveGccCuttingRegUrl()];
 }
 
 /** Resolve URL POST bundle GCC output (`/api/gcc/cutting/output`) untuk Scanning Station Bundle. */
@@ -2035,10 +2207,107 @@ function resolveGccCuttingOutputUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/output');
         return `${t}/api/gcc/cutting/output`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/output`;
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/output', 'http://10.5.0.107:9000/api/gcc/cutting/output');
+}
+
+/** Resolve URL POST supply sewing (`/api/gcc/cutting/sewing`). */
+function resolveGccCuttingSewingUrl(): string {
+    const fromEnv = (import.meta.env.VITE_GCC_CUTTING_SEWING_URL as string | undefined)?.trim();
+    if (fromEnv) {
+        const t = fromEnv.replace(/\/$/, '');
+        return t.includes('/api/gcc/cutting/sewing') ? t : `${t}/api/gcc/cutting/sewing`;
     }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/output';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/sewing', 'http://10.5.0.107:9000/api/gcc/cutting/sewing');
+}
+
+/** `GM 1` → `GM1` untuk body API sewing. */
+export function formatGccCuttingSewingBranch(location: string): string {
+    return String(location || '')
+        .trim()
+        .replace(/\s+/g, '')
+        .toUpperCase();
+}
+
+/** Nomor line UI → `L01` sesuai kontrak API sewing. */
+export function formatGccCuttingSewingLine(lineNum: number): string {
+    const n = Math.max(1, Math.min(999, Math.floor(Number(lineNum) || 1)));
+    return `L${String(n).padStart(2, '0')}`;
+}
+
+export interface GccCuttingSewingRequest {
+    rfid_bundles: string;
+    nik: string;
+    line: string;
+    branch: string;
+    qty_receive: string;
+}
+
+export interface GccCuttingSewingResponse {
+    code?: number;
+    status?: string;
+    message?: string;
+    data?: {
+        id_bundles?: number;
+        rfid_bundles?: string;
+        id_user?: number;
+        nik?: string;
+        last_status?: string;
+        batch?: string;
+        qty_batch?: number;
+        qty_sewing?: number;
+        line?: string;
+        branch?: string;
+        is_done?: number;
+        last_time_sewing?: string;
+    };
+}
+
+/** POST supply sewing scan — `/api/gcc/cutting/sewing`. */
+export async function postGccCuttingSewing(
+    body: GccCuttingSewingRequest
+): Promise<ApiResponse<GccCuttingSewingResponse>> {
+    const payload: GccCuttingSewingRequest = {
+        rfid_bundles: String(body.rfid_bundles || '').trim(),
+        nik: String(body.nik || '').trim(),
+        line: String(body.line || '').trim(),
+        branch: String(body.branch || '').trim(),
+        qty_receive: String(body.qty_receive ?? '').trim(),
+    };
+    if (!payload.rfid_bundles || !payload.nik || !payload.line || !payload.branch || !payload.qty_receive) {
+        return { success: false, error: 'Field wajib: rfid_bundles, nik, line, branch, qty_receive.', status: 400 };
+    }
+    const url = resolveGccCuttingSewingUrl();
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                ...getGccCuttingBundlesRequestHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+        const text = await res.text();
+        let data: unknown = null;
+        try {
+            data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return { success: false, error: 'Respons POST sewing bukan JSON', status: 502 };
+        }
+        const bodyRes = data as GccCuttingSewingResponse;
+        const code = bodyRes?.code;
+        const okByBody = code == null || code === 200;
+        if (!res.ok || !okByBody) {
+            const msg = bodyRes.message || bodyRes.status || `HTTP ${res.status}`;
+            return { success: false, error: String(msg), data: bodyRes, status: res.status };
+        }
+        return { success: true, data: bodyRes, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal POST supply sewing',
+            status: 500,
+        };
+    }
 }
 
 /** Resolve URL POST QC bundle GCC (`/api/gcc/cutting/qc`) untuk Scanning Station Quality Control. */
@@ -2054,10 +2323,7 @@ function resolveGccCuttingQcUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/qc');
         return `${t}/api/gcc/cutting/qc`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/qc', 'http://10.5.0.107:9000/api/gcc/cutting/qc');
 }
 
 /** Resolve URL GET GCC qty QC (`/api/gcc/cutting/qc/qty`) untuk pre-check RFID QC. */
@@ -2079,10 +2345,7 @@ function resolveGccCuttingQcQtyUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/qc/qty');
         return `${t}/api/gcc/cutting/qc/qty`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc/qty`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/qty';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/qc/qty', 'http://10.5.0.107:9000/api/gcc/cutting/qc/qty');
 }
 
 /** Resolve URL GET qty repair (`/api/gcc/cutting/qc/qty/repair`). */
@@ -2094,7 +2357,10 @@ export function resolveGccCuttingQcQtyRepairUrl(): string {
     }
     const qtyUrl = resolveGccCuttingQcQtyUrl();
     if (qtyUrl.includes('/qc/qty')) return `${qtyUrl.replace(/\/$/, '')}/repair`;
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/qty/repair';
+    return resolveSameOriginServiceUrl(
+        '/api/gcc/cutting/qc/qty/repair',
+        'http://10.5.0.107:9000/api/gcc/cutting/qc/qty/repair'
+    );
 }
 
 /** Resolve URL POST repair → good (`/api/gcc/cutting/qc/repair/good`). */
@@ -2106,7 +2372,10 @@ export function resolveGccCuttingQcRepairGoodUrl(): string {
     }
     const qcUrl = resolveGccCuttingQcUrl();
     if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/good`;
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/good';
+    return resolveSameOriginServiceUrl(
+        '/api/gcc/cutting/qc/repair/good',
+        'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/good'
+    );
 }
 
 /** Resolve URL POST repair → reject (`/api/gcc/cutting/qc/repair/reject`). */
@@ -2118,7 +2387,10 @@ export function resolveGccCuttingQcRepairRejectUrl(): string {
     }
     const qcUrl = resolveGccCuttingQcUrl();
     if (qcUrl.includes('/api/gcc/cutting/qc')) return `${qcUrl.replace(/\/$/, '')}/repair/reject`;
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/reject';
+    return resolveSameOriginServiceUrl(
+        '/api/gcc/cutting/qc/repair/reject',
+        'http://10.5.0.107:9000/api/gcc/cutting/qc/repair/reject'
+    );
 }
 
 export interface GccCuttingQcQtyRepairResponse {
@@ -2271,10 +2543,7 @@ function resolveGccCuttingSmarketUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/smarket');
         return `${t}/api/gcc/cutting/smarket`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/smarket`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/smarket';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/smarket', 'http://10.5.0.107:9000/api/gcc/cutting/smarket');
 }
 
 /** Resolve URL GET dashboard Supermarket (`/api/gcc/cutting/smarket/data`). */
@@ -2296,10 +2565,7 @@ function resolveGccCuttingSmarketDataUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/smarket/data');
         return `${t}/api/gcc/cutting/smarket/data`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/smarket/data`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/smarket/data';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/smarket/data', 'http://10.5.0.107:9000/api/gcc/cutting/smarket/data');
 }
 
 /** Resolve URL GET dashboard QC (`/api/gcc/cutting/qc/data`). */
@@ -2321,10 +2587,7 @@ function resolveGccCuttingQcDataUrl(): string {
         if (t.includes('/api/gcc/cutting/list')) return t.replace('/api/gcc/cutting/list', '/api/gcc/cutting/qc/data');
         return `${t}/api/gcc/cutting/qc/data`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/qc/data`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/data';
+    return resolveSameOriginServiceUrl('/api/gcc/cutting/qc/data', 'http://10.5.0.107:9000/api/gcc/cutting/qc/data');
 }
 
 /** Builder payload umum untuk endpoint GCC reg/output. */
@@ -2402,6 +2665,82 @@ export async function postGccCuttingBundleRegister(body: InputRfidCuttingBody): 
             status: 500,
         };
     }
+}
+
+/** POST register RFID batch bundle ke service GCC (`/api/gcc/cutting/reg`). */
+export async function postGccCuttingBundleBatchRegister(
+    body: GccCuttingRegisterBatchBody
+): Promise<ApiResponse<unknown>> {
+    const payload: GccCuttingRegisterBatchBody = {
+        barcode: String(body.barcode || '').trim(),
+        rfid_bundles: String(body.rfid_bundles || '').trim(),
+        rfid_batch: Array.isArray(body.rfid_batch)
+            ? body.rfid_batch.map((it) => ({
+                  batch: Number(it?.batch) || 0,
+                  rfid_batch: String(it?.rfid_batch || '').trim(),
+              }))
+            : [],
+    };
+    let lastError: ApiResponse<unknown> = {
+        success: false,
+        error: 'Gagal POST register batch bundle',
+        status: 500,
+    };
+    const urls = resolveGccCuttingRegFallbackUrls();
+    for (let i = 0; i < urls.length; i += 1) {
+        const url = urls[i];
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    ...getGccCuttingBundlesRequestHeaders(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+            const text = await res.text();
+            let data: unknown = null;
+            try {
+                data = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+            } catch {
+                lastError = {
+                    success: false,
+                    error: `Respons register batch bukan JSON dari ${url}`,
+                    status: 502,
+                };
+                continue;
+            }
+            if (res.ok && isGccCuttingApiBodyOk(data)) {
+                return { success: true, data, status: res.status };
+            }
+
+            const msg =
+                (data as { message?: string })?.message ||
+                (data as { status?: string })?.status ||
+                `HTTP ${res.status}`;
+            lastError = {
+                success: false,
+                error: `Register batch gagal di ${url}: ${String(msg)}`,
+                data,
+                status: res.status,
+            };
+
+            // Retry hanya untuk kasus yang umum terjadi saat proxy/host menolak rute.
+            if (res.status === 403 || res.status === 404 || res.status === 405 || res.status === 502) {
+                continue;
+            }
+            return lastError;
+        } catch (error) {
+            lastError = {
+                success: false,
+                error: `Network error register batch ke ${url}: ${error instanceof Error ? error.message : 'unknown error'}`,
+                status: 500,
+            };
+            // Coba URL fallback berikutnya.
+            continue;
+        }
+    }
+    return lastError;
 }
 
 /** POST output bundle ke service GCC (`/api/gcc/cutting/output`). */
@@ -2866,13 +3205,23 @@ export const postCuttingStoreScan = async (body: {
 };
 
 export const postCuttingSupplySewingScan = async (body: {
-    rfid_garment: string;
-    /** Nomor line (angka ≥ 1), dikirim sebagai string atau number. */
+    rfid_bundles: string;
+    nik: string;
+    /** Nomor line (angka ≥ 1). */
     line: string | number;
     /** `GM 1` atau `GM 2`. */
     location: string;
-}): Promise<ApiResponse<unknown>> => {
-    return await apiPost('/api/cutting/supply-sewing-scan', body);
+    /** Quantity receive (string sesuai API). */
+    qty_receive: string | number;
+}): Promise<ApiResponse<GccCuttingSewingResponse>> => {
+    const lineNum = Math.max(1, Math.floor(Number(body.line) || 1));
+    return postGccCuttingSewing({
+        rfid_bundles: String(body.rfid_bundles || '').trim(),
+        nik: String(body.nik || '').trim(),
+        line: formatGccCuttingSewingLine(lineNum),
+        branch: formatGccCuttingSewingBranch(body.location),
+        qty_receive: String(body.qty_receive ?? '').trim(),
+    });
 };
 
 /** Satu baris agregat per jam dari GET `/api/gcc/cutting/smarket/data`. */
@@ -3102,7 +3451,10 @@ function resolveGccCuttingQcReportUrl(): string {
     }
     const dataUrl = resolveGccCuttingQcDataUrl();
     if (dataUrl.includes('/qc/data')) return dataUrl.replace('/qc/data', '/qc/report');
-    return 'http://10.5.0.107:9000/api/gcc/cutting/qc/report';
+    return resolveSameOriginServiceUrl(
+        '/api/gcc/cutting/qc/report',
+        'http://10.5.0.107:9000/api/gcc/cutting/qc/report'
+    );
 }
 
 export interface GccCuttingQcReportSummary {
@@ -3219,10 +3571,10 @@ function resolveGccCuttingSmarketOutReportUrl(): string {
         }
         return `${t}/api/gcc/cutting/report/smarket/out`;
     }
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return `${window.location.origin}/__gcc_cutting/api/gcc/cutting/report/smarket/out`;
-    }
-    return 'http://10.5.0.107:9000/api/gcc/cutting/report/smarket/out';
+    return resolveSameOriginServiceUrl(
+        '/api/gcc/cutting/report/smarket/out',
+        'http://10.5.0.107:9000/api/gcc/cutting/report/smarket/out'
+    );
 }
 
 export interface GccCuttingSmarketOutReportItem {
@@ -3309,4 +3661,390 @@ export const getGccCuttingSmarketOutReport = async (
         };
     }
 };
+
+// ============================================
+// SEWING LAYOUT — user + SMV master (:9000)
+// ============================================
+
+const DEFAULT_SEWING_SERVICE_BASE = 'http://10.5.0.107:9000';
+
+/** Header autentikasi service sewing/SMV (:9000) — sama pola dengan GCC cutting. */
+function getSewingServiceRequestHeaders(): HeadersInit {
+    return getGccCuttingBundlesRequestHeaders();
+}
+
+/** Base URL service sewing/SMV (:9000). Browser: same-origin (`/user`, `/api/smv/...`). */
+export function resolveSewingServiceBaseUrl(): string {
+    const fromEnv = (import.meta.env.VITE_SEWING_SERVICE_BASE_URL as string | undefined)?.trim();
+    if (fromEnv) return fromEnv.replace(/\/$/, '');
+    if (typeof window !== 'undefined') {
+        return window.location.origin;
+    }
+    return DEFAULT_SEWING_SERVICE_BASE;
+}
+
+export type SewingServiceUserResponse = {
+    success: boolean;
+    count: number;
+    user: Array<{
+        nik: string;
+        nama: string;
+        no_hp: string;
+        line: string;
+        telegram: string;
+        bagian: string;
+        branch: string;
+        rfid_user: string;
+    }>;
+};
+
+export type SmvMasterApiResponse = {
+    code: number;
+    status: string;
+    message: string;
+    count: number;
+    data: Array<{
+        smv_id: number;
+        smv_header_id: number;
+        tanggal: string;
+        buyer: string;
+        style: string;
+        short_itm: string | null;
+        long_itm: string | null;
+        item: string;
+        nama_proses: string;
+        cycle_time: number;
+        smv_minute: number;
+        output_pj: number;
+        sepatu: string | null;
+        corong: string | null;
+        mesin: string | null;
+        brand: string | null;
+        cat: string;
+        prd_on_capacity: number;
+        actual_mp: number;
+        manpower_need: number;
+        working_time: number | null;
+        targets: number | null;
+        working_balance: number | null;
+        actual_unit: number;
+        attachment1: string | null;
+        attachment2: string | null;
+        attachment3: string | null;
+        file1: string | null;
+        file2: string | null;
+        file3: string | null;
+        user: string;
+        ai_smv_master_mesin_id: number | null;
+    }>;
+};
+
+export type SewingLayoutOperatorPayload = {
+    nik: string;
+    nama: string;
+    rfid_user: string;
+    line: string;
+};
+
+export type SewingLayoutSlotPayload = {
+    position: number;
+    smv_id: number;
+    nama_proses: string;
+    mesin: string | null;
+    cat: string;
+    smv_minute: number;
+    cycle_time: number;
+    manpower_need: number;
+    operator: SewingLayoutOperatorPayload | null;
+    batch?: number;
+};
+
+export type SewingLayoutDataPayload = {
+    line: string;
+    style: string;
+    environment: string;
+    buyer?: string;
+    item?: string;
+    updatedAt: string;
+    slots: SewingLayoutSlotPayload[];
+};
+
+/** GET /user?bagian=SEWING dari service :9000 */
+export async function fetchSewingUsers(bagian = 'SEWING'): Promise<ApiResponse<SewingServiceUserResponse>> {
+    try {
+        const base = resolveSewingServiceBaseUrl();
+        const url = `${base}/user?bagian=${encodeURIComponent(bagian)}`;
+        const res = await fetch(url, { headers: getSewingServiceRequestHeaders() });
+        const data = (await res.json()) as SewingServiceUserResponse & { message?: string; error?: string };
+        if (!res.ok || !data?.success) {
+            return {
+                success: false,
+                error: (data as { message?: string })?.message || `HTTP ${res.status}`,
+                data,
+                status: res.status,
+            };
+        }
+        return { success: true, data, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal mengambil data user sewing',
+            status: 500,
+        };
+    }
+}
+
+/** GET /api/smv/master?style=... dari service :9000 */
+export async function fetchSmvMasterByStyle(style: string): Promise<ApiResponse<SmvMasterApiResponse>> {
+    try {
+        const base = resolveSewingServiceBaseUrl();
+        const url = `${base}/api/smv/master?style=${encodeURIComponent(style.trim())}`;
+        const res = await fetch(url, { headers: getSewingServiceRequestHeaders() });
+        const data = (await res.json()) as SmvMasterApiResponse;
+        if (!res.ok || data?.code !== 200 || !Array.isArray(data?.data)) {
+            return {
+                success: false,
+                error: data?.message || `HTTP ${res.status}`,
+                data,
+                status: res.status,
+            };
+        }
+        return { success: true, data, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal mengambil data SMV master',
+            status: 500,
+        };
+    }
+}
+
+/** GET layout tersimpan (embedded backend / frontend) */
+export async function getSewingLayoutData(
+    line: string,
+    environment: BackendEnvironment
+): Promise<ApiResponse<SewingLayoutDataPayload | null>> {
+    try {
+        const url = `${API_BASE_URL}/api/sewing-layout-data?line=${encodeURIComponent(line)}&environment=${encodeURIComponent(environment)}`;
+        const res = await fetch(url, { headers: getDefaultHeaders() });
+        const body = await res.json();
+        if (!res.ok || !body?.success) {
+            return {
+                success: false,
+                error: body?.error || `HTTP ${res.status}`,
+                status: res.status,
+            };
+        }
+        return { success: true, data: body.data ?? null, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal mengambil layout sewing',
+            status: 500,
+        };
+    }
+}
+
+export type SewingLayoutPostRowPayload = {
+    smv_id: number;
+    rfid_user: string;
+    batch: number;
+};
+
+export type SewingLayoutPostBody = {
+    line: string;
+    style: string;
+    environment: string;
+    data: SewingLayoutPostRowPayload[];
+};
+
+export type SewingLayoutPostEntry = SewingLayoutPostBody & {
+    count: number;
+    updatedAt: string;
+};
+
+/** GET hasil POST layout uji coba (sewing_layout_post.json) */
+export async function getSewingLayoutPost(
+    line?: string,
+    style?: string,
+    environment?: BackendEnvironment
+): Promise<ApiResponse<{ latest: SewingLayoutPostEntry | null; entries: SewingLayoutPostEntry[] }>> {
+    try {
+        const params = new URLSearchParams();
+        if (line) params.set('line', line);
+        if (style) params.set('style', style);
+        if (environment) params.set('environment', environment);
+        const qs = params.toString();
+        const url = `${API_BASE_URL}/api/sewing-layout-post${qs ? `?${qs}` : ''}`;
+        const res = await fetch(url, { headers: getDefaultHeaders() });
+        const body = await res.json();
+        if (!res.ok || !body?.success) {
+            return {
+                success: false,
+                error: body?.error || `HTTP ${res.status}`,
+                status: res.status,
+            };
+        }
+        return {
+            success: true,
+            data: { latest: body.latest ?? null, entries: body.entries ?? [] },
+            status: res.status,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal mengambil layout post',
+            status: 500,
+        };
+    }
+}
+
+export type SmvMasterCombineRow = {
+    smv_id: number;
+    rfid_user: string;
+    batch: number;
+};
+
+export type SmvMasterCombineResponse = {
+    code?: number;
+    status?: string;
+    message?: string;
+    data?: unknown;
+};
+
+/** Pesan error HTTP — status 403 ditampilkan ramah ke operator. */
+export function formatHttpStatusError(status?: number, message?: string): string {
+    if (status === 403) return 'BACKEND KERJA WOYY !!';
+    const raw = String(message ?? '').trim();
+    if (raw === 'HTTP 403' || /HTTP\s+403(\b|:)/i.test(raw)) return 'BACKEND KERJA WOYY !!';
+    return raw || (status != null ? `HTTP ${status}` : 'Terjadi kesalahan');
+}
+
+/** True jika endpoint combine belum tersedia di server (:404 / :405). */
+export function isSmvMasterCombineEndpointMissing(status?: number): boolean {
+    return status === 404 || status === 405;
+}
+
+/**
+ * POST gabung SMV + operator ke service sewing.
+ * Body: `{ style, line, data: [{ smv_id, rfid_user, batch }, ...] }`
+ */
+export async function postSmvMasterCombine(body: {
+    style: string;
+    line: string;
+    data: SmvMasterCombineRow[];
+}): Promise<ApiResponse<SmvMasterCombineResponse> & { endpointMissing?: boolean }> {
+    const rows = Array.isArray(body.data) ? body.data : [];
+    if (rows.length === 0) {
+        return { success: false, error: 'Data combine kosong', status: 400 };
+    }
+    const url = `${resolveSewingServiceBaseUrl()}/api/smv/master/combine`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                ...getSewingServiceRequestHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                style: String(body.style || '').trim(),
+                line: String(body.line || '').trim(),
+                data: rows,
+            }),
+        });
+        const text = await res.text();
+        let parsed: SmvMasterCombineResponse | null = null;
+        try {
+            parsed = text.replace(/^\uFEFF/, '').trim() ? JSON.parse(text) : null;
+        } catch {
+            return {
+                success: false,
+                error: 'Respons combine SMV bukan JSON',
+                status: 502,
+                endpointMissing: isSmvMasterCombineEndpointMissing(res.status),
+            };
+        }
+        const code = parsed?.code;
+        const okByBody = code == null || code === 200;
+        if (!res.ok || !okByBody) {
+            const rawMsg = parsed?.message || parsed?.status || `HTTP ${res.status}`;
+            return {
+                success: false,
+                error: formatHttpStatusError(res.status, String(rawMsg)),
+                data: parsed ?? undefined,
+                status: res.status,
+                endpointMissing: isSmvMasterCombineEndpointMissing(res.status),
+            };
+        }
+        return { success: true, data: parsed ?? undefined, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal POST combine SMV',
+            status: 500,
+        };
+    }
+}
+
+/** POST layout uji coba — format ringkas smv_id, rfid_user, batch */
+export async function postSewingLayoutTest(
+    payload: SewingLayoutPostBody
+): Promise<ApiResponse<SewingLayoutPostEntry>> {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/sewing-layout-post`, {
+            method: 'POST',
+            headers: {
+                ...getDefaultHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) {
+            return {
+                success: false,
+                error: body?.error || `HTTP ${res.status}`,
+                status: res.status,
+            };
+        }
+        return { success: true, data: body.data as SewingLayoutPostEntry, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal POST layout uji coba',
+            status: 500,
+        };
+    }
+}
+
+/** POST simpan layout agar embedded backend dapat membaca */
+export async function saveSewingLayoutData(
+    payload: SewingLayoutDataPayload
+): Promise<ApiResponse<SewingLayoutDataPayload>> {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/sewing-layout-data`, {
+            method: 'POST',
+            headers: {
+                ...getDefaultHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) {
+            return {
+                success: false,
+                error: body?.error || `HTTP ${res.status}`,
+                status: res.status,
+            };
+        }
+        return { success: true, data: body.data as SewingLayoutDataPayload, status: res.status };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Gagal menyimpan layout sewing',
+            status: 500,
+        };
+    }
+}
 

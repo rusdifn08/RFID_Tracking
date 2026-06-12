@@ -12,6 +12,11 @@ import { productionLinesCLN, productionLinesMJL, productionLinesMJL2, production
 import daftarRfidIcon from '../assets/daftarrfid.webp';
 import dashboardRfidIcon from '../assets/dashboardrfid.webp';
 import listRfidIcon from '../assets/listrfid.webp';
+import identityHub from '../data/sewing/sewing-rfid-identity.json';
+import batchHub from '../data/sewing/sewing-batch-dashboard.json';
+import reportHub from '../data/sewing/sewing-report-data.json';
+import layoutHub from '../data/sewing/sewing-layout-data.json';
+import targetIcon from '../assets/target.webp';
 
 function getSupervisorByLine(
     supervisors: Record<string, string> | undefined,
@@ -137,6 +142,56 @@ const LineDetail = memo(() => {
     const cards = useMemo(() => {
         const isSewingLineDetail = location.pathname.startsWith('/sewing/line/');
 
+        if (isSewingLineDetail) {
+            return [
+                {
+                    id: 1,
+                    title: identityHub.hubCard.title,
+                    subtitle: identityHub.hubCard.subtitle,
+                    icon: null,
+                    iconImage: daftarRfidIcon,
+                    path: '/sewing/rfid-identity',
+                    sewingHub: { ...identityHub.hubCard, path: '/sewing/rfid-identity', iconImage: daftarRfidIcon, tone: 'blue' as const },
+                },
+                {
+                    id: 2,
+                    title: batchHub.hubCard.title,
+                    subtitle: batchHub.hubCard.subtitle,
+                    icon: null,
+                    iconImage: dashboardRfidIcon,
+                    path: `/dashboard-sewing-line/${id}`,
+                    sewingHub: { ...batchHub.hubCard, path: `/dashboard-sewing-line/${id}`, iconImage: dashboardRfidIcon, tone: 'orange' as const },
+                },
+                {
+                    id: 3,
+                    title: reportHub.hubCard.title,
+                    subtitle: reportHub.hubCard.subtitle,
+                    icon: null,
+                    iconImage: listRfidIcon,
+                    path: `/sewing/report/${id}`,
+                    sewingHub: { ...reportHub.hubCard, path: `/sewing/report/${id}`, iconImage: listRfidIcon, tone: 'green' as const },
+                },
+                {
+                    id: 4,
+                    title: layoutHub.hubCard.title,
+                    subtitle: layoutHub.hubCard.subtitle,
+                    icon: null,
+                    iconImage: targetIcon,
+                    path: `/sewing/layout/${id}`,
+                    sewingHub: { ...layoutHub.hubCard, path: `/sewing/layout/${id}`, iconImage: targetIcon, tone: 'purple' as const },
+                },
+                {
+                    id: 5,
+                    title: 'Batch Position',
+                    subtitle: 'Atur posisi batch mesin',
+                    icon: null,
+                    iconImage: targetIcon,
+                    path: `/sewing/positioning/${id}`,
+                    sewingHub: { title: 'Batch Position', subtitle: 'Assign pengaturan batch mesin, dan operator.', path: `/sewing/positioning/${id}`, iconImage: targetIcon, tone: 'blue' as const, highlights: ['Assign Mesin', 'Plotting Batch'] },
+                },
+            ];
+        }
+
         return [
             {
                 id: 1,
@@ -148,11 +203,11 @@ const LineDetail = memo(() => {
             },
             {
                 id: 2,
-                title: isSewingLineDetail ? 'Dashboard Sewing' : 'Dashboard RFID',
-                subtitle: isSewingLineDetail ? 'Monitoring Sewing Line' : 'Monitoring Real-Time',
+                title: 'Dashboard RFID',
+                subtitle: 'Monitoring Real-Time',
                 icon: null,
                 iconImage: dashboardRfidIcon,
-                path: isSewingLineDetail ? '/dashboard-sewing-line' : `/dashboard-rfid/${id}`,
+                path: `/dashboard-rfid/${id}`,
             },
             {
                 id: 3,
@@ -215,7 +270,11 @@ const LineDetail = memo(() => {
                         />
 
                         {/* --- CARDS GRID --- */}
-                        <LineDetailCardsGrid cards={cards} />
+                        <LineDetailCardsGrid
+                            cards={cards}
+                            sewingHubMode={location.pathname.startsWith('/sewing/line/')}
+                            gridColsClass={location.pathname.startsWith('/sewing/line/') ? 'md:grid-cols-3 xl:grid-cols-3' : undefined}
+                        />
                     </div>
 
                 </main>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, User, Clock, Save, Loader2, Target } from 'lucide-react';
+import { X, User, Clock, Save, Loader2, Target, Tag } from 'lucide-react';
 import { API_BASE_URL, getDefaultHeaders, type BackendEnvironment } from '../config/api';
 
 interface EditSupervisorShiftModalProps {
@@ -11,6 +11,9 @@ interface EditSupervisorShiftModalProps {
     currentShift: 'day' | 'night';
     currentStartTime?: string; // Jam masuk (format: HH:mm)
     currentTarget?: number; // Target (acuan distribusi dashboard line)
+    /** Nama tampilan kustom (kosong = pakai default) */
+    currentDisplayTitle?: string;
+    defaultLineTitle?: string;
     environment: BackendEnvironment;
     onUpdate: () => void; // Callback setelah update berhasil
 }
@@ -24,6 +27,8 @@ export default function EditSupervisorShiftModal({
     currentShift,
     currentStartTime = '07:30',
     currentTarget = 0,
+    currentDisplayTitle = '',
+    defaultLineTitle,
     environment,
     onUpdate
 }: EditSupervisorShiftModalProps) {
@@ -31,6 +36,7 @@ export default function EditSupervisorShiftModal({
     const [shift, setShift] = useState<'day' | 'night'>(currentShift);
     const [startTime, setStartTime] = useState(currentStartTime);
     const [target, setTarget] = useState(currentTarget);
+    const [displayTitle, setDisplayTitle] = useState(currentDisplayTitle);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -42,10 +48,11 @@ export default function EditSupervisorShiftModal({
             setShift(currentShift);
             setStartTime(currentStartTime || '07:30');
             setTarget(typeof currentTarget === 'number' && currentTarget >= 0 ? currentTarget : 0);
+            setDisplayTitle(currentDisplayTitle || '');
             setError(null);
             setSuccess(false);
         }
-    }, [isOpen, currentSupervisor, currentShift, currentStartTime, currentTarget]);
+    }, [isOpen, currentSupervisor, currentShift, currentStartTime, currentTarget, currentDisplayTitle]);
 
     const handleSave = async () => {
         if (!supervisor.trim()) {
@@ -77,6 +84,7 @@ export default function EditSupervisorShiftModal({
                     supervisor: supervisor.trim(),
                     startTime: startTime.trim(),
                     target: typeof target === 'number' && target >= 0 ? target : 0,
+                    displayTitle: displayTitle.trim(),
                     environment
                 })
             });
@@ -147,6 +155,26 @@ export default function EditSupervisorShiftModal({
                 {/* Content - compact agar responsive tanpa scroll */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain min-h-0">
                     <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
+                        {/* Nama tampilan line */}
+                        <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">
+                                <Tag size={14} className="sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
+                                Nama Tampilan Line
+                            </label>
+                            <input
+                                type="text"
+                                value={displayTitle}
+                                onChange={(e) => setDisplayTitle(e.target.value)}
+                                placeholder={defaultLineTitle || lineTitle}
+                                className="w-full px-3 py-2.5 sm:px-4 sm:py-3 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all min-h-[44px] sm:min-h-[48px]"
+                                disabled={isSaving}
+                            />
+                            <p className="text-[10px] xs:text-xs text-gray-500 mt-1 leading-tight">
+                                Hanya mengubah judul di kartu. Data tetap diambil dari Line {lineId}
+                                {defaultLineTitle ? ` (${defaultLineTitle})` : ''}.
+                            </p>
+                        </div>
+
                         {/* Supervisor Input */}
                         <div>
                             <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">

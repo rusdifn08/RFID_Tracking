@@ -8,17 +8,17 @@ import {
     fetchGccCuttingBundlesList,
     extractGccCuttingBundlesData,
     filterGccBundlesByCreatedLocalDate,
-    postGccCuttingBundleRegister,
+    postGccCuttingBundleBatchRegister,
+    fetchGccCuttingRegBatchList,
+    extractGccCuttingRegBatchRows,
+    GCC_CUTTING_REG_BATCH_NOT_PLOTTED_MSG,
     mapGccCuttingBundleRowToForm,
     mapGccCuttingPayloadToForm,
     type GccCuttingBundleRow,
     type GccCuttingFormFields,
+    type GccCuttingRegBatchRow,
 } from '../config/api';
-import { Camera, ChevronDown, Minus, PenLine, Plus, RefreshCw, Search } from 'lucide-react';
-
-const DEFAULT_TOTAL_BATCH = 7;
-const MIN_TOTAL_BATCH = 1;
-const MAX_TOTAL_BATCH = 99;
+import { Camera, ChevronDown, PenLine, RefreshCw, Search, X } from 'lucide-react';
 
 const CuttingLabelScanModal = lazy(() => import('../components/cutting/CuttingLabelScanModal'));
 
@@ -60,6 +60,41 @@ const ModalFallback = memo(() => (
 
 ModalFallback.displayName = 'ModalFallback';
 
+const BATCH_POPUP_ANIMATION_CSS = `
+@keyframes batchPopupEnter {
+  0% { opacity: 0; transform: translateY(14px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes batchScanGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.18); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.06); }
+}
+@keyframes scannerBeam {
+  0% { transform: translateY(0); opacity: .18; }
+  50% { transform: translateY(54px); opacity: .35; }
+  100% { transform: translateY(0); opacity: .18; }
+}
+@keyframes scannerPulse {
+  0%, 100% { opacity: .35; transform: scale(1); }
+  50% { opacity: .95; transform: scale(1.08); }
+}
+@keyframes scannerCaret {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes scannerSweep {
+  0% { transform: translateX(-115%); opacity: 0; }
+  25% { opacity: .18; }
+  50% { opacity: .26; }
+  75% { opacity: .18; }
+  100% { transform: translateX(115%); opacity: 0; }
+}
+@keyframes scannerAura {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0)); }
+  50% { filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.35)); }
+}
+`;
+
 function bundleOptionLabel(b: GccCuttingBundleRow): string {
     const bc = (b.barcode || '').trim();
     const wo = (b.wo || '').trim();
@@ -79,9 +114,17 @@ const DaftarRFIDCutting: React.FC = memo(() => {
     const [manualFetchError, setManualFetchError] = useState<string | null>(null);
     /** RFID garment — isi manual (biasanya kosong di bundle hingga didaftarkan). */
     const [manualRfid, setManualRfid] = useState('');
-    const [totalBatch, setTotalBatch] = useState(DEFAULT_TOTAL_BATCH);
     const [registerBusy, setRegisterBusy] = useState(false);
     const [registerMessage, setRegisterMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [batchScanOpen, setBatchScanOpen] = useState(false);
+    /** Metadata batch dari POST proxy → GET `/api/gcc/cutting/reg/batch` (body barcode). */
+    const [batchMetaList, setBatchMetaList] = useState<GccCuttingRegBatchRow[]>([]);
+    const [rfidBatchInputs, setRfidBatchInputs] = useState<string[]>([]);
+    const [batchScanError, setBatchScanError] = useState<string | null>(null);
+    const [activeBatchIndex, setActiveBatchIndex] = useState(0);
+    const [currentBatchScan, setCurrentBatchScan] = useState('');
+    const singleBatchInputRef = useRef<HTMLInputElement | null>(null);
+    const batchScanOpenRef = useRef(false);
 
     const [bundlesToday, setBundlesToday] = useState<GccCuttingBundleRow[]>([]);
     const [bundlesLoading, setBundlesLoading] = useState(false);
@@ -91,6 +134,15 @@ const DaftarRFIDCutting: React.FC = memo(() => {
     const [bundleSearch, setBundleSearch] = useState('');
     const [lastBundlePickLabel, setLastBundlePickLabel] = useState<string | null>(null);
     const bundlePickerRef = useRef<HTMLDivElement>(null);
+
+    const totalBatch = batchMetaList.length;
+
+    const batchLabel = useCallback((idx: number) => {
+        const row = batchMetaList[idx];
+        const num = row?.batch != null && String(row.batch).trim() !== '' ? String(row.batch) : String(idx + 1);
+        const ket = (row?.ket_batch || '').trim();
+        return ket ? `Batch ${num} — ${ket}` : `Batch ${num}`;
+    }, [batchMetaList]);
 
     const loadBundlesByDate = useCallback(async (dateIso: string) => {
         setBundlesLoading(true);
@@ -198,7 +250,8 @@ const DaftarRFIDCutting: React.FC = memo(() => {
             setRegisterMessage({ type: 'error', text: 'Isi RFID garment terlebih dahulu.' });
             return;
         }
-        if (!cuttingForm.barcode.trim()) {
+        const barcode = cuttingForm.barcode.trim();
+        if (!barcode) {
             setRegisterMessage({
                 type: 'error',
                 text: 'Data label belum lengkap. Ambil data barcode atau pilih bundle.',
@@ -209,40 +262,183 @@ const DaftarRFIDCutting: React.FC = memo(() => {
             setRegisterMessage({ type: 'error', text: 'Work Order kosong — lengkapi data label terlebih dahulu.' });
             return;
         }
-        setRegisterBusy(true);
         setRegisterMessage(null);
+        setBatchScanError(null);
+        setRegisterBusy(true);
         try {
-            const res = await postGccCuttingBundleRegister({
-                rfid_garment: rfid,
-                rfid_bundles: rfid,
-                barcode: cuttingForm.barcode.trim(),
-                total_batch: totalBatch,
-                wo: cuttingForm.workOrder.trim(),
-                style: cuttingForm.style.trim() || '-',
-                buyer: cuttingForm.buyer.trim() || '-',
-                item: cuttingForm.item.trim() || cuttingForm.placing.trim() || '-',
-                color: cuttingForm.color.trim() || '-',
-                size: cuttingForm.size.trim() || '-',
-                qty: 1,
-            });
-            if (res.success) {
-                setRegisterMessage({ type: 'success', text: 'Input register RFID berhasil.' });
-                setManualRfid('');
-            } else {
+            const res = await fetchGccCuttingRegBatchList(barcode);
+            if (!res.success) {
                 setRegisterMessage({
                     type: 'error',
-                    text: (res as { error?: string }).error || 'Gagal input register.',
+                    text: res.error || 'Gagal memuat daftar batch dari server.',
                 });
+                return;
             }
+            const rows = extractGccCuttingRegBatchRows(res.data);
+            if (rows.length === 0) {
+                setRegisterMessage({ type: 'error', text: GCC_CUTTING_REG_BATCH_NOT_PLOTTED_MSG });
+                return;
+            }
+            setBatchMetaList(rows);
+            setRfidBatchInputs(Array.from({ length: rows.length }, () => ''));
+            setActiveBatchIndex(0);
+            setCurrentBatchScan('');
+            setBatchScanOpen(true);
         } catch (err) {
             setRegisterMessage({
                 type: 'error',
-                text: err instanceof Error ? err.message : 'Gagal input register.',
+                text: err instanceof Error ? err.message : 'Gagal memuat daftar batch.',
             });
         } finally {
             setRegisterBusy(false);
         }
-    }, [manualRfid, cuttingForm, totalBatch]);
+    }, [manualRfid, cuttingForm]);
+
+    const handleBatchInputChange = useCallback((value: string) => {
+        setBatchScanError(null);
+        setCurrentBatchScan(value);
+    }, []);
+
+    const handleSubmitBatchRegister = useCallback(async (overrideInputs?: string[]) => {
+        const barcode = cuttingForm.barcode.trim();
+        const rfidBundles = manualRfid.trim();
+        if (!barcode || !rfidBundles) {
+            setBatchScanError('Barcode label atau RFID garment belum lengkap.');
+            return;
+        }
+        const sourceInputs = overrideInputs ?? rfidBatchInputs;
+        if (sourceInputs.length !== totalBatch || totalBatch === 0) {
+            setBatchScanError('Jumlah input scan batch tidak sesuai data dari server.');
+            return;
+        }
+        const normalized = sourceInputs.map((v) => v.trim());
+        const emptyBatchIndex = normalized.findIndex((v) => !v);
+        if (emptyBatchIndex !== -1) {
+            setBatchScanError(`${batchLabel(emptyBatchIndex)} belum di-scan.`);
+            return;
+        }
+        const dupCheck = new Set<string>();
+        for (let i = 0; i < normalized.length; i += 1) {
+            const code = normalized[i];
+            if (dupCheck.has(code)) {
+                const firstIdx = normalized.findIndex((v) => v === code);
+                setBatchScanError(
+                    `RFID duplikat terdeteksi pada ${batchLabel(firstIdx)} dan ${batchLabel(i)}. Gunakan RFID berbeda tiap batch.`
+                );
+                return;
+            }
+            dupCheck.add(code);
+        }
+
+        setRegisterBusy(true);
+        setRegisterMessage(null);
+        setBatchScanError(null);
+        try {
+            const res = await postGccCuttingBundleBatchRegister({
+                barcode,
+                rfid_bundles: rfidBundles,
+                rfid_batch: normalized.map((rfidBatch, idx) => ({
+                    batch: Number(batchMetaList[idx]?.batch) || idx + 1,
+                    rfid_batch: rfidBatch,
+                })),
+            });
+            if (res.success) {
+                setRegisterMessage({ type: 'success', text: 'Regis RFID Berhasil.' });
+                setManualRfid('');
+                setBatchMetaList([]);
+                setRfidBatchInputs([]);
+                setActiveBatchIndex(0);
+                setCurrentBatchScan('');
+                setBatchScanOpen(false);
+            } else {
+                setBatchScanError((res as { error?: string }).error || 'Gagal input register batch.');
+            }
+        } catch (err) {
+            setBatchScanError(err instanceof Error ? err.message : 'Gagal input register batch.');
+        } finally {
+            setRegisterBusy(false);
+        }
+    }, [cuttingForm.barcode, manualRfid, rfidBatchInputs, totalBatch, batchMetaList, batchLabel]);
+
+    useEffect(() => {
+        batchScanOpenRef.current = batchScanOpen;
+    }, [batchScanOpen]);
+
+    useEffect(() => {
+        if (!batchScanOpen) return;
+        const el = singleBatchInputRef.current;
+        if (!el) return;
+        window.requestAnimationFrame(() => {
+            el.focus();
+            el.select();
+        });
+    }, [batchScanOpen, activeBatchIndex]);
+
+    useEffect(() => {
+        if (!batchScanOpen) return;
+        const lockFocus = () => {
+            if (!batchScanOpenRef.current || registerBusy) return;
+            window.setTimeout(() => {
+                if (!batchScanOpenRef.current || registerBusy) return;
+                const input = singleBatchInputRef.current;
+                if (!input) return;
+                input.focus();
+                input.select();
+            }, 60);
+        };
+        const onPointerDown = () => lockFocus();
+        const onFocusIn = (ev: FocusEvent) => {
+            const input = singleBatchInputRef.current;
+            if (!input) return;
+            if (ev.target === input) return;
+            lockFocus();
+        };
+        const onWindowBlur = () => lockFocus();
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('focusin', onFocusIn, true);
+        window.addEventListener('blur', onWindowBlur);
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('focusin', onFocusIn, true);
+            window.removeEventListener('blur', onWindowBlur);
+        };
+    }, [batchScanOpen, registerBusy]);
+
+    const handleBatchKeyDown = useCallback(
+        (idx: number, ev: React.KeyboardEvent<HTMLInputElement>) => {
+            if (ev.key !== 'Enter') return;
+            ev.preventDefault();
+            const currentVal = ev.currentTarget.value.trim();
+            if (!currentVal) {
+                setBatchScanError(`${batchLabel(idx)} belum di-scan.`);
+                return;
+            }
+            const nextInputs = [...rfidBatchInputs];
+            const duplicateAt = nextInputs.findIndex((v, i) => i !== idx && v.trim() === currentVal);
+            if (duplicateAt !== -1) {
+                setBatchScanError(
+                    `RFID duplikat terdeteksi pada ${batchLabel(duplicateAt)} dan ${batchLabel(idx)}. Gunakan RFID berbeda tiap batch.`
+                );
+                return;
+            }
+            nextInputs[idx] = currentVal;
+            setRfidBatchInputs(nextInputs);
+            if (idx < totalBatch - 1) {
+                setBatchScanError(null);
+                setActiveBatchIndex(idx + 1);
+                setCurrentBatchScan('');
+                window.requestAnimationFrame(() => {
+                    const input = singleBatchInputRef.current;
+                    if (!input) return;
+                    input.focus();
+                    input.value = '';
+                });
+                return;
+            }
+            void handleSubmitBatchRegister(nextInputs);
+        },
+        [handleSubmitBatchRegister, rfidBatchInputs, totalBatch, batchLabel]
+    );
 
     return (
         <div
@@ -435,58 +631,28 @@ const DaftarRFIDCutting: React.FC = memo(() => {
                                     <ReadField label="No. Ikat" value={cuttingForm.noIkat} />
                                     <ReadField label="Placing / Meja" value={cuttingForm.placing} />
 
-                                    <div className="sm:col-span-2 grid grid-cols-[1fr_auto] gap-3 sm:gap-4 items-end w-full">
-                                        <div className="min-w-0 flex flex-col transition-all duration-300">
-                                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
-                                                RFID garment
-                                            </label>
-                                            <input
-                                                type="text"
-                                                inputMode="numeric"
-                                                autoComplete="off"
-                                                value={manualRfid}
-                                                onChange={(e) => {
-                                                    setManualRfid(e.target.value);
-                                                    setRegisterMessage(null);
-                                                }}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        void handleInputRegister();
-                                                    }
-                                                }}
-                                                placeholder="Nomor RFID — kosongkan jika belum ada, lalu ketik sebelum Input Register"
-                                                className="w-full min-h-[2.5rem] sm:min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl border-amber-200 bg-amber-50/60 text-gray-900 font-mono focus:ring-4 focus:ring-amber-100 focus:border-amber-500 outline-none placeholder:text-slate-400 placeholder:font-sans shadow-sm"
-                                            />
-                                        </div>
-                                        <div className="flex flex-col transition-all duration-300 w-[9.5rem] sm:w-[10.5rem]">
-                                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1 text-center sm:text-left whitespace-nowrap">
-                                                Total batch
-                                            </label>
-                                            <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[2.5rem] sm:min-h-[2.75rem]">
-                                                <button
-                                                    type="button"
-                                                    aria-label="Kurangi total batch"
-                                                    onClick={() => setTotalBatch((n) => Math.max(MIN_TOTAL_BATCH, n - 1))}
-                                                    disabled={totalBatch <= MIN_TOTAL_BATCH}
-                                                    className="shrink-0 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg border-2 border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"
-                                                >
-                                                    <Minus className="h-4 w-4" strokeWidth={2.5} />
-                                                </button>
-                                                <div className="min-w-[2.75rem] text-center tabular-nums font-extrabold text-slate-900 rounded-lg border border-emerald-200 bg-white py-1.5 px-2 text-lg leading-none">
-                                                    {totalBatch}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    aria-label="Tambah total batch"
-                                                    onClick={() => setTotalBatch((n) => Math.min(MAX_TOTAL_BATCH, n + 1))}
-                                                    disabled={totalBatch >= MAX_TOTAL_BATCH}
-                                                    className="shrink-0 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg border-2 border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"
-                                                >
-                                                    <Plus className="h-4 w-4" strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-                                        </div>
+                                    <div className="sm:col-span-2 flex flex-col transition-all duration-300 min-w-0">
+                                        <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
+                                            RFID garment
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            value={manualRfid}
+                                            onChange={(e) => {
+                                                setManualRfid(e.target.value);
+                                                setRegisterMessage(null);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    void handleInputRegister();
+                                                }
+                                            }}
+                                            placeholder="Nomor RFID — kosongkan jika belum ada, lalu ketik sebelum Input Register"
+                                            className="w-full min-h-[2.5rem] sm:min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl border-amber-200 bg-amber-50/60 text-gray-900 font-mono focus:ring-4 focus:ring-amber-100 focus:border-amber-500 outline-none placeholder:text-slate-400 placeholder:font-sans shadow-sm"
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -511,7 +677,7 @@ const DaftarRFIDCutting: React.FC = memo(() => {
                                 className="relative w-full py-3 sm:py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 disabled:pointer-events-none text-white font-extrabold rounded-xl shadow-[0_10px_24px_rgba(5,150,105,0.26)] hover:shadow-[0_14px_28px_rgba(5,150,105,0.30)] transition-all duration-200 flex items-center justify-center gap-2 text-sm sm:text-base tracking-wide"
                             >
                                 <PenLine size={18} className="sm:w-5 sm:h-5 shrink-0" />
-                                <span>{registerBusy ? 'Memproses…' : 'INPUT REGISTER'}</span>
+                                <span>{registerBusy ? 'Memuat batch…' : 'INPUT REGISTER'}</span>
                             </button>
                             </div>
                         </div>
@@ -527,6 +693,151 @@ const DaftarRFIDCutting: React.FC = memo(() => {
                         onBarcodeScanned={handleBarcodeFromScan}
                     />
                 </Suspense>
+            )}
+
+            {batchScanOpen && (
+                <div className="fixed inset-0 z-[70] bg-slate-950/55 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5">
+                    <style>{BATCH_POPUP_ANIMATION_CSS}</style>
+                    <div
+                        className="w-full max-w-2xl rounded-2xl border border-slate-200/80 bg-white shadow-[0_30px_80px_rgba(2,6,23,0.35)] overflow-hidden"
+                        style={{ animation: 'batchPopupEnter 200ms ease-out' }}
+                    >
+                        <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <h2 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-800">Scan RFID Batch</h2>
+                                    <p className="text-xs sm:text-sm text-slate-600 mt-1">
+                                        Scan berurutan sesuai daftar batch dari server ({totalBatch} batch). Enter di batch terakhir akan langsung submit.
+                                    </p>
+                                </div>
+                                <div className="flex items-start gap-2 shrink-0">
+                                    <div className="text-right">
+                                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Progress</p>
+                                        <p className="text-base sm:text-lg font-bold text-blue-700">
+                                            {Math.min(totalBatch, rfidBatchInputs.filter((v) => v.trim()).length)} / {totalBatch}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        aria-label="Tutup popup scan batch"
+                                        disabled={registerBusy}
+                                        onClick={() => {
+                                            setBatchScanOpen(false);
+                                            setBatchScanError(null);
+                                            setCurrentBatchScan('');
+                                            setActiveBatchIndex(0);
+                                            setBatchMetaList([]);
+                                            setRfidBatchInputs([]);
+                                        }}
+                                        className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="mt-3 h-2 rounded-full bg-white/80 border border-blue-100 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 transition-all duration-300"
+                                    style={{
+                                        width: `${Math.max(0, Math.min(100, (rfidBatchInputs.filter((v) => v.trim()).length / Math.max(1, totalBatch)) * 100))}%`,
+                                    }}
+                                />
+                            </div>
+                            <p className="text-[11px] sm:text-xs text-slate-500 mt-2">
+                                Barcode: <span className="font-mono text-slate-700">{cuttingForm.barcode}</span>
+                            </p>
+                        </div>
+
+                        <div className="px-4 py-4 sm:px-5 sm:py-5 bg-gradient-to-b from-slate-50/70 to-white">
+                            <div
+                                className="rounded-2xl border border-blue-100/70 bg-white/85 p-4 sm:p-5 relative overflow-hidden shadow-[0_12px_28px_rgba(37,99,235,0.08)]"
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    singleBatchInputRef.current?.focus();
+                                }}
+                            >
+                                <div
+                                    className="pointer-events-none absolute left-4 right-4 top-4 h-[2px] bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500"
+                                    style={{ animation: 'scannerBeam 1500ms ease-in-out infinite' }}
+                                />
+                                <div
+                                    className="pointer-events-none absolute inset-y-3 -left-1 w-[42%] bg-gradient-to-r from-transparent via-cyan-300/20 to-transparent"
+                                    style={{ animation: 'scannerSweep 1900ms linear infinite' }}
+                                />
+                                <div
+                                    className="pointer-events-none absolute top-[18px] right-5 h-2 w-2 rounded-full bg-emerald-500"
+                                    style={{ animation: 'scannerPulse 1000ms ease-in-out infinite' }}
+                                />
+                                <p className="text-[11px] sm:text-xs font-semibold tracking-wide uppercase text-slate-500">
+                                    Batch aktif
+                                </p>
+                                <div className="mt-1 flex items-center gap-2">
+                                    <span className="inline-flex h-8 min-w-8 px-2 items-center justify-center rounded-lg bg-blue-600 text-white text-sm font-bold">
+                                        {batchMetaList[activeBatchIndex]?.batch ?? activeBatchIndex + 1}
+                                    </span>
+                                    <p className="text-sm sm:text-base font-bold text-slate-800">
+                                        {batchLabel(activeBatchIndex)}
+                                    </p>
+                                </div>
+                                <div className="mt-4 border-b-2 border-blue-300/90 pb-2 min-h-[3rem] flex items-end">
+                                    <p
+                                        className={`font-mono tracking-wide text-base sm:text-lg ${
+                                            currentBatchScan ? 'text-slate-900' : 'text-slate-400'
+                                        }`}
+                                        style={{ animation: 'scannerAura 1600ms ease-in-out infinite' }}
+                                    >
+                                        {currentBatchScan || `Tempel scan RFID untuk ${batchLabel(activeBatchIndex)}`}
+                                        <span
+                                            className="inline-block w-[1px] h-5 sm:h-6 bg-blue-500 align-[-3px] ml-0.5"
+                                            style={{ animation: 'scannerCaret 1s steps(1, end) infinite' }}
+                                        />
+                                    </p>
+                                </div>
+                                <input
+                                    type="text"
+                                    ref={singleBatchInputRef}
+                                    value={currentBatchScan}
+                                    onChange={(e) => handleBatchInputChange(e.target.value)}
+                                    onKeyDown={(e) => handleBatchKeyDown(activeBatchIndex, e)}
+                                    autoComplete="off"
+                                    className="absolute opacity-0 pointer-events-none w-[1px] h-[1px] -z-10"
+                                    readOnly={registerBusy}
+                                    aria-label={`Scanner input ${batchLabel(activeBatchIndex)}`}
+                                />
+                                <p className="mt-2 text-[11px] sm:text-xs text-slate-500">
+                                    RFID Reader desktop akan mengisi otomatis lalu menekan Enter untuk lanjut batch berikutnya.
+                                </p>
+                            </div>
+
+                            {rfidBatchInputs.some((v) => v.trim()) && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {rfidBatchInputs.map((v, idx) =>
+                                        v.trim() ? (
+                                            <div
+                                                key={`batch-done-${batchMetaList[idx]?.id_bundles ?? idx}`}
+                                                className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] sm:text-xs font-semibold text-emerald-700"
+                                            >
+                                                {batchLabel(idx)} Done
+                                            </div>
+                                        ) : null
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {batchScanError && (
+                            <p className="mx-4 mb-3 sm:mx-5 text-xs sm:text-sm rounded-xl px-3 py-2.5 bg-red-50 text-red-800 border border-red-100">
+                                {batchScanError}
+                            </p>
+                        )}
+
+                        <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-slate-100 bg-white">
+                            <p className="text-[11px] sm:text-xs text-slate-500 text-right">
+                                Scanner siap input otomatis tanpa klik.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

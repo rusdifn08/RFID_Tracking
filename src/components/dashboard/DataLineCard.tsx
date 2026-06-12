@@ -3,6 +3,7 @@ import { Filter, Search, Calendar, ChevronLeft, ChevronRight } from 'lucide-reac
 import ChartCard from './ChartCard';
 import { getTodayLocalDateString } from '../../utils/dateUtils';
 import { ExportButton } from '../finishing/ExportButton';
+import { HIDE_DATA_LINE_NUMBER } from '../../config/hide';
 
 interface DataLineCardProps {
     lineTitle: string;
@@ -106,18 +107,17 @@ const DataLineCard = memo(({ lineTitle, woData, filterDateFrom, filterDateTo, fi
         ]
     ];
 
-    // Format lineTitle: ubah "LINE 5" menjadi "Line 5"
-    const formattedLineTitle = useMemo(() => {
-        if (!lineTitle) return '';
-        // Jika mengandung "LINE", ubah menjadi "Line"
-        return lineTitle.replace(/LINE/gi, 'Line');
+    const headerTitle = useMemo(() => {
+        if (!lineTitle) return 'LINE';
+        // Hapus kata 'Data' yang kaku, langsung tampilkan 'LINE IYAH' atau 'LINE 1'
+        return lineTitle.toUpperCase();
     }, [lineTitle]);
 
     return (
         <ChartCard
             title={
                 <>
-                    <h2 className="font-semibold text-gray-900 tracking-tight group-hover:text-blue-700 transition-colors flex-1 min-w-0 whitespace-nowrap" style={{ textTransform: 'capitalize', fontSize: 'clamp(0.875rem, 1.2vw + 0.5rem, 1.125rem)', fontWeight: 600 }}>{`Data ${formattedLineTitle}`}</h2>
+                    <h2 className="font-semibold text-gray-900 tracking-tight group-hover:text-blue-700 transition-colors flex-1 min-w-0 whitespace-nowrap" style={{ textTransform: 'capitalize', fontSize: 'clamp(0.875rem, 1.2vw + 0.5rem, 1.125rem)', fontWeight: 600 }}>{headerTitle}</h2>
                     <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2 flex-shrink-0 min-w-0">
                         {/* Date Filter - Input Langsung */}
                         <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2">

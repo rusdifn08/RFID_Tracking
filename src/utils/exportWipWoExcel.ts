@@ -7,8 +7,21 @@ type WipCol = {
   width: number;
   numeric: boolean;
   center?: boolean;
+  date?: boolean;
   /** Grup pewarnaan header & sel data */
-  group: 'info' | 'total' | 'output_sewing' | 'rework' | 'good' | 'pqc_rework' | 'pqc_good' | 'dry_in' | 'dry_out' | 'fold_in' | 'fold_out';
+  group:
+    | 'info'
+    | 'total'
+    | 'qty_target'
+    | 'output_sewing'
+    | 'rework'
+    | 'good'
+    | 'pqc_rework'
+    | 'pqc_good'
+    | 'dry_in'
+    | 'dry_out'
+    | 'fold_in'
+    | 'fold_out';
 };
 
 const COLUMNS: WipCol[] = [
@@ -18,8 +31,11 @@ const COLUMNS: WipCol[] = [
   { header: 'Buyer', keys: ['buyer', 'Buyer'], width: 32, numeric: false, group: 'info' },
   { header: 'Color', keys: ['color', 'Color'], width: 8, numeric: false, center: true, group: 'info' },
   { header: 'Size', keys: ['size', 'Size'], width: 10, numeric: false, center: true, group: 'info' },
+  { header: 'QTY Order', keys: ['qty_order', 'QTY_ORDER', 'Qty Order'], width: 12, numeric: true, center: true, group: 'info' },
+  { header: 'Ex Factory Date', keys: ['ex_fact_date', 'EX_FACT_DATE', 'ex_factory_date'], width: 16, numeric: false, center: true, group: 'info', date: true },
   { header: 'TOTAL', keys: ['TOTAL', 'total', 'Total'], width: 10, numeric: true, center: true, group: 'total' },
   { header: 'Output Sewing', keys: ['OUTPUT_SEWING', 'output_sewing'], width: 14, numeric: true, center: true, group: 'output_sewing' },
+  { header: 'QTY Harian', keys: ['qty_target_day', 'QTY_TARGET_DAY', 'qty_target_harian'], width: 14, numeric: true, center: true, group: 'qty_target' },
   { header: 'Rework', keys: ['REWORK', 'rework'], width: 11, numeric: true, center: true, group: 'rework' },
   { header: 'Good', keys: ['GOOD', 'good'], width: 10, numeric: true, center: true, group: 'good' },
   { header: 'PQC Rework', keys: ['PQC_REWORK', 'pqc_rework'], width: 12, numeric: true, center: true, group: 'pqc_rework' },
@@ -37,33 +53,47 @@ const BORDER = {
   right: { style: 'thin' as const, color: { argb: 'FFBFDBFE' } },
 };
 
+/** Biru gelap info (WO–Buyer, dryroom–folding); biru medium (output sewing); oranye/hijau soft. */
+const INFO_BLUE_HEADER = 'FF1E40AF';
+const INFO_BLUE_DATA = 'FFE0E7FF';
+/** Header lebih gelap agar teks putih kontras (sel data tetap pastel). */
+const SOFT_GREEN_HEADER = 'FF166534';
+const SOFT_GREEN_DATA = 'FFDCFCE7';
+const SOFT_ORANGE_HEADER = 'FFC2410C';
+const SOFT_ORANGE_DATA = 'FFFFEDD5';
+
 const HEADER_FILL: Record<WipCol['group'], string> = {
-  info: 'FF1E40AF',
+  info: INFO_BLUE_HEADER,
   total: 'FF1E3A8A',
-  output_sewing: 'FF0369A1',
-  rework: 'FFD97706',
-  good: 'FF059669',
-  pqc_rework: 'FFEA580C',
-  pqc_good: 'FF0891B2',
-  dry_in: 'FF4F46E5',
-  dry_out: 'FF6366F1',
-  fold_in: 'FF7C3AED',
-  fold_out: 'FF9333EA',
+  qty_target: 'FF2563EB',
+  output_sewing: INFO_BLUE_HEADER,
+  rework: SOFT_ORANGE_HEADER,
+  good: SOFT_GREEN_HEADER,
+  pqc_rework: SOFT_ORANGE_HEADER,
+  pqc_good: SOFT_GREEN_HEADER,
+  dry_in: INFO_BLUE_HEADER,
+  dry_out: INFO_BLUE_HEADER,
+  fold_in: INFO_BLUE_HEADER,
+  fold_out: INFO_BLUE_HEADER,
 };
 
 const DATA_FILL_POSITIVE: Record<WipCol['group'], string> = {
   info: 'FFFFFFFF',
-  total: 'FFE0E7FF',
-  output_sewing: 'FFDBEAFE',
-  rework: 'FFFEF3C7',
-  good: 'FFD1FAE5',
-  pqc_rework: 'FFFFEDD5',
-  pqc_good: 'FFCFFAFE',
-  dry_in: 'FFE0E7FF',
-  dry_out: 'FFEEF2FF',
-  fold_in: 'FFF3E8FF',
-  fold_out: 'FFFAE8FF',
+  total: INFO_BLUE_DATA,
+  qty_target: 'FFBFDBFE',
+  output_sewing: INFO_BLUE_DATA,
+  rework: SOFT_ORANGE_DATA,
+  good: SOFT_GREEN_DATA,
+  pqc_rework: SOFT_ORANGE_DATA,
+  pqc_good: SOFT_GREEN_DATA,
+  dry_in: INFO_BLUE_DATA,
+  dry_out: INFO_BLUE_DATA,
+  fold_in: INFO_BLUE_DATA,
+  fold_out: INFO_BLUE_DATA,
 };
+
+/** Sel QTY Harian selalu nuansa biru (header sudah biru). */
+const QTY_TARGET_BASE_FILL = 'FFEFF6FF';
 
 const toDateToken = (date?: string): string => {
   if (!date) return '';
@@ -94,6 +124,11 @@ function pickField(row: Record<string, unknown>, keys: string[]): unknown {
 
 function cellValue(row: Record<string, unknown>, col: WipCol): string | number {
   const raw = pickField(row, col.keys);
+  if (col.date) {
+    if (raw == null || raw === '') return '';
+    const s = String(raw).trim();
+    return toDateToken(s) || s;
+  }
   if (col.numeric) {
     const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/,/g, '').trim());
     return Number.isFinite(n) ? Math.round(n) : '';
@@ -195,7 +230,15 @@ export async function exportWipWoExcel({
       cell.border = BORDER;
 
       let fillArgb = stripe;
-      if (col.group !== 'info' && col.numeric) {
+      if (col.group === 'qty_target') {
+        const n = numericVal(val);
+        fillArgb = n > 0 ? DATA_FILL_POSITIVE.qty_target : QTY_TARGET_BASE_FILL;
+        if (n > 0) {
+          cell.font = { ...cell.font, bold: true, color: { argb: 'FF1E40AF' } };
+        } else {
+          cell.font = { ...cell.font, color: { argb: 'FF334155' } };
+        }
+      } else if (col.group !== 'info' && col.numeric) {
         const n = numericVal(val);
         fillArgb = n > 0 ? DATA_FILL_POSITIVE[col.group] : stripe;
         if (n > 0) {

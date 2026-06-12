@@ -160,6 +160,19 @@ export async function exportDailyOutputByLineExcel({
 
   let currentRow = 4;
 
+  // Header tabel cukup sekali di awal (tidak diulang tiap pindah tanggal).
+  const headerRow = ws.getRow(currentRow);
+  headerRow.height = 30;
+  exportHeaders.forEach((header, colIdx) => {
+    const cell = headerRow.getCell(colIdx + 1);
+    cell.value = header.replace(/_/g, ' ');
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12, name: 'Calibri' };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFillByGroup(header) } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = BORDER;
+  });
+  currentRow += 1;
+
   for (const dateKey of sortedDates) {
     const chunk = (byDate.get(dateKey) ?? []).slice();
     chunk.sort((a, b) => {
@@ -167,25 +180,6 @@ export async function exportDailyOutputByLineExcel({
       if (ln !== 0) return ln;
       return String(a.wo ?? '').localeCompare(String(b.wo ?? ''));
     });
-
-    const lineMin = chunk.length ? parseLineNum(chunk[0]?.line) : 0;
-    const lineMax = chunk.length ? parseLineNum(chunk[chunk.length - 1]?.line) : 0;
-    const lineLabel =
-      chunk.length === 0
-        ? 'tidak ada data'
-        : lineMin === lineMax
-          ? `Line ${lineMin}`
-          : `Line ${lineMin} … ${lineMax}`;
-
-    ws.mergeCells(currentRow, 1, currentRow, ncol);
-    const band = ws.getCell(currentRow, 1);
-    band.value = `Tanggal  ${dateKey}   —   ${chunk.length} baris (${lineLabel})`;
-    band.font = { bold: true, size: 13, name: 'Calibri', color: { argb: 'FFFFFFFF' } };
-    band.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF115E59' } };
-    band.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    band.border = BORDER;
-    ws.getRow(currentRow).height = 26;
-    currentRow += 1;
 
     if (chunk.length === 0) {
       ws.mergeCells(currentRow, 1, currentRow, ncol);
@@ -199,18 +193,6 @@ export async function exportDailyOutputByLineExcel({
       currentRow += 2;
       continue;
     }
-
-    const headerRow = ws.getRow(currentRow);
-    headerRow.height = 30;
-    exportHeaders.forEach((header, colIdx) => {
-      const cell = headerRow.getCell(colIdx + 1);
-      cell.value = header.replace(/_/g, ' ');
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12, name: 'Calibri' };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFillByGroup(header) } };
-      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      cell.border = BORDER;
-    });
-    currentRow += 1;
 
     chunk.forEach((rowObj, idx) => {
       const r = ws.getRow(currentRow);
@@ -240,7 +222,6 @@ export async function exportDailyOutputByLineExcel({
       currentRow += 1;
     });
 
-    currentRow += 1;
   }
 
   const from = toDateToken(filterDateFrom);
