@@ -181,18 +181,7 @@ export async function exportDailyOutputByLineExcel({
       return String(a.wo ?? '').localeCompare(String(b.wo ?? ''));
     });
 
-    if (chunk.length === 0) {
-      ws.mergeCells(currentRow, 1, currentRow, ncol);
-      const emptyCell = ws.getCell(currentRow, 1);
-      emptyCell.value = 'Tidak ada data untuk tanggal ini.';
-      emptyCell.font = { italic: true, size: 11, name: 'Calibri', color: { argb: 'FF64748B' } };
-      emptyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-      emptyCell.alignment = { vertical: 'middle', horizontal: 'center' };
-      emptyCell.border = BORDER;
-      ws.getRow(currentRow).height = 22;
-      currentRow += 2;
-      continue;
-    }
+    if (chunk.length === 0) continue;
 
     chunk.forEach((rowObj, idx) => {
       const r = ws.getRow(currentRow);

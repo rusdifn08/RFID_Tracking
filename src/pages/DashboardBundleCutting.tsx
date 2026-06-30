@@ -183,8 +183,8 @@ export default function DashboardBundleCutting() {
     queryKey: [...QUERY_CUTTING_OUTPUT, qcRangeFrom, qcRangeTo],
     queryFn: async () => {
       const r = await getGccCuttingOutputDashboardData({
-        tanggal_from: qcRangeFrom,
-        tanggal_to: qcRangeTo
+        tanggalfrom: qcRangeFrom,
+        tanggalto: qcRangeTo,
       });
       if (!r.success || !r.data) throw new Error(r.error || 'Gagal memuat data Output Bundle');
       return r.data;

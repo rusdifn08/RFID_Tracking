@@ -4410,15 +4410,20 @@ function resolveGccCuttingOutputDataUrl(): string {
     );
 }
 
+export type GccCuttingOutputDashboardQueryParams = {
+    tanggalfrom?: string;
+    tanggalto?: string;
+};
+
 export const getGccCuttingOutputDashboardData = async (
-    params?: { tanggal_from?: string; tanggal_to?: string }
+    params?: GccCuttingOutputDashboardQueryParams
 ): Promise<ApiResponse<GccCuttingOutputDashboardDataResponse>> => {
     const base = resolveGccCuttingOutputDataUrl();
     let reqUrl = base;
     if (params) {
         const u = new URL(base, typeof window !== 'undefined' ? window.location.origin : undefined);
-        if (params.tanggal_from) u.searchParams.set('tanggal_from', params.tanggal_from);
-        if (params.tanggal_to) u.searchParams.set('tanggal_to', params.tanggal_to);
+        if (params.tanggalfrom) u.searchParams.set('tanggalfrom', params.tanggalfrom);
+        if (params.tanggalto) u.searchParams.set('tanggalto', params.tanggalto);
         reqUrl = u.toString();
     }
     try {
