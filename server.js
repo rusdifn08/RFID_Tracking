@@ -91,8 +91,8 @@ if (CURRENT_ENV === 'MJL2') {
 
 const HOST = '0.0.0.0'; // Listen di semua network interface
 
-// Port untuk backend API - semua environment menggunakan port 7000
-const BACKEND_PORT = 7000;
+// Port untuk backend API — default 7000; override: BACKEND_PORT atau -portbackend via scripts/dev-all.mjs
+const BACKEND_PORT = Number(process.env.BACKEND_PORT || 7000);
 
 // Backend API URL - menggunakan IP yang sudah dikonfigurasi dengan port yang sesuai
 const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${BACKEND_PORT}`;
@@ -3643,8 +3643,8 @@ app.post('/garment/dryroom/urgent', async (req, res) => {
     return await proxyGarmentUrgentScan('/garment/dryroom/urgent', req, res);
 });
 
-/** Base URL untuk Reject Room in/out (port 7000); override lewat REJECT_ROOM_INOUT_URL */
-const REJECT_ROOM_INOUT_URL = process.env.REJECT_ROOM_INOUT_URL || 'http://10.5.0.106:7000';
+/** Base URL untuk Reject Room in/out; ikut BACKEND_IP:BACKEND_PORT bila tidak di-override */
+const REJECT_ROOM_INOUT_URL = process.env.REJECT_ROOM_INOUT_URL || `http://${BACKEND_IP}:${BACKEND_PORT}`;
 
 /**
  * POST /garment/reject/in - Reject Room check in → 10.5.0.106:7000

@@ -45,11 +45,22 @@ export const getLocalIP = (): string => {
  * Mendapatkan API Base URL dengan local IP
  * @param port - Port number (default: 7000 untuk proxy server)
  */
+/** Host proxy server.js untuk MJL2 dev (port frontend 5174 → proxy :8001). */
+const MJL2_DEV_PROXY = 'http://10.6.0.99:8001';
+
 export const getApiBaseUrl = (port: number = 7000): string => {
-    // Dev: same-origin agar Network tab menampilkan path backend (`/wira`, `/api/...`).
-    // Vite mem-proxy ke server.js (:8000) atau backend sesuai route.
+    const fromEnv = import.meta.env.VITE_NODE_PROXY_URL as string | undefined;
+    if (fromEnv?.trim()) return fromEnv.replace(/\/$/, '');
+
     if (typeof window !== 'undefined' && import.meta.env.DEV) {
-        return window.location.origin;
+        // HTTPS dev: same-origin → Vite proxy (hindari mixed content ke http://IP:8000)
+        if (window.location.protocol === 'https:') {
+            return window.location.origin;
+        }
+        // MJL2 dev: server.js di 10.6.0.99:8001, bukan mesin Vite (10.5.0.2:5174)
+        if (window.location.port === '5174' && port === 8001) {
+            return MJL2_DEV_PROXY;
+        }
     }
     const ip = getLocalIP();
     return `http://${ip}:${port}`;

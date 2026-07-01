@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { X, CheckCircle2, Loader2, LogIn, LogOut, User, ClipboardList, Hash, Package, Users, Palette, Ruler, BadgeCheck, Info, Tags } from 'lucide-react';
 import { dryroomCheckIn, dryroomCheckOut, dryroomUrgent, foldingCheckIn, foldingCheckOut, foldingUrgent, rejectRoomCheckIn, rejectRoomCheckOut, rejectRoomScrap, API_BASE_URL, getDefaultHeaders, getActiveUsers, getScanningDryroomOperator, type ScanningDryroomLastScan } from '../config/api';
 
@@ -43,6 +43,196 @@ interface ScannedItem {
     statusText?: string;
 }
 
+/** Maksimal baris histori scan di UI — sisanya dibuang (FIFO). */
+const MAX_SCAN_HISTORY = 10;
+
+type ScanTheme = {
+    primaryColor: string;
+    primaryGradient: string;
+    bgGradient: string;
+    borderColor: string;
+};
+
+function scanSessionKey(action: FinishingScanAction, rfid: string): string {
+    return `${action}:${rfid}`;
+}
+
+function prependScanHistory(prev: ScannedItem[], item: ScannedItem): ScannedItem[] {
+    const next = [item, ...prev];
+    return next.length > MAX_SCAN_HISTORY ? next.slice(0, MAX_SCAN_HISTORY) : next;
+}
+
+const ScanHistoryRow = memo(function ScanHistoryRow({
+    item,
+    rowNumber,
+    theme,
+}: {
+    item: ScannedItem;
+    rowNumber: number;
+    theme: ScanTheme;
+}) {
+    const isError = item.status === 'error';
+    const timeLabel = item.timestamp.toLocaleTimeString('id-ID');
+    return (
+        <div
+            className="flex items-center gap-2 p-2 mb-1.5 rounded-md relative overflow-hidden"
+            style={{
+                background: item.status === 'success'
+                    ? 'white'
+                    : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
+                border: `2px solid ${item.status === 'success' ? theme.borderColor + '40' : '#EF4444'}`,
+            }}
+        >
+            <div
+                className="absolute left-0 top-0 bottom-0 w-1"
+                style={{
+                    background: item.status === 'success'
+                        ? theme.primaryGradient
+                        : 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)',
+                }}
+            />
+            <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 font-extrabold text-xs border-2"
+                style={{
+                    background: item.status === 'success'
+                        ? theme.bgGradient
+                        : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
+                    color: item.status === 'success' ? theme.primaryColor : '#DC2626',
+                    borderColor: item.status === 'success' ? theme.primaryColor : '#EF4444',
+                }}
+            >
+                {rowNumber}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div
+                    className="font-semibold font-mono text-sm tracking-wide"
+                    style={{ color: item.status === 'success' ? '#0F172A' : '#DC2626' }}
+                >
+                    {item.rfid}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                    <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
+                        style={{
+                            color: isError ? '#DC2626' : theme.primaryColor,
+                            background: isError ? '#FEE2E2' : theme.bgGradient,
+                        }}
+                    >
+                        {finishingActionLabel(item.action || 'checkin')}
+                    </span>
+                    <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
+                        style={{ color: '#64748B', background: '#F1F5F9' }}
+                    >
+                        {timeLabel}
+                    </span>
+                </div>
+                {item.message && (
+                    <div
+                        className="text-xs font-medium mt-0.5"
+                        style={{ color: isError ? '#DC2626' : '#64748B' }}
+                    >
+                        {item.message}
+                    </div>
+                )}
+            </div>
+            {item.status === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: theme.primaryColor }} />
+            ) : (
+                <X className="w-5 h-5 flex-shrink-0 text-red-600" />
+            )}
+        </div>
+    );
+});
+
+function ScanHistoryPanel({
+    items,
+    sessionScanTotal,
+    scrollRef,
+    theme,
+    isDryroomDashboardLayout = false,
+}: {
+    items: ScannedItem[];
+    sessionScanTotal: number;
+    scrollRef: React.RefObject<HTMLDivElement | null>;
+    theme: ScanTheme;
+    isDryroomDashboardLayout?: boolean;
+}) {
+    return (
+        <div
+            className={`mb-2 flex flex-col flex-shrink-0 ${isDryroomDashboardLayout ? 'flex-1 min-h-0 mb-0' : ''}`}
+            style={{
+                border: `2px solid ${theme.borderColor}40`,
+                borderRadius: '6px',
+                overflow: 'hidden',
+                background: 'white',
+                boxShadow: `0 4px 6px -1px ${theme.primaryColor}05`,
+                display: 'flex',
+                flexDirection: 'column',
+                ...(isDryroomDashboardLayout
+                    ? { flex: 1, minHeight: 0, height: 'auto' }
+                    : { height: '280px' }),
+            }}
+        >
+            <div
+                className="px-3 py-2 flex justify-between items-center border-b-2 border-gray-200 flex-shrink-0"
+                style={{ background: theme.bgGradient }}
+            >
+                <h3 className="text-sm font-bold" style={{ color: '#0F172A', letterSpacing: '-0.25px' }}>
+                    📋 RFID yang Sudah di-Scan
+                    {sessionScanTotal > MAX_SCAN_HISTORY && (
+                        <span className="ml-1 text-[10px] font-medium text-slate-500">
+                            ({MAX_SCAN_HISTORY} terakhir)
+                        </span>
+                    )}
+                </h3>
+                <span
+                    className="px-3 py-1.5 rounded-full font-extrabold text-sm text-white text-center min-w-[35px]"
+                    style={{
+                        background: theme.primaryGradient,
+                        boxShadow: `0 2px 8px ${theme.primaryColor}30`,
+                    }}
+                >
+                    {sessionScanTotal}
+                </span>
+            </div>
+
+            {items.length === 0 ? (
+                <div
+                    className="py-12 text-center flex-1 flex items-center justify-center"
+                    style={{ color: '#94A3B8', fontSize: '0.95rem', fontWeight: 500 }}
+                >
+                    Belum ada RFID yang di-scan
+                </div>
+            ) : (
+                <div
+                    ref={scrollRef}
+                    className="overflow-y-auto p-1.5"
+                    style={{
+                        background: '#FAFBFC',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: `${theme.primaryColor} #F1F5F9`,
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        ...(isDryroomDashboardLayout
+                            ? { flex: 1, minHeight: 0, height: 0 }
+                            : { height: '230px', maxHeight: '230px' }),
+                    }}
+                >
+                    {items.map((item, index) => (
+                        <ScanHistoryRow
+                            key={`${item.rfid}-${item.timestamp.getTime()}-${item.status}`}
+                            item={item}
+                            rowNumber={sessionScanTotal - index}
+                            theme={theme}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function ScanningFinishingModal({
     isOpen,
     onClose,
@@ -60,6 +250,9 @@ export default function ScanningFinishingModal({
 }: ScanningFinishingModalProps) {
     const [rfidInput, setRfidInput] = useState('');
     const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
+    const [sessionScanTotal, setSessionScanTotal] = useState(0);
+    const [sessionSuccessTotal, setSessionSuccessTotal] = useState(0);
+    const sessionKeysRef = useRef<Set<string>>(new Set());
     const [isProcessing, setIsProcessing] = useState(false);
     const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
     const [selectedAction, setSelectedAction] = useState<FinishingScanAction>(defaultAction);
@@ -127,6 +320,21 @@ export default function ScanningFinishingModal({
         nik: dryroomPanel.nik_operator || '—',
     };
 
+    const recordScanInHistory = useCallback((item: ScannedItem) => {
+        setSessionScanTotal((t) => t + 1);
+        if (item.status === 'success') {
+            setSessionSuccessTotal((t) => t + 1);
+        }
+        setScannedItems((prev) => prependScanHistory(prev, item));
+    }, []);
+
+    const resetScanSession = useCallback(() => {
+        sessionKeysRef.current.clear();
+        setSessionScanTotal(0);
+        setSessionSuccessTotal(0);
+        setScannedItems([]);
+    }, []);
+
     const dryroomLastScanFormattedTime = useMemo(() => {
         const iso = dryroomPanel.last_scan?.updatedAt;
         if (!iso) return '';
@@ -145,9 +353,8 @@ export default function ScanningFinishingModal({
         );
     }, [dryroomPanel.last_scan]);
 
-    const successScans = scannedItems.filter(i => i.status === 'success');
-    const successScanCount = successScans.length;
-    const displayWo = successScans.find(i => i.wo)?.wo ?? '—';
+    const successScanCount = sessionSuccessTotal;
+    const displayWo = scannedItems.find(i => i.wo)?.wo ?? '—';
     const summaryWo =
         (dryroomPanel.last_scan?.wo && String(dryroomPanel.last_scan.wo).trim()) || displayWo || '—';
 
@@ -440,7 +647,7 @@ export default function ScanningFinishingModal({
         if (!isOpen) {
             setRfidInput('');
             rfidInputRef.current = '';
-            setScannedItems([]);
+            resetScanSession();
             setIsProcessing(false);
             setServerStatus('checking');
             setSelectedAction(defaultAction);
@@ -451,17 +658,14 @@ export default function ScanningFinishingModal({
                 inputRef.current.blur();
             }
         }
-    }, [isOpen, defaultAction]);
+    }, [isOpen, defaultAction, resetScanSession]);
 
-    // Auto-scroll ke atas ketika ada data baru
+    // Scroll ke atas saat ada scan baru (tanpa animasi smooth agar tidak lag)
     useEffect(() => {
-        if (scrollContainerRef.current && scannedItems.length > 0) {
-            scrollContainerRef.current.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
+        if (scrollContainerRef.current && sessionScanTotal > 0) {
+            scrollContainerRef.current.scrollTop = 0;
         }
-    }, [scannedItems]);
+    }, [sessionScanTotal]);
 
     // Prevent body scroll hanya untuk mode fullscreen modal
     useEffect(() => {
@@ -483,16 +687,17 @@ export default function ScanningFinishingModal({
             const accessMessage = type === 'dryroom'
                 ? 'Akses ditolak. Hanya bagian DRYROOM atau ROBOTIC yang bisa Check In/Check Out/Urgent Dryroom.'
                 : 'Akses ditolak. Hanya bagian FOLDING atau ROBOTIC yang bisa Check In Folding.';
-            setScannedItems(prev => {
-                const newItems: ScannedItem[] = [...prev, {
-                    rfid: rfid.trim() || '-',
-                    timestamp,
-                    status: 'error',
-                    message: accessMessage,
-                    action: selectedActionRef.current
-                }];
-                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            recordScanInHistory({
+                rfid: rfid.trim() || '-',
+                timestamp,
+                status: 'error',
+                message: accessMessage,
+                action: selectedActionRef.current,
             });
+            const trimmedAccess = rfid.trim();
+            if (trimmedAccess) {
+                sessionKeysRef.current.add(scanSessionKey(selectedActionRef.current, trimmedAccess));
+            }
             return;
         }
 
@@ -503,22 +708,18 @@ export default function ScanningFinishingModal({
         // Gunakan selectedAction dari ref untuk memastikan mendapatkan nilai terbaru
         const currentAction = selectedActionRef.current;
 
-        // Cek duplikasi di local state
-        const isLocalDuplicate = scannedItems.some(item => item.rfid === trimmedRfid && item.action === currentAction);
-
-        if (isLocalDuplicate) {
+        // Cek duplikasi sesi (O(1) via Set, bukan scan seluruh array)
+        const dupKey = scanSessionKey(currentAction, trimmedRfid);
+        if (sessionKeysRef.current.has(dupKey)) {
             const timestamp = new Date();
             // Play error sound
             playSound('error');
-            setScannedItems(prev => {
-                const newItems: ScannedItem[] = [...prev, {
-                    rfid: trimmedRfid,
-                    timestamp,
-                    status: 'error' as const,
-                    message: `RFID sudah di-${finishingActionLabel(currentAction)} dalam session ini (Duplikasi)`,
-                    action: currentAction
-                }];
-                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            recordScanInHistory({
+                rfid: trimmedRfid,
+                timestamp,
+                status: 'error',
+                message: `RFID sudah di-${finishingActionLabel(currentAction)} dalam session ini (Duplikasi)`,
+                action: currentAction,
             });
             setRfidInput('');
             rfidInputRef.current = '';
@@ -528,6 +729,7 @@ export default function ScanningFinishingModal({
             return;
         }
 
+        sessionKeysRef.current.add(dupKey);
         setIsProcessing(true);
         const timestamp = new Date();
 
@@ -653,20 +855,17 @@ export default function ScanningFinishingModal({
                     void refreshDryroomPanel(currentAction);
                 }
 
-                setScannedItems(prev => {
-                    const newItems: ScannedItem[] = [...prev, {
-                        rfid: trimmedRfid,
-                        timestamp,
-                        status: 'success' as const,
-                        message: message,
-                        action: currentAction,
-                        wo: responseData?.wo,
-                        item: responseData?.item,
-                        color: responseData?.color,
-                        size: responseData?.size,
-                        statusText: typeof responseData?.status === 'string' ? responseData.status : undefined,
-                    }];
-                    return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+                recordScanInHistory({
+                    rfid: trimmedRfid,
+                    timestamp,
+                    status: 'success',
+                    message: message,
+                    action: currentAction,
+                    wo: responseData?.wo,
+                    item: responseData?.item,
+                    color: responseData?.color,
+                    size: responseData?.size,
+                    statusText: typeof responseData?.status === 'string' ? responseData.status : undefined,
                 });
 
                 // Call onSuccess callback jika ada, dengan tableNumber untuk optimistik update
@@ -690,15 +889,12 @@ export default function ScanningFinishingModal({
             // Play error sound
             playSound('error');
 
-            setScannedItems(prev => {
-                const newItems: ScannedItem[] = [...prev, {
-                    rfid: trimmedRfid,
-                    timestamp,
-                    status: 'error' as const,
-                    message: errorMessage,
-                    action: currentAction
-                }];
-                return newItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            recordScanInHistory({
+                rfid: trimmedRfid,
+                timestamp,
+                status: 'error',
+                message: errorMessage,
+                action: currentAction,
             });
         } finally {
             setIsProcessing(false);
@@ -1019,152 +1215,12 @@ export default function ScanningFinishingModal({
                     key={isOpen ? 'open' : 'closed'}
                 />
 
-                {/* Scanned List */}
-                <div
-                    className="mb-2 flex flex-col flex-shrink-0"
-                    style={{
-                        border: `2px solid ${theme.borderColor}40`,
-                        borderRadius: '6px',
-                        overflow: 'hidden',
-                        background: 'white',
-                        boxShadow: `0 4px 6px -1px ${theme.primaryColor}05`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        height: '280px'
-                    }}
-                >
-                    <div
-                        className="px-3 py-2 flex justify-between items-center border-b-2 border-gray-200 flex-shrink-0"
-                        style={{
-                            background: theme.bgGradient
-                        }}
-                    >
-                        <h3 className="text-sm font-bold" style={{ color: '#0F172A', letterSpacing: '-0.25px' }}>
-                            📋 RFID yang Sudah di-Scan
-                        </h3>
-                        <span
-                            className="px-3 py-1.5 rounded-full font-extrabold text-sm text-white text-center min-w-[35px]"
-                            style={{
-                                background: theme.primaryGradient,
-                                boxShadow: `0 2px 8px ${theme.primaryColor}30`
-                            }}
-                        >
-                            {scannedItems.length}
-                        </span>
-                    </div>
-
-                    {scannedItems.length === 0 ? (
-                        <div className="py-12 text-center flex-1 flex items-center justify-center" style={{ color: '#94A3B8', fontSize: '0.95rem', fontWeight: 500 }}>
-                            Belum ada RFID yang di-scan
-                        </div>
-                    ) : (
-                        <div
-                            ref={scrollContainerRef}
-                            className="overflow-y-auto p-1.5"
-                            style={{
-                                background: '#FAFBFC',
-                                scrollbarWidth: 'thin',
-                                scrollbarColor: `${theme.primaryColor} #F1F5F9`,
-                                overflowY: 'auto',
-                                overflowX: 'hidden',
-                                height: '230px',
-                                maxHeight: '230px'
-                            }}
-                        >
-                            {scannedItems.map((item, index) => {
-                                const isError = item.status === 'error';
-                                return (
-                                    <div
-                                        key={index}
-                                        className="flex items-center gap-2 p-2 mb-1.5 rounded-md relative overflow-hidden transition-all"
-                                        style={{
-                                            background: item.status === 'success'
-                                                ? 'white'
-                                                : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
-                                            border: `2px solid ${item.status === 'success'
-                                                ? theme.borderColor + '40'
-                                                : '#EF4444'}`,
-                                            animation: 'slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
-                                        }}
-                                    >
-                                        <div
-                                            className="absolute left-0 top-0 bottom-0 w-1 transition-transform"
-                                            style={{
-                                                background: item.status === 'success'
-                                                    ? theme.primaryGradient
-                                                    : 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)',
-                                                transform: 'scaleY(1)'
-                                            }}
-                                        />
-                                        <div
-                                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 font-extrabold text-xs border-2"
-                                            style={{
-                                                background: item.status === 'success'
-                                                    ? theme.bgGradient
-                                                    : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
-                                                color: item.status === 'success'
-                                                    ? theme.primaryColor
-                                                    : '#DC2626',
-                                                borderColor: item.status === 'success'
-                                                    ? theme.primaryColor
-                                                    : '#EF4444',
-                                            }}
-                                        >
-                                            {scannedItems.length - index}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div
-                                                className="font-semibold font-mono text-sm tracking-wide"
-                                                style={{
-                                                    color: item.status === 'success'
-                                                        ? '#0F172A'
-                                                        : '#DC2626'
-                                                }}
-                                            >
-                                                {item.rfid}
-                                            </div>
-                                            <div className="flex items-center gap-2 mt-0.5">
-                                                <span
-                                                    className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
-                                                    style={{
-                                                        color: isError ? '#DC2626' : theme.primaryColor,
-                                                        background: isError ? '#FEE2E2' : theme.bgGradient
-                                                    }}
-                                                >
-                                                    {finishingActionLabel(item.action || 'checkin')}
-                                                </span>
-                                                <span
-                                                    className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
-                                                    style={{
-                                                        color: '#64748B',
-                                                        background: '#F1F5F9'
-                                                    }}
-                                                >
-                                                    {item.timestamp.toLocaleTimeString('id-ID')}
-                                                </span>
-                                            </div>
-                                            {item.message && (
-                                                <div
-                                                    className="text-xs font-medium mt-0.5"
-                                                    style={{
-                                                        color: isError ? '#DC2626' : '#64748B'
-                                                    }}
-                                                >
-                                                    {item.message}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {item.status === 'success' ? (
-                                            <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: theme.primaryColor }} />
-                                        ) : (
-                                            <X className="w-5 h-5 flex-shrink-0 text-red-600" />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <ScanHistoryPanel
+                    items={scannedItems}
+                    sessionScanTotal={sessionScanTotal}
+                    scrollRef={scrollContainerRef}
+                    theme={theme}
+                />
 
                 {/* Action Buttons - Hidden jika compact mode */}
                 {!compact && (
@@ -1188,17 +1244,17 @@ export default function ScanningFinishingModal({
                         </button>
                         <button
                             onClick={async () => {
-                                if (isProcessing || scannedItems.length === 0) return;
+                                if (isProcessing || sessionScanTotal === 0) return;
                                 onClose();
                             }}
-                            disabled={isProcessing || scannedItems.length === 0}
+                            disabled={isProcessing || sessionScanTotal === 0}
                             className="flex-1 min-w-[120px] xs:min-w-[140px] py-2.5 xs:py-3 sm:py-3.5 px-4 xs:px-5 sm:px-6 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base text-white transition-all relative overflow-hidden"
                             style={{
                                 background: theme.primaryGradient,
                                 boxShadow: `0 4px 12px ${theme.primaryColor}35`,
                                 letterSpacing: '0.25px',
-                                opacity: (isProcessing || scannedItems.length === 0) ? 0.5 : 1,
-                                cursor: (isProcessing || scannedItems.length === 0) ? 'not-allowed' : 'pointer'
+                                opacity: (isProcessing || sessionScanTotal === 0) ? 0.5 : 1,
+                                cursor: (isProcessing || sessionScanTotal === 0) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             {isProcessing ? (
@@ -1207,7 +1263,7 @@ export default function ScanningFinishingModal({
                                     Memproses...
                                 </>
                             ) : (
-                                `💾 Selesai (${scannedItems.length})`
+                                `💾 Selesai (${sessionScanTotal})`
                             )}
                         </button>
                     </div>
@@ -1667,155 +1723,13 @@ export default function ScanningFinishingModal({
                         key={isOpen ? 'open' : 'closed'}
                     />
 
-                    {/* Scanned List */}
-                    <div
-                        className={`mb-2 flex flex-col flex-shrink-0 ${isDryroomDashboardLayout ? 'flex-1 min-h-0 mb-0' : ''}`}
-                        style={{
-                            border: `2px solid ${theme.borderColor}40`,
-                            borderRadius: '6px',
-                            overflow: 'hidden',
-                            background: 'white',
-                            boxShadow: `0 4px 6px -1px ${theme.primaryColor}05`,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            ...(isDryroomDashboardLayout
-                                ? { flex: 1, minHeight: 0, height: 'auto' }
-                                : { height: '280px' })
-                        }}
-                    >
-                        <div
-                            className="px-3 py-2 flex justify-between items-center border-b-2 border-gray-200 flex-shrink-0"
-                            style={{
-                                background: theme.bgGradient
-                            }}
-                        >
-                            <h3 className="text-sm font-bold" style={{ color: '#0F172A', letterSpacing: '-0.25px' }}>
-                                📋 RFID yang Sudah di-Scan
-                            </h3>
-                            <span
-                                className="px-3 py-1.5 rounded-full font-extrabold text-sm text-white text-center min-w-[35px]"
-                                style={{
-                                    background: theme.primaryGradient,
-                                    boxShadow: `0 2px 8px ${theme.primaryColor}30`
-                                }}
-                            >
-                                {scannedItems.length}
-                            </span>
-                        </div>
-
-                        {scannedItems.length === 0 ? (
-                            <div className="py-12 text-center flex-1 flex items-center justify-center" style={{ color: '#94A3B8', fontSize: '0.95rem', fontWeight: 500 }}>
-                                Belum ada RFID yang di-scan
-                            </div>
-                        ) : (
-                            <div
-                                ref={scrollContainerRef}
-                                className="overflow-y-auto p-1.5"
-                                style={{
-                                    background: '#FAFBFC',
-                                    scrollbarWidth: 'thin',
-                                    scrollbarColor: `${theme.primaryColor} #F1F5F9`,
-                                    overflowY: 'auto',
-                                    overflowX: 'hidden',
-                                    ...(isDryroomDashboardLayout
-                                        ? { flex: 1, minHeight: 0, height: 0 }
-                                        : { height: '230px', maxHeight: '230px' })
-                                }}
-                            >
-                                {scannedItems.map((item, index) => {
-                                    const isError = item.status === 'error';
-                                    return (
-                                        <div
-                                            key={index}
-                                            className="flex items-center gap-2 p-2 mb-1.5 rounded-md relative overflow-hidden transition-all"
-                                            style={{
-                                                background: item.status === 'success'
-                                                    ? 'white'
-                                                    : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
-                                                border: `2px solid ${item.status === 'success'
-                                                    ? theme.borderColor + '40'
-                                                    : '#EF4444'}`,
-                                                animation: 'slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
-                                            }}
-                                        >
-                                            <div
-                                                className="absolute left-0 top-0 bottom-0 w-1 transition-transform"
-                                                style={{
-                                                    background: item.status === 'success'
-                                                        ? theme.primaryGradient
-                                                        : 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)',
-                                                    transform: 'scaleY(1)'
-                                                }}
-                                            />
-                                            <div
-                                                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 font-extrabold text-xs border-2"
-                                                style={{
-                                                    background: item.status === 'success'
-                                                        ? theme.bgGradient
-                                                        : 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
-                                                    color: item.status === 'success'
-                                                        ? theme.primaryColor
-                                                        : '#DC2626',
-                                                    borderColor: item.status === 'success'
-                                                        ? theme.primaryColor
-                                                        : '#EF4444',
-                                                }}
-                                            >
-                                                {scannedItems.length - index}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div
-                                                    className="font-semibold font-mono text-sm tracking-wide"
-                                                    style={{
-                                                        color: item.status === 'success'
-                                                            ? '#0F172A'
-                                                            : '#DC2626'
-                                                    }}
-                                                >
-                                                    {item.rfid}
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span
-                                                        className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
-                                                        style={{
-                                                            color: isError ? '#DC2626' : theme.primaryColor,
-                                                            background: isError ? '#FEE2E2' : theme.bgGradient
-                                                        }}
-                                                    >
-                                                        {finishingActionLabel(item.action || 'checkin')}
-                                                    </span>
-                                                    <span
-                                                        className="text-xs font-medium px-2 py-0.5 rounded-md inline-block"
-                                                        style={{
-                                                            color: '#64748B',
-                                                            background: '#F1F5F9'
-                                                        }}
-                                                    >
-                                                        {item.timestamp.toLocaleTimeString('id-ID')}
-                                                    </span>
-                                                </div>
-                                                {item.message && (
-                                                    <div
-                                                        className="text-xs font-medium mt-0.5"
-                                                        style={{
-                                                            color: isError ? '#DC2626' : '#64748B'
-                                                        }}
-                                                    >
-                                                        {item.message}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {item.status === 'success' ? (
-                                                <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: theme.primaryColor }} />
-                                            ) : (
-                                                <X className="w-5 h-5 flex-shrink-0 text-red-600" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                    <ScanHistoryPanel
+                        items={scannedItems}
+                        sessionScanTotal={sessionScanTotal}
+                        scrollRef={scrollContainerRef}
+                        theme={theme}
+                        isDryroomDashboardLayout={isDryroomDashboardLayout}
+                    />
 
                     </div>
                     </div>
@@ -1841,17 +1755,17 @@ export default function ScanningFinishingModal({
                         </button>
                         <button
                             onClick={async () => {
-                                if (isProcessing || scannedItems.length === 0) return;
+                                if (isProcessing || sessionScanTotal === 0) return;
                                 onClose();
                             }}
-                            disabled={isProcessing || scannedItems.length === 0}
+                            disabled={isProcessing || sessionScanTotal === 0}
                             className="flex-1 min-w-[120px] xs:min-w-[140px] py-2.5 xs:py-3 sm:py-3.5 px-4 xs:px-5 sm:px-6 rounded-lg xs:rounded-xl font-bold text-xs xs:text-sm sm:text-base text-white transition-all relative overflow-hidden"
                             style={{
                                 background: theme.primaryGradient,
                                 boxShadow: `0 4px 12px ${theme.primaryColor}35`,
                                 letterSpacing: '0.25px',
-                                opacity: (isProcessing || scannedItems.length === 0) ? 0.5 : 1,
-                                cursor: (isProcessing || scannedItems.length === 0) ? 'not-allowed' : 'pointer'
+                                opacity: (isProcessing || sessionScanTotal === 0) ? 0.5 : 1,
+                                cursor: (isProcessing || sessionScanTotal === 0) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             {isProcessing ? (
@@ -1860,7 +1774,7 @@ export default function ScanningFinishingModal({
                                     Memproses...
                                 </>
                             ) : (
-                                `💾 Selesai (${scannedItems.length})`
+                                `💾 Selesai (${sessionScanTotal})`
                             )}
                         </button>
                     </div>

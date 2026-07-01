@@ -49,9 +49,9 @@ export const getNodeProxyBaseUrl = (): string => {
 };
 
 // Base URL untuk API Server (Proxy Server)
-// Dev: same-origin (mis. http://10.5.0.2:5173) — path Network tab = path backend (`/wira`, `/api/...`).
-// Vite mem-proxy ke server.js (:8000) atau backend sesuai route.
-// Prod: proxy di hostname:port (server.js) → backend :7000.
+// Dev MJL/CLN: http://hostname:8000 (proxy server.js di mesin yang sama).
+// Dev MJL2 (5174): http://10.6.0.99:8001 (proxy server.js di host backend MJL2).
+// Dev HTTPS: same-origin → Vite proxy. Prod: hostname:port → backend :7000.
 export const API_BASE_URL = isDevelopment
     ? (() => {
         // Untuk development, gunakan hostname dari window.location yang otomatis menyesuaikan
@@ -83,8 +83,8 @@ const getBackendIP = (): string => {
     return '10.8.0.104';
 };
 
-// Port backend WebSocket (sama untuk semua environment)
-const BACKEND_WS_PORT = 7000;
+// Port backend WebSocket — default 7000; override dev: VITE_BACKEND_PORT
+const BACKEND_WS_PORT = Number(import.meta.env.VITE_BACKEND_PORT || 7000) || 7000;
 
 // Base URL untuk WebSocket - langsung ke backend API (bukan proxy)
 // Menggunakan function untuk mendapatkan URL secara dinamis berdasarkan environment

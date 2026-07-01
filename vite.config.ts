@@ -7,6 +7,21 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 
 const DEFAULT_DEV_API_TARGET = 'http://10.5.0.106:7000'
 
+function resolveBackendPort(env: Record<string, string>): number {
+  const n = Number(env.VITE_BACKEND_PORT || 7000)
+  return Number.isFinite(n) && n > 0 ? n : 7000
+}
+
+function withPort(baseUrl: string, port: number): string {
+  try {
+    const u = new URL(baseUrl)
+    u.port = String(port)
+    return u.toString().replace(/\/$/, '')
+  } catch {
+    return baseUrl
+  }
+}
+
 /**
  * Browser tidak boleh GET + body. Frontend POST ke `/api/gcc/cutting/reg/batch`,
  * middleware ini meneruskan GET + body ke service cutting (:9000).
@@ -167,8 +182,8 @@ function sewingUserProxyPlugin(target: string): Plugin {
   }
 }
 
-/** Dev: same-origin path backend → proxy ke server.js (localhost:8000). */
-function devServerJsProxyPlugin(nodePort: number): Plugin {
+/** Dev: same-origin path backend → proxy ke server.js (localhost atau host MJL2). */
+function devServerJsProxyPlugin(nodeHost: string, nodePort: number): Plugin {
   return {
     name: 'dev-server-js-proxy',
     configureServer(server) {
@@ -177,13 +192,13 @@ function devServerJsProxyPlugin(nodePort: number): Plugin {
         if (!shouldProxyToServerJs(url)) return next()
         const proxyReq = http.request(
           {
-            hostname: '127.0.0.1',
+            hostname: nodeHost,
             port: nodePort,
             path: url,
             method: req.method,
             headers: {
               ...(req.headers as http.IncomingHttpHeaders),
-              host: `127.0.0.1:${nodePort}`,
+              host: `${nodeHost}:${nodePort}`,
             },
           },
           (proxyRes) => {
@@ -209,9 +224,21 @@ function devServerJsProxyPlugin(nodePort: number): Plugin {
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const trackingProxyTarget = env.VITE_DEV_API_TARGET || DEFAULT_DEV_API_TARGET
-  const gccCuttingListTarget = env.VITE_GCC_CUTTING_PROXY_TARGET || 'http://10.5.0.107:9000'
-  const sewingServiceTarget = env.VITE_SEWING_SERVICE_PROXY_TARGET || 'http://10.5.0.107:9000'
+  const backendPort = resolveBackendPort(env)
+  const trackingProxyTarget =
+    env.VITE_DEV_API_TARGET || withPort(DEFAULT_DEV_API_TARGET, backendPort)
+  const gccHost = (() => {
+    try {
+      return new URL(env.VITE_GCC_CUTTING_PROXY_TARGET || 'http://10.5.0.107:9000').hostname
+    } catch {
+      return '10.5.0.107'
+    }
+  })()
+  const gccPort = Number(env.GCC_CUTTING_SERVICE_PORT || env.VITE_GCC_BACKEND_PORT || 9000) || 9000
+  const gccCuttingListTarget =
+    env.VITE_GCC_CUTTING_PROXY_TARGET || `http://${gccHost}:${gccPort}`
+  const sewingServiceTarget =
+    env.VITE_SEWING_SERVICE_PROXY_TARGET || gccCuttingListTarget
 
   // Dev default HTTP → http://10.5.0.2:5173/home tanpa sertifikat.
   // HTTPS (kamera di HP / secure context): set VITE_DEV_HTTPS=true atau 1 lalu restart dev.
@@ -225,6 +252,8 @@ export default defineConfig(({ mode, command }) => {
 
   const devServerPort = Number(env.VITE_DEV_SERVER_PORT || 5173) || 5173
   const nodeProxyPort = devServerPort === 5174 ? 8001 : devServerPort === 5175 ? 8002 : 8000
+  // MJL2: server.js di 10.6.0.99:8001; MJL/CLN: localhost (dev:all di mesin yang sama)
+  const nodeProxyHost = env.VITE_NODE_PROXY_HOST || (devServerPort === 5174 ? '10.6.0.99' : '127.0.0.1')
 
   return {
     plugins: [
@@ -232,7 +261,7 @@ export default defineConfig(({ mode, command }) => {
       tailwindcss(),
       gccCuttingRegBatchProxyPlugin(sewingServiceTarget),
       sewingUserProxyPlugin(sewingServiceTarget),
-      ...(command === 'serve' ? [devServerJsProxyPlugin(nodeProxyPort)] : []),
+      ...(command === 'serve' ? [devServerJsProxyPlugin(nodeProxyHost, nodeProxyPort)] : []),
       ...(useDevHttps ? [basicSsl()] : [])
     ],
     logLevel: 'warn', // sembunyikan "[vite] (client) hmr update ..." di terminal saat dev
