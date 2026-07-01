@@ -9,6 +9,7 @@
  * API Production Schedule (10.8.18.60:7186) tidak diubah oleh skrip ini.
  */
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +27,19 @@ const ENV_PRESETS = {
 const DEFAULT_BACKEND_PORT = 7000;
 const DEFAULT_GCC_PORT = 9000;
 const GCC_SERVICE_HOST = process.env.GCC_CUTTING_SERVICE_HOST || '10.5.0.107';
+
+/** IPv4 LAN utama — sama logika dengan vite.config.ts */
+function getPrimaryLanIPv4() {
+  const candidates = [];
+  for (const nets of Object.values(os.networkInterfaces())) {
+    for (const net of nets || []) {
+      const fam = net.family;
+      const isV4 = fam === 'IPv4' || fam === 4;
+      if (isV4 && !net.internal && net.address) candidates.push(net.address);
+    }
+  }
+  return candidates.find((a) => !a.startsWith('169.254.')) || candidates[0] || 'localhost';
+}
 
 function parsePortArgs(argv) {
   const out = {};
@@ -73,8 +87,16 @@ const serverCmd = preset.serverArg
   ? `node -r ./set-no-debug.cjs server.js ${preset.serverArg}`
   : 'node -r ./set-no-debug.cjs server.js';
 
+const lanIp = getPrimaryLanIPv4();
+const webUrl = `http://${lanIp}:${frontendPort}`;
+const localhostUrl = `http://localhost:${frontendPort}`;
+
 console.log('\n[dev-all] Konfigurasi dev');
 console.log(`  Environment     : ${envKey === 'default' ? 'CLN (default)' : envKey.toUpperCase()}`);
+console.log(`  Akses Web       : ${webUrl}`);
+if (lanIp !== 'localhost' && lanIp !== '127.0.0.1') {
+  console.log(`  Akses Lokal     : ${localhostUrl}`);
+}
 console.log(`  Frontend (Vite) : ${frontendPort}`);
 console.log(`  Backend API     : ${backendBase}`);
 console.log(`  GCC / Sewing    : ${gccBase}`);

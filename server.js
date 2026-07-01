@@ -89,6 +89,16 @@ if (CURRENT_ENV === 'MJL2') {
     PORT = 8000; // Port untuk CLN (default)
 }
 
+/** Port Vite dev — dari VITE_DEV_SERVER_PORT (dev-all) atau default per environment */
+function getDefaultFrontendPort() {
+    if (CURRENT_ENV === 'MJL2') return 5174;
+    if (CURRENT_ENV === 'GCC') return 5175;
+    return 5173;
+}
+const FRONTEND_DEV_PORT =
+    Number(process.env.VITE_DEV_SERVER_PORT || getDefaultFrontendPort()) || getDefaultFrontendPort();
+const WEB_ACCESS_URL = `http://${LOCAL_IP}:${FRONTEND_DEV_PORT}`;
+
 const HOST = '0.0.0.0'; // Listen di semua network interface
 
 // Port untuk backend API — default 7000; override: BACKEND_PORT atau -portbackend via scripts/dev-all.mjs
@@ -6186,6 +6196,10 @@ app.listen(PORT, HOST, () => {
     console.log(`   Backend Port: ${BACKEND_PORT}`);
     console.log(`   Backend URL: ${BACKEND_API_URL}`);
     console.log(`   Proxy Server: http://${LOCAL_IP}:${PORT}`);
+    console.log(`   Akses Web: ${WEB_ACCESS_URL}`);
+    if (LOCAL_IP !== 'localhost' && LOCAL_IP !== '127.0.0.1') {
+        console.log(`   Akses Lokal: http://localhost:${FRONTEND_DEV_PORT}`);
+    }
     console.log(`   Scanning dryroom: GET /api/scanning/dryroom/operator → scanning_dryroom.json`);
     console.log(`   Cutting scan: GET/POST /api/cutting/* → dummy_cutting.json\n`);
 
