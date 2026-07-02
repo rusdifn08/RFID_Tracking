@@ -5,6 +5,9 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, LineChart, Lin
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { API_BASE_URL, getDefaultHeaders, getBackendEnvironment, getEnvironmentFromAPI, getSupervisorDataFromAPI, type BackendEnvironment } from '../config/api';
+import { productionLinesCLN, productionLinesMJL, productionLinesMJL2, productionLinesGCC, type ProductionLine } from '../data/production_line';
+import { filterVisibleProductionLines } from '../config/hide';
+import { resolveLineNumberForApiLine, resolveLineTitleForApiLine } from '../utils/lineDisplayTitle';
 import ExportModal from '../components/ExportModal';
 import type { ExportType } from '../components/ExportModal';
 import { exportToExcel } from '../utils/exportToExcel';
@@ -83,11 +86,42 @@ export default function DashboardRFID() {
     // Tarik data Supervisor untuk mempersonalisasi judul (contoh: LINE IYAH)
     const [supervisorName, setSupervisorName] = useState<string>('');
     const [lineDisplayTitle, setLineDisplayTitle] = useState<string>('');
-    
+    const [resolvedEnv, setResolvedEnv] = useState<BackendEnvironment | null>(null);
+    const [displayTitlesData, setDisplayTitlesData] = useState<Record<string, string>>({});
+    const [customLines, setCustomLines] = useState<ProductionLine[]>([]);
+
+    const productionLines = useMemo(() => {
+        let lines: ProductionLine[];
+        if (resolvedEnv === 'MJL2') lines = productionLinesMJL2;
+        else if (resolvedEnv === 'MJL') lines = productionLinesMJL;
+        else if (resolvedEnv === 'GCC') lines = productionLinesGCC;
+        else lines = productionLinesCLN;
+        const allLines = [...lines, ...customLines].filter((l) => l.id !== 0 && l.id !== 111 && l.id !== 112 && l.id !== 113);
+        return resolvedEnv ? filterVisibleProductionLines(allLines, resolvedEnv) : allLines;
+    }, [resolvedEnv, customLines]);
+
+    const lineNumberForDisplay = useMemo(
+        () => resolveLineNumberForApiLine(lineId, productionLines, displayTitlesData),
+        [lineId, productionLines, displayTitlesData],
+    );
+
+    useEffect(() => {
+        getEnvironmentFromAPI().then((env) => {
+            if (!env) return;
+            setResolvedEnv(env);
+            try {
+                const saved = localStorage.getItem(`rfid_custom_lines_${env}`);
+                setCustomLines(saved ? JSON.parse(saved) : []);
+            } catch {
+                setCustomLines([]);
+            }
+        });
+    }, []);
+
     useEffect(() => {
         const fetchSupervisor = async () => {
             try {
-                const env = await getEnvironmentFromAPI();
+                const env = resolvedEnv ?? (await getEnvironmentFromAPI());
                 if (!env) return;
                 const data = await getSupervisorDataFromAPI(env);
                 if (data && data.supervisors && data.supervisors[lineId] && data.supervisors[lineId] !== '-') {
@@ -96,20 +130,15 @@ export default function DashboardRFID() {
                     setSupervisorName('');
                 }
 
-                if (data && data.displayTitles && data.displayTitles[lineId]) {
-                    setLineDisplayTitle(data.displayTitles[lineId]);
-                } else {
-                    const defaultTitle = DASHBOARD_RFID_LINE_IDS.includes(Number(lineId))
-                        ? (Number(lineId) === 7 ? 'CUTTING GM1' : `SEWING LINE ${lineId}`)
-                        : `LINE ${lineId}`;
-                    setLineDisplayTitle(defaultTitle);
-                }
+                const titles = data?.displayTitles || {};
+                setDisplayTitlesData(titles);
+                setLineDisplayTitle(resolveLineTitleForApiLine(lineId, productionLines, titles));
             } catch (e) {
                 // ignore
             }
         };
         fetchSupervisor();
-    }, [lineId]);
+    }, [lineId, resolvedEnv, productionLines]);
 
     const lineTitle = supervisorName ? `LINE ${supervisorName.toUpperCase()}` : `LINE ${lineId}`;
 
@@ -744,6 +773,7 @@ export default function DashboardRFID() {
             const color = (item.color || '').toLowerCase();
             const size = (item.size || '').toLowerCase();
             const line = (item.line || '').toLowerCase();
+            const lineDisplay = lineNumberForDisplay.toLowerCase();
 
             return rfid.includes(query) ||
                 wo.includes(query) ||
@@ -752,9 +782,10 @@ export default function DashboardRFID() {
                 itemName.includes(query) ||
                 color.includes(query) ||
                 size.includes(query) ||
-                line.includes(query);
+                line.includes(query) ||
+                lineDisplay.includes(query);
         });
-    }, [detailData, searchQuery]);
+    }, [detailData, searchQuery, lineNumberForDisplay]);
 
     // Fungsi untuk fetch data per hari
     const fetchDailyData = async (): Promise<any[]> => {
@@ -1737,7 +1768,7 @@ export default function DashboardRFID() {
                                                             <td className="px-4 py-3 text-sm text-slate-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
                                                                 {(detailQueryParams.type === 'REWORK' || detailQueryParams.type === 'WIRA')
                                                                     ? (item.reworkCount !== undefined && item.reworkCount !== null ? item.reworkCount : '-')
-                                                                    : (item.line || '-')}
+                                                                    : lineNumberForDisplay}
                                                             </td>
                                                             <td className="px-4 py-3 text-sm text-slate-600 font-mono" style={{ fontFamily: 'Poppins, sans-serif' }}>
                                                                 {item.timestamp ? (() => {
