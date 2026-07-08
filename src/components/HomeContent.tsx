@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import rfidIcon from '../assets/rfid.webp';
 import needleIcon from '../assets/needle.webp';
 import sewingIcon from '../assets/sewing.webp';
+import machineIcon from '../assets/robot.svg';
+import shipmentIcon from '../assets/container.webp';
 import {
     HIDE_HOME_CARD_NEEDLE_MANAGER,
     HIDE_HOME_CARD_RFID_SEWING_PROSES,
     HIDE_HOME_CARD_RFID_TRACKING,
+    HIDE_HOME_CARD_MONITORING_MACHINE,
+    HIDE_HOME_CARD_MONITORING_SHIPMENT,
     isHomeCardHidden,
     type HomeCardId,
 } from '../config/hide';
@@ -51,6 +55,24 @@ export default function HomeContent() {
             bgStart: 'from-sky-400',
             bgEnd: 'to-blue-800',
         },
+        {
+            id: 'monitoring-machine',
+            title: 'Monitoring Machine',
+            subtitle: 'Monitor status dan performa mesin',
+            path: '/monitoring-machine',
+            icon: machineIcon,
+            bgStart: 'from-cyan-400',
+            bgEnd: 'to-blue-700',
+        },
+        {
+            id: 'monitoring-shipment',
+            title: 'Monitoring Shipment',
+            subtitle: 'Pantau pengiriman dan logistik',
+            path: '/monitoring-shipment',
+            icon: shipmentIcon,
+            bgStart: 'from-indigo-400',
+            bgEnd: 'to-purple-800',
+        },
     ];
 
     const modules = useMemo(
@@ -59,6 +81,8 @@ export default function HomeContent() {
             HIDE_HOME_CARD_RFID_TRACKING,
             HIDE_HOME_CARD_NEEDLE_MANAGER,
             HIDE_HOME_CARD_RFID_SEWING_PROSES,
+            HIDE_HOME_CARD_MONITORING_MACHINE,
+            HIDE_HOME_CARD_MONITORING_SHIPMENT,
         ]
     );
 

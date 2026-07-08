@@ -28,7 +28,13 @@ export const HIDE_HOME_CARD_NEEDLE_MANAGER = false;
 /** Kartu RFID Sewing Proses di home */
 export const HIDE_HOME_CARD_RFID_SEWING_PROSES = false;
 
-export type HomeCardId = 'rfid-tracking' | 'needle-manager' | 'sewing-proses';
+/** Kartu Monitoring Machine di home */
+export const HIDE_HOME_CARD_MONITORING_MACHINE = false;
+
+/** Kartu Monitoring Shipment di home */
+export const HIDE_HOME_CARD_MONITORING_SHIPMENT = false;
+
+export type HomeCardId = 'rfid-tracking' | 'needle-manager' | 'sewing-proses' | 'monitoring-machine' | 'monitoring-shipment';
 
 /** Cek apakah kartu home disembunyikan berdasarkan id modul. */
 export function isHomeCardHidden(cardId: HomeCardId): boolean {
@@ -39,6 +45,10 @@ export function isHomeCardHidden(cardId: HomeCardId): boolean {
             return HIDE_HOME_CARD_NEEDLE_MANAGER;
         case 'sewing-proses':
             return HIDE_HOME_CARD_RFID_SEWING_PROSES;
+        case 'monitoring-machine':
+            return HIDE_HOME_CARD_MONITORING_MACHINE;
+        case 'monitoring-shipment':
+            return HIDE_HOME_CARD_MONITORING_SHIPMENT;
         default:
             return false;
     }
@@ -118,3 +128,6 @@ export const HIDE_SEWING_BATCH_HIGHLIGHT_BADGES = true;
  * false = Tampilkan tombol normal
  */
 export const COMINGSOON_SUPPLY_SEWING = false;
+
+/** Menyembunyikan tombol filter di dalam setiap card di Dashboard Cutting */
+export const HIDE_CUTTING_CARD_FILTERS = true;
