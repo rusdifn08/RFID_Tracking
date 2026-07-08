@@ -111,7 +111,7 @@ const BACKEND_PORT = Number(process.env.BACKEND_PORT || 7000);
 // Backend API URL - menggunakan IP yang sudah dikonfigurasi dengan port yang sesuai
 const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${BACKEND_PORT}`;
 // Backend khusus Needle Manager (dipisah dari backend environment utama agar tidak mengubah flow existing).
-const NEEDLE_BACKEND_BASE_URL = process.env.NEEDLE_BACKEND_BASE_URL || 'http://10.5.0.107:8080';
+const NEEDLE_BACKEND_BASE_URL = process.env.NEEDLE_BACKEND_BASE_URL || 'http://10.5.0.107:8088';
 
 // MQTT Broker - sama untuk semua environment (MJL, MJL2, CLN)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883';
@@ -144,8 +144,13 @@ const MJL_API_KEY_HEADER = API_KEY_HEADER;
 // USER TRACKING SYSTEM
 // ============================================
 
+const dataDir = path.join(__dirname, 'docker-data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+}
+
 // Path file untuk menyimpan data user yang login
-const USER_LOG_FILE = path.join(__dirname, 'user_logs.json');
+const USER_LOG_FILE = path.join(dataDir, 'user_logs.json');
 
 // In-memory storage untuk active sessions (user yang sedang login)
 // Format: { [environment_lineNumber]: { nik, name, jabatan, line, loginTime, ipAddress, environment } }
@@ -171,23 +176,23 @@ const foldingCheckoutData = new Map();
 const dryroomHourlyByDate = new Map();
 
 // Path file untuk menyimpan data folding checkout
-const FOLDING_CHECKOUT_FILE = path.join(__dirname, 'folding_checkout_data.json');
+const FOLDING_CHECKOUT_FILE = path.join(dataDir, 'folding_checkout_data.json');
 // Path file untuk menyimpan data detail folding checkout (rfid, wo, item, dll)
-const FOLDING_CHECKOUT_DETAIL_FILE = path.join(__dirname, 'folding_checkout_detail.json');
+const FOLDING_CHECKOUT_DETAIL_FILE = path.join(dataDir, 'folding_checkout_detail.json');
 /** Per jam Check In / Check Out Dryroom (per environment, per tanggal) */
-const DRYROOM_HOURLY_FILE = path.join(__dirname, 'dryroom_hourly_data.json');
+const DRYROOM_HOURLY_FILE = path.join(dataDir, 'dryroom_hourly_data.json');
 // Path file untuk menyimpan data shift (siang/malam) per line
-const SHIFT_DATA_FILE = path.join(__dirname, 'shift_data.json');
+const SHIFT_DATA_FILE = path.join(dataDir, 'shift_data.json');
 // Path file untuk menyimpan data supervisor per line
-const SUPERVISOR_DATA_FILE = path.join(__dirname, 'supervisor_data.json');
+const SUPERVISOR_DATA_FILE = path.join(dataDir, 'supervisor_data.json');
 /** Layout sewing: mapping operator per proses SMV per line (dibaca embedded backend) */
-const SEWING_LAYOUT_DATA_FILE = path.join(__dirname, 'sewing_layout_data.json');
+const SEWING_LAYOUT_DATA_FILE = path.join(dataDir, 'sewing_layout_data.json');
 /** Uji coba layout POST — format ringkas: smv_id, rfid_user, batch */
-const SEWING_LAYOUT_POST_FILE = path.join(__dirname, 'sewing_layout_post.json');
+const SEWING_LAYOUT_POST_FILE = path.join(dataDir, 'sewing_layout_post.json');
 /** Master target/hari, target/jam, SPV, NIK per line (Form Report — db target) */
-const LINE_PRODUCTION_TARGETS_FILE = path.join(__dirname, 'line_production_targets.json');
+const LINE_PRODUCTION_TARGETS_FILE = path.join(dataDir, 'line_production_targets.json');
 /** Operator + detail scan terakhir per mode (check in / check out terpisah) — sinkron via proxy */
-const SCANNING_DRYROOM_FILE = path.join(__dirname, 'scanning_dryroom.json');
+const SCANNING_DRYROOM_FILE = path.join(dataDir, 'scanning_dryroom.json');
 
 function emptyScanningDryroomBranch() {
     return {
@@ -1199,7 +1204,7 @@ app.get('/api/scanning-dryroom-operator', handleScanningDryroomOperatorGet);
 // ============================================
 // CUTTING PROSES — dummy lokal (Bundle -> QC -> Supermarket -> Supply Sewing)
 // ============================================
-const CUTTING_SCAN_FILE = path.join(__dirname, 'dummy_cutting.json');
+const CUTTING_SCAN_FILE = path.join(dataDir, 'dummy_cutting.json');
 const CUTTING_HISTORY_LIMIT = 300;
 
 function emptyCuttingScanDoc() {
@@ -5354,8 +5359,8 @@ function loadLineProductionTargets() {
         const rows = Array.isArray(parsed.rows)
             ? parsed.rows
             : Array.isArray(parsed)
-              ? parsed
-              : [];
+                ? parsed
+                : [];
         return {
             rows,
             description: typeof parsed.description === 'string' ? parsed.description : '',
