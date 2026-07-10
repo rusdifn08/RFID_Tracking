@@ -60,7 +60,7 @@ export const productionLinesCLN: ProductionLine[] = [
  },
 ];
 
-// Data Production Lines untuk MJL (17 cards: All + Line 1–16, 21)
+// Data Production Lines untuk MJL (14 cards: All + Line 1-13)
 export const productionLinesMJL: ProductionLine[] = [
  {
   id: 111,
@@ -97,39 +97,39 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 4,
   title: 'Production Line 4',
-  supervisor: 'Not Assigned',
+  supervisor: 'IYAH',
   borderColor: 'border-yellow-400',
   accentColor: 'text-yellow-600',
   line: '4'
  },
  {
   id: 5,
-  title: 'Production Line 5',
-  supervisor: 'HAWA',
+  title: 'Production Line 13',
+  supervisor: 'DEDE WINDY',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
   line: '5'
  },
  {
   id: 6,
-  title: 'Production Line 6',
-  supervisor: 'IYAH',
+  title: 'Production Line 12',
+  supervisor: 'TINI (STIO DOWN)',
   borderColor: 'border-emerald-500',
   accentColor: 'text-emerald-600',
   line: '6'
  },
  {
   id: 7,
-  title: 'Production Line 7',
-  supervisor: 'Not Assigned',
+  title: 'Production Line 10',
+  supervisor: 'RISMAN',
   borderColor: 'border-teal-400',
   accentColor: 'text-teal-600',
   line: '7'
  },
  {
   id: 8,
-  title: 'Production Line 8',
-  supervisor: '-',
+  title: 'Production Line 11',
+  supervisor: 'SITI',
   borderColor: 'border-blue-400',
   accentColor: 'text-blue-600',
   line: '8'
@@ -137,75 +137,43 @@ export const productionLinesMJL: ProductionLine[] = [
  {
   id: 9,
   title: 'Production Line 9',
-  supervisor: 'Not Assigned',
+  supervisor: 'TATAN',
   borderColor: 'border-teal-400',
   accentColor: 'text-teal-600',
   line: '9'
  },
  {
   id: 10,
-  title: 'Production Line 10',
-  supervisor: 'Not Assigned',
+  title: 'Production Line 7',
+  supervisor: 'WIDYA',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
   line: '10'
  },
  {
   id: 11,
-  title: 'Production Line 11',
-  supervisor: 'TATAN',
+  title: 'Production Line 8',
+  supervisor: 'LINA',
   borderColor: 'border-emerald-500',
   accentColor: 'text-emerald-600',
   line: '11'
  },
  {
   id: 12,
-  title: 'Production Line 12',
-  supervisor: 'SITI',
+  title: 'Production Line 6',
+  supervisor: 'TINI',
   borderColor: 'border-blue-400',
   accentColor: 'text-blue-600',
   line: '12'
  },
  {
   id: 13,
-  title: 'Production Line 13',
-  supervisor: 'DEDE WINDY',
+  title: 'Production Line 5',
+  supervisor: 'TITIN',
   borderColor: 'border-yellow-400',
   accentColor: 'text-yellow-600',
   line: '13'
- },
- {
-  id: 14,
-  title: 'Production Line 14',
-  supervisor: 'TINI',
-  borderColor: 'border-purple-500',
-  accentColor: 'text-purple-600',
-  line: '14'
- },
- {
-  id: 15,
-  title: 'Production Line 15',
-  supervisor: 'LINA',
-  borderColor: 'border-emerald-500',
-  accentColor: 'text-emerald-600',
-  line: '15'
- },
- {
-  id: 16,
-  title: 'Production Line 16',
-  supervisor: 'WIDIA',
-  borderColor: 'border-emerald-500',
-  accentColor: 'text-emerald-600',
-  line: '16'
- },
- {
-  id: 21,
-  title: 'Production Line 21',
-  supervisor: 'Dudung',
-  borderColor: 'border-teal-400',
-  accentColor: 'text-teal-600',
-  line: '21'
- },
+ }
 ];
 
 // Data Production Lines untuk MJL2 (11 cards: All + Line 1 sampai 10)
