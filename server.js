@@ -4966,7 +4966,7 @@ function loadSupervisorData() {
         // Default supervisor values untuk semua environment
         const defaultSupervisors = {
             CLN: { '0': 'Rusdi', '1': 'RISMAN', '2': 'ROIS', '3': 'IIM', '4': 'FITRI', '5': 'SUMI' },
-            MJL: { '111': 'Rusdi', '1': 'DATI', '2': 'SUSI', '3': 'DEDE', '4': 'DEDE', '5': 'HENI', '6': 'IYAH & DEDEH', '7': '-', '8': '-', '9': 'DALENA', '10': 'DALENA', '11': 'TATAN', '12': 'SITI', '13': 'DEDE WINDY', '14': 'TINI', '15': 'LINA' },
+            MJL: { '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH', '5': 'DEDE WINDY', '6': 'TINI (STIO DOWN)', '7': 'RISMAN', '8': 'SITI', '9': 'TATAN', '10': 'WIDYA', '11': 'LINA', '12': 'TINI', '13': 'TITIN' },
             MJL2: { '112': 'Rusdi', '1': 'NENG JUNENGSIH', '2': 'IMAS SUMINAR', '3': 'ROSMIATI', '4': 'EKA MUSTIKA', '5': 'ELI ERNAWATI', '6': 'ENO KARMI', '7': 'DINI AGUSTINA', '8': 'NINING SRI WAHYUNI', '9': 'NENG DIAH RODIAH' }
         };
 
@@ -5219,10 +5219,9 @@ app.get('/api/supervisor-data', (req, res) => {
         };
 
         const defaultMJL = {
-            '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'Not Assigned',
-            '5': 'HAWA', '6': 'IYAH', '7': 'Not Assigned', '8': '-', '9': 'Not Assigned',
-            '10': 'Not Assigned', '11': 'TATAN', '12': 'SITI', '13': 'DEDE WINDY',
-            '14': 'TINI', '15': 'LINA', '16': 'WIDIA', '21': 'Dudung'
+            '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH',
+            '5': 'DEDE WINDY', '6': 'TINI (STIO DOWN)', '7': 'RISMAN', '8': 'SITI', '9': 'TATAN',
+            '10': 'WIDYA', '11': 'LINA', '12': 'TINI', '13': 'TITIN'
         };
 
         const defaultMJL2 = {
