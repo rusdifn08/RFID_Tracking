@@ -326,8 +326,8 @@ export default function ScanningRFIDNew({ isOpen, onClose, workOrderData }: Scan
             // Error - tampilkan pesan error yang lebih detail
             let errorMessage = 'Gagal menyimpan';
             if (error instanceof Error) {
-                if (error.message.includes('Failed to fetch')) {
-                    errorMessage = `Tidak dapat terhubung ke proxy server. Pastikan server.js berjalan di http://${window.location.hostname}:8000`;
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage = `Tidak dapat terhubung ke proxy server. Pastikan server.js berjalan di ${API_BASE_URL}`;
                 } else {
                     errorMessage = error.message;
                 }

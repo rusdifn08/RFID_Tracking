@@ -57,10 +57,6 @@ export const getApiBaseUrl = (port: number = 7000): string => {
         if (window.location.protocol === 'https:') {
             return window.location.origin;
         }
-        // MJL2 dev: server.js di 10.6.0.99:8001, bukan mesin Vite (10.5.0.2:5174)
-        if (window.location.port === '5174' && port === 8001) {
-            return MJL2_DEV_PROXY;
-        }
     }
     const ip = getLocalIP();
     return `http://${ip}:${port}`;
