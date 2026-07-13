@@ -8,6 +8,7 @@ import {
     productionLinesMJL,
     productionLinesMJL2,
     productionLinesGCC,
+    sewingLinesMJL,
 } from '../data/production_line';
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 import { preloadLineDetail } from '../utils/preload';
@@ -123,7 +124,11 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
         if (environment === 'MJL2') {
             lines = productionLinesMJL2;
         } else if (environment === 'MJL') {
-            lines = productionLinesMJL;
+            if (pageType === 'sewing') {
+                lines = sewingLinesMJL;
+            } else {
+                lines = productionLinesMJL;
+            }
         } else if (environment === 'GCC') {
             lines = productionLinesGCC;
         } else {
@@ -204,7 +209,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
         
         let allLines;
         if (environment === 'MJL2') allLines = productionLinesMJL2;
-        else if (environment === 'MJL') allLines = productionLinesMJL;
+        else if (environment === 'MJL') allLines = pageType === 'sewing' ? sewingLinesMJL : productionLinesMJL;
         else if (environment === 'GCC') allLines = productionLinesGCC;
         else allLines = productionLinesCLN;
 
@@ -297,7 +302,11 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
         if (environment === 'MJL2') {
             lines = productionLinesMJL2;
         } else if (environment === 'MJL') {
-            lines = productionLinesMJL;
+            if (pageType === 'sewing') {
+                lines = sewingLinesMJL;
+            } else {
+                lines = productionLinesMJL;
+            }
         } else if (environment === 'GCC') {
             lines = productionLinesGCC;
         } else {

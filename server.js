@@ -4749,6 +4749,12 @@ app.get('/api/shift-data', (req, res) => {
             '11': 'day', '12': 'day', '13': 'day', '14': 'day', '15': 'day'
         };
 
+        const defaultSewingMJL = {
+            '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH',
+            '5': 'TITIN', '6': 'TINI', '7': 'WIDYA', '8': 'LINA', '9': 'TATAN',
+            '10': 'RISMAN', '11': 'SITI', '12': 'TINI (STIO DOWN)', '13': 'DEDE WINDY'
+        };
+
         const defaultMJL2 = {
             '112': 'day', '1': 'day', '2': 'day', '3': 'day', '4': 'day', '5': 'day',
             '6': 'day', '7': 'day', '8': 'day', '9': 'day'
@@ -4759,7 +4765,7 @@ app.get('/api/shift-data', (req, res) => {
 
         if (environment === 'MJL') {
             // MJL: ambil line 111 dan 1-15
-            const defaultData = defaultMJL;
+            const defaultData = pageType === 'sewing' ? defaultSewingMJL : defaultMJL;
             Object.keys(defaultData).forEach(lineId => {
                 const id = parseInt(lineId, 10);
                 // Untuk line 1-9 yang shared: gunakan environment-aware key (MJL_1, dll)
@@ -5240,7 +5246,7 @@ app.get('/api/supervisor-data', (req, res) => {
 
         if (environment === 'MJL') {
             // MJL: ambil line 111, 1-16, dan 21
-            const defaultData = defaultMJL;
+            const defaultData = pageType === 'sewing' ? defaultSewingMJL : defaultMJL;
             const defaultStartData = defaultStartTimesMJL;
             Object.keys(defaultData).forEach(lineId => {
                 const id = parseInt(lineId, 10);

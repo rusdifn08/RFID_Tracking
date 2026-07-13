@@ -180,7 +180,7 @@ export default function PrendiReportTab() {
                 onChange={(e) => setLine(e.target.value)}
                 className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-teal-500 focus:ring-teal-500"
             >
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
+              {Array.from({ length: 21 }, (_, i) => i + 1).map(n => (
                 <option key={n} value={String(n)}>Line {n}</option>
               ))}
             </select>
@@ -193,10 +193,14 @@ export default function PrendiReportTab() {
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full rounded-xl border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-teal-500 focus:ring-teal-500"
             >
-              <option value="IN_SEWING">IN_SEWING</option>
               <option value="IN_CUTTING">IN_CUTTING</option>
+              <option value="OUTPUT_SEWING">OUTPUT_SEWING</option>
               <option value="IN_FOLDING">IN_FOLDING</option>
+              <option value="OUT_FOLDING">OUT_FOLDING</option>
               <option value="IN_DRYROOM">IN_DRYROOM</option>
+              <option value="OUT_DRYROOM">OUT_DRYROOM</option>
+              <option value="GOOD">GOOD</option>
+              <option value="PQC_GOOD">PQC_GOOD</option>
             </select>
           </div>
 
