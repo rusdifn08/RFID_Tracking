@@ -104,35 +104,35 @@ export const productionLinesMJL: ProductionLine[] = [
  },
  {
   id: 5,
-  title: 'Production Line 5',
-  supervisor: 'TITIN',
+  title: 'Production Line 13',
+  supervisor: 'DEDE WINDY',
   borderColor: 'border-yellow-400',
   accentColor: 'text-yellow-600',
-  line: '5'
+  line: '13'
  },
  {
   id: 6,
-  title: 'Production Line 6',
-  supervisor: 'TINI',
+  title: 'Production Line 12',
+  supervisor: 'TINI (STIO DOWN)',
   borderColor: 'border-blue-400',
   accentColor: 'text-blue-600',
-  line: '6'
+  line: '12'
  },
  {
   id: 7,
-  title: 'Production Line 7',
-  supervisor: 'WIDYA',
+  title: 'Production Line 10',
+  supervisor: 'YUSNI',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
-  line: '7'
+  line: '10'
  },
  {
   id: 8,
-  title: 'Production Line 8',
-  supervisor: 'LINA',
+  title: 'Production Line 11',
+  supervisor: 'SITI',
   borderColor: 'border-emerald-500',
   accentColor: 'text-emerald-600',
-  line: '8'
+  line: '11'
  },
  {
   id: 9,
@@ -144,35 +144,35 @@ export const productionLinesMJL: ProductionLine[] = [
  },
  {
   id: 10,
-  title: 'Production Line 10',
-  supervisor: 'YUSNI',
+  title: 'Production Line 7',
+  supervisor: 'WIDYA',
   borderColor: 'border-teal-400',
   accentColor: 'text-teal-600',
-  line: '10'
+  line: '7'
  },
  {
   id: 11,
-  title: 'Production Line 11',
-  supervisor: 'SITI',
+  title: 'Production Line 8',
+  supervisor: 'LINA',
   borderColor: 'border-blue-400',
   accentColor: 'text-blue-600',
-  line: '11'
+  line: '8'
  },
  {
   id: 12,
-  title: 'Production Line 12',
-  supervisor: 'TINI (STIO DOWN)',
+  title: 'Production Line 6',
+  supervisor: 'TINI',
   borderColor: 'border-emerald-500',
   accentColor: 'text-emerald-600',
-  line: '12'
+  line: '6'
  },
  {
   id: 13,
-  title: 'Production Line 13',
-  supervisor: 'DEDE WINDY',
+  title: 'Production Line 5',
+  supervisor: 'TITIN',
   borderColor: 'border-purple-500',
   accentColor: 'text-purple-600',
-  line: '13'
+  line: '5'
  }
 ];
 

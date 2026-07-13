@@ -5219,7 +5219,7 @@ app.get('/api/supervisor-data', (req, res) => {
             '4': 'FITRI', '5': 'SUMI'
         };
 
-        const defaultMJL = { '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH', '5': 'TITIN', '6': 'TINI', '7': 'WIDYA', '8': 'LINA', '9': 'MIA', '10': 'YUSNI', '11': 'SITI', '12': 'TINI (STIO DOWN)', '13': 'DEDE WINDY', '21': 'Dudung' };
+        const defaultMJL = { '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH', '5': 'DEDE WINDY', '6': 'TINI (STIO DOWN)', '7': 'YUSNI', '8': 'SITI', '9': 'MIA', '10': 'WIDYA', '11': 'LINA', '12': 'TINI', '13': 'TITIN', '21': 'Dudung' };
         const defaultSewingMJL = { '111': 'Rusdi', '1': 'DATI&SUSI', '2': 'DALENA', '3': 'DEDE ROSIAH', '4': 'IYAH', '5': 'TITIN', '6': 'TINI', '7': 'WIDYA', '8': 'LINA', '9': 'MIA', '10': 'YUSNI', '11': 'SITI', '12': 'TINI (STIO DOWN)', '13': 'DEDE WINDY', '21': 'Dudung' };
 
         const defaultMJL2 = {
@@ -5245,15 +5245,15 @@ app.get('/api/supervisor-data', (req, res) => {
                 const storageKey = resolveDisplayTitleStorageKey(lineId);
                 // Untuk line 1-9 yang shared: gunakan environment-aware key
                 if (id >= 1 && id <= 9) {
-                    filteredSupervisors[lineId] = allSupervisors[storageKey] || allSupervisors[`MJL_${lineId}`] || defaultData[lineId];
-                    filteredStartTimes[lineId] = allStartTimes[storageKey] || allStartTimes[`MJL_${lineId}`] || defaultStartData[lineId] || '07:30';
-                    filteredTargets[lineId] = typeof allTargets[storageKey] === 'number' ? allTargets[storageKey] : (typeof allTargets[`MJL_${lineId}`] === 'number' ? allTargets[`MJL_${lineId}`] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0));
+                    filteredSupervisors[lineId] = allSupervisors[storageKey] || (pageType === 'sewing' ? undefined : allSupervisors[`MJL_${lineId}`]) || defaultData[lineId];
+                    filteredStartTimes[lineId] = allStartTimes[storageKey] || (pageType === 'sewing' ? undefined : allStartTimes[`MJL_${lineId}`]) || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[storageKey] === 'number' ? allTargets[storageKey] : (pageType !== 'sewing' && typeof allTargets[`MJL_${lineId}`] === 'number' ? allTargets[`MJL_${lineId}`] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0));
                 } else {
                     // Line 111, 10-16, dan 21: gunakan key MJL_10..MJL_16, MJL_21 atau fallback lineId
                     const fallbackKey = (id >= 10 && id <= 16) || id === 21 ? `MJL_${lineId}` : lineId;
-                    filteredSupervisors[lineId] = allSupervisors[storageKey] || allSupervisors[fallbackKey] || allSupervisors[lineId] || defaultData[lineId];
-                    filteredStartTimes[lineId] = allStartTimes[storageKey] || allStartTimes[fallbackKey] || allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
-                    filteredTargets[lineId] = typeof allTargets[storageKey] === 'number' ? allTargets[storageKey] : (typeof allTargets[fallbackKey] === 'number' ? allTargets[fallbackKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0));
+                    filteredSupervisors[lineId] = allSupervisors[storageKey] || (pageType === 'sewing' ? undefined : allSupervisors[fallbackKey]) || allSupervisors[lineId] || defaultData[lineId];
+                    filteredStartTimes[lineId] = allStartTimes[storageKey] || (pageType === 'sewing' ? undefined : allStartTimes[fallbackKey]) || allStartTimes[lineId] || defaultStartData[lineId] || '07:30';
+                    filteredTargets[lineId] = typeof allTargets[storageKey] === 'number' ? allTargets[storageKey] : (pageType !== 'sewing' && typeof allTargets[fallbackKey] === 'number' ? allTargets[fallbackKey] : (typeof allTargets[lineId] === 'number' ? allTargets[lineId] : 0));
                 }
             });
             // Pastikan line 21 selalu ada di response MJL (untuk Production Line 21 card & edit)
