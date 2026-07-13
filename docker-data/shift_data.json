@@ -1,10 +1,10 @@
 {
   "shifts": {
     "0": "day",
-    "10": "day",
-    "11": "day",
-    "12": "night",
-    "13": "night",
+    "10": "night",
+    "11": "night",
+    "12": "day",
+    "13": "day",
     "14": "day",
     "15": "day",
     "111": "night",
@@ -16,14 +16,14 @@
     "CLN_4": "day",
     "CLN_5": "day",
     "MJL_1": "day",
-    "MJL_2": "day",
-    "MJL_3": "day",
-    "MJL_4": "day",
-    "MJL_5": "day",
+    "MJL_2": "night",
+    "MJL_3": "night",
+    "MJL_4": "night",
+    "MJL_5": "night",
     "MJL_6": "night",
-    "MJL_7": "night",
+    "MJL_7": "day",
     "MJL_8": "night",
-    "MJL_9": "night",
+    "MJL_9": "day",
     "MJL2_1": "day",
     "MJL2_2": "day",
     "MJL2_3": "day",
@@ -55,6 +55,6 @@
     "GCC_20": "day",
     "GCC_21": "day"
   },
-  "lastUpdated": "2026-07-11T01:41:22.330Z",
+  "lastUpdated": "2026-07-13T00:47:48.561Z",
   "description": "Data shift untuk production lines. 'day' = shift siang, 'night' = shift malam. Key adalah line ID dengan environment prefix untuk line yang shared (CLN_1, MJL_1, MJL2_1, dll)"
 }

@@ -286,5 +286,21 @@
     "backendIP": "10.5.0.106",
     "environment": "MJL",
     "timestamp": "2026-07-11T01:32:50.319Z"
+  },
+  {
+    "nik": "92400689",
+    "name": "RUSDI FADLI NURYUDA",
+    "jabatan": "ROBOTIC",
+    "bagian": "ROBOTIC",
+    "role": "user",
+    "rfid_user": "0009510568",
+    "line": "26",
+    "ipAddress": "10.5.0.2",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "loginTime": "2026-07-13T00:41:55.228Z",
+    "logoutTime": null,
+    "backendIP": "10.5.0.106",
+    "environment": "MJL",
+    "timestamp": "2026-07-13T00:41:55.228Z"
   }
 ]
