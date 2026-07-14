@@ -12,6 +12,9 @@ import {
 } from '../../utils/sewingBatchInOut';
 import { cn } from './sewingBatchTw';
 import { ModalHeroGlow, ModalHeroGrid, SewingDetailModalShell } from './SewingDetailModalShell';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { API_BASE_URL, getDefaultHeaders } from '../../config/api';
+import { useState, useEffect } from 'react';
 
 type OrderInfo = typeof batchData.order;
 
@@ -25,6 +28,8 @@ type BatchDetailModalProps = {
   sim?: SimulationState;
   useLiveSim?: boolean;
   inOutMetrics?: (BatchInOutMetrics & { batch: number }) | null;
+  tanggalfrom?: string;
+  tanggalto?: string;
 };
 
 const modalCard = 'rounded-[0.65rem] border border-blue-100 bg-white p-2.5 shadow-[0_2px_10px_rgba(37,99,235,0.06)]';
@@ -91,7 +96,7 @@ const BundleListItem = ({ status }: { status: BatchBundleStatus }) => (
 );
 
 const BatchDetailModal = memo(
-  ({ open, onClose, batch, lane, order, pcsPerBundle, sim, useLiveSim, inOutMetrics }: BatchDetailModalProps) => {
+  ({ open, onClose, batch, lane, order, pcsPerBundle, sim, useLiveSim, inOutMetrics, tanggalfrom, tanggalto }: BatchDetailModalProps) => {
     const detail = useMemo(() => {
       if (!batch || !lane) return null;
 
@@ -147,12 +152,146 @@ const BatchDetailModal = memo(
       };
     }, [batch, lane, pcsPerBundle, sim, useLiveSim, inOutMetrics]);
 
+    const { id: urlLineId } = useParams<{ id: string }>();
+    const [apiBundles, setApiBundles] = useState<BatchBundleStatus[]>([]);
+    const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+    useEffect(() => {
+      if (!open || !batch) {
+          setApiBundles([]);
+          return;
+      }
+      
+      let isMounted = true;
+      const fetchData = async () => {
+        setIsLoadingDetail(true);
+        try {
+          const lineMatch = urlLineId?.match(/\d+/);
+          const line = lineMatch ? lineMatch[0] : urlLineId;
+          
+          const style = order?.style || '';
+          const wo = order?.wo || '';
+          
+          const params = new URLSearchParams();
+          if (line) params.append('line', line);
+          if (style && style !== 'ALL' && style !== '—') params.append('style', style);
+          if (wo && wo !== 'ALL' && wo !== '—') params.append('wo', wo);
+          if (tanggalfrom) params.append('tanggalfrom', tanggalfrom);
+          if (tanggalto) params.append('tanggalto', tanggalto);
+          
+          const url = `${API_BASE_URL}/api/sewing/dashboard/detail?${params.toString()}`;
+          
+          const res = await fetch(url, { 
+              headers: {
+                  ...getDefaultHeaders(),
+                  'rfid-key': '0011779933'
+              } 
+          });
+          if (!isMounted) return;
+          
+          if (res.ok) {
+            const json = await res.json();
+            if (json.code === 200 && Array.isArray(json.data)) {
+              // Filter by batch No
+              const batchData = json.data.filter((d: any) => String(d.batch) === String(batch.batch));
+              
+              // Group by rfid_batch
+              const rfidMap = new Map<string, { inItem?: any, outItem?: any }>();
+              
+              batchData.forEach((d: any) => {
+                if (!d.rfid_batch) return;
+                const existing = rfidMap.get(d.rfid_batch) || {};
+                if (d.status?.toLowerCase() === 'in') {
+                   existing.inItem = d;
+                } else if (d.status?.toLowerCase() === 'out') {
+                   existing.outItem = d;
+                }
+                rfidMap.set(d.rfid_batch, existing);
+              });
+              
+              const formatTime = (isoString?: string) => {
+                  if (!isoString) return null;
+                  try {
+                      const d = new Date(isoString);
+                      return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '');
+                  } catch { return isoString; }
+              };
+
+              const list = Array.from(rfidMap.entries()).map(([rfid, data]) => {
+                const scanIn = data.inItem?.created_at;
+                const scanOut = data.outItem?.created_at;
+                
+                let durationLabel = null;
+                if (scanIn && scanOut) {
+                    const start = new Date(scanIn).getTime();
+                    const end = new Date(scanOut).getTime();
+                    const diffSecs = Math.floor((end - start) / 1000);
+                    if (diffSecs >= 0) {
+                        const d = Math.floor(diffSecs / 86400);
+                        const h = Math.floor((diffSecs % 86400) / 3600);
+                        const m = Math.floor((diffSecs % 3600) / 60);
+                        const s = diffSecs % 60;
+                        
+                        let parts = [];
+                        if (d > 0) parts.push(`${d}d`);
+                        if (h > 0) parts.push(`${h}h`);
+                        if (m > 0) parts.push(`${m}m`);
+                        if (d === 0 && h === 0 && m === 0) parts.push(`${s}s`);
+                        durationLabel = parts.join(' ');
+                    } else {
+                       durationLabel = 'Selesai';
+                    }
+                } else if (scanIn && !scanOut) {
+                    durationLabel = 'Dalam proses';
+                }
+                
+                return {
+                    rfid,
+                    scanIn,
+                    scanOut,
+                    scanInAt: formatTime(scanIn),
+                    scanOutAt: formatTime(scanOut),
+                    durationLabel,
+                    scannedIn: !!scanIn,
+                    scannedOut: !!scanOut,
+                    outputPcs: !!scanOut ? pcsPerBundle : 0,
+                    targetPcs: pcsPerBundle,
+                    persentase: !!scanOut ? 100 : 0
+                };
+              });
+              
+              list.sort((a, b) => {
+                  const aTime = a.scanIn ? new Date(a.scanIn).getTime() : 0;
+                  const bTime = b.scanIn ? new Date(b.scanIn).getTime() : 0;
+                  return aTime - bTime;
+              });
+              
+              const finalList: BatchBundleStatus[] = list.map((item, index) => ({
+                 ...item,
+                 bundleNo: index + 1
+              }));
+              
+              setApiBundles(finalList);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching detail:", error);
+        } finally {
+          if (isMounted) setIsLoadingDetail(false);
+        }
+      };
+      
+      fetchData();
+      
+      return () => { isMounted = false; };
+    }, [open, batch, urlLineId, order, tanggalfrom, tanggalto, pcsPerBundle]);
+
     if (!open || !batch || !lane || !detail) return null;
 
     const {
       currentBundle,
       orderBundleCount,
-      bundleStatusList,
+      bundleStatusList: fallbackBundleList,
       bundleIn,
       bundleOut,
       wipBundle,
@@ -270,16 +409,28 @@ const BatchDetailModal = memo(
           <div className={modalCardHead}>
             <h3 className={modalCardTitle}>Riwayat Scan Bundle &amp; RFID</h3>
             <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-600/10 px-2 py-0.5 text-[0.58rem] font-bold text-blue-700">
-              {bundleStatusList.length} item
+              {apiBundles.length > 0 ? apiBundles.length : fallbackBundleList.length} item
             </span>
           </div>
-          {bundleStatusList.length === 0 ? (
+          {isLoadingDetail ? (
             <p className="m-0 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-[0.66rem] text-slate-500">
-              Belum ada data bundle. Data IN/OUT akan tampil sesuai data dari API.
+              Memuat data...
             </p>
+          ) : apiBundles.length === 0 ? (
+            fallbackBundleList.length === 0 ? (
+              <p className="m-0 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-[0.66rem] text-slate-500">
+                Belum ada data bundle. Data IN/OUT akan tampil sesuai data dari API.
+              </p>
+            ) : (
+              <ul className="m-0 max-h-[min(22rem,50vh)] list-none space-y-1.5 overflow-auto p-0 opacity-50">
+                {fallbackBundleList.map((status) => (
+                  <BundleListItem key={status.bundleNo} status={status} />
+                ))}
+              </ul>
+            )
           ) : (
             <ul className="m-0 max-h-[min(22rem,50vh)] list-none space-y-1.5 overflow-auto p-0">
-              {bundleStatusList.map((status) => (
+              {apiBundles.map((status) => (
                 <BundleListItem key={status.bundleNo} status={status} />
               ))}
             </ul>

@@ -3236,6 +3236,12 @@ app.use('/api/smv', async (req, res) => {
     return forwardToGccCuttingService9000(req, res, endpointPath, GCC_CUTTING_SERVICE_HOST);
 });
 
+/** Proxy Sewing Dashboard API (:9000). */
+app.use('/api/sewing/dashboard', async (req, res) => {
+    const endpointPath = `/api/sewing/dashboard${req.path === '/' ? '' : req.path}`;
+    return forwardToGccCuttingService9000(req, res, endpointPath, GCC_CUTTING_SERVICE_107);
+});
+
 /**
  * GET /wira/detail?line=1&wo=185759&tipe=qc&kategori=wira - Detail WIRA/REWORK data
  */

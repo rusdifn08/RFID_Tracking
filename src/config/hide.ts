@@ -136,3 +136,6 @@ export const COMINGSOON_SUPPLY_SEWING = false;
 
 /** Menyembunyikan tombol filter di dalam setiap card di Dashboard Cutting */
 export const HIDE_CUTTING_CARD_FILTERS = true;
+
+/** Jika true, pada halaman Sewing hanya Line 5 yang aktif (sisanya abu-abu seperti nonaktif) */
+export const HIGHLIGHT_SEWING_LINE_5_ONLY = true;

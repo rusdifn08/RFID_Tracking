@@ -13,7 +13,7 @@ import {
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 import { preloadLineDetail } from '../utils/preload';
 import { resolveLineDisplayTitle } from '../utils/lineDisplayTitle';
-import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines } from '../config/hide';
+import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines, HIGHLIGHT_SEWING_LINE_5_ONLY } from '../config/hide';
 import brandIconMontbell from '../assets/montbell.svg';
 
 // Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
@@ -137,15 +137,25 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
         const allLines = [...lines, ...customLines].filter(l => !hiddenLines.includes(l.id));
         const visibleLines = filterVisibleProductionLines(allLines, environment);
 
-        if (cardOrder.length === 0) return visibleLines;
+        let finalOrder = visibleLines;
+        if (cardOrder.length > 0) {
+            const orderMap = new Map(cardOrder.map((id, idx) => [id, idx]));
+            finalOrder = [...visibleLines].sort((a, b) => {
+                const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999;
+                const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999;
+                return indexA - indexB;
+            });
+        }
 
-        const orderMap = new Map(cardOrder.map((id, idx) => [id, idx]));
-        return [...visibleLines].sort((a, b) => {
-            const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999;
-            const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999;
-            return indexA - indexB;
-        });
-    }, [environment, cardOrder, customLines, hiddenLines]);
+        if (pageType === 'sewing' && HIGHLIGHT_SEWING_LINE_5_ONLY) {
+            finalOrder = [...finalOrder].sort((a, b) => {
+                if (a.id === 5) return -1;
+                if (b.id === 5) return 1;
+                return 0;
+            });
+        }
+        return finalOrder;
+    }, [environment, cardOrder, customLines, hiddenLines, pageType]);
 
     const handleDragStart = (e: React.DragEvent, id: number) => {
         if (longPressedId !== id) {
@@ -462,6 +472,25 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
         if (!environment) return;
 
         const loadActiveLines = async () => {
+            if (pageType === 'sewing') {
+                const lines = new Set<number>();
+                const validLines = productionLines.filter(line => line.id !== 0 && line.id !== 111 && line.id !== 112 && line.id !== 113);
+                await Promise.all(validLines.map(async (line) => {
+                    const lineParam = line.line || String(line.id);
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/api/sewing/dashboard?line=${encodeURIComponent(lineParam)}`, { headers: getDefaultHeaders() });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.code === 200) {
+                                lines.add(line.id);
+                            }
+                        }
+                    } catch (e) { }
+                }));
+                setActiveLines(lines);
+                return;
+            }
+
             try {
                 // Fetch melalui proxy server untuk menghindari CORS issue
                 const response = await fetch(`${API_BASE_URL}/wira`, {
@@ -693,6 +722,8 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                         finalTitle = finalTitle.replace(/^Sewing Line /i, 'Production Line ');
                     }
 
+                    const isGreyedOut = pageType === 'sewing' && HIGHLIGHT_SEWING_LINE_5_ONLY && currentLine.id !== 5;
+
                     return (
                         <div
                             key={`line-${currentLine.line || currentLine.id}-${index}`}
@@ -737,8 +768,9 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                            isHovered && longPressedId !== currentLine.id ? 'translateY(-6px) scale(1.02)' : 'scale(1)',
                                 boxShadow: dragOverId === currentLine.id ? 'inset 0 0 25px rgba(0, 115, 238, 0.2)' :
                                            isHovered && longPressedId !== currentLine.id ? '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' : '0 1px 3px rgba(0,0,0,0.05)',
-                                opacity: draggedId === currentLine.id ? 0.4 : 1,
-                                filter: draggedId === currentLine.id ? 'grayscale(0.5)' : 'none'
+                                opacity: isGreyedOut ? 0.4 : (draggedId === currentLine.id ? 0.4 : 1),
+                                filter: isGreyedOut ? 'grayscale(1)' : (draggedId === currentLine.id ? 'grayscale(0.5)' : 'none'),
+                                pointerEvents: isGreyedOut ? 'none' : 'auto'
                             }}
                             className={`
                                 group relative 
@@ -788,7 +820,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                 <div className="relative flex-shrink-0">
                                     {/* Outer glow effect */}
                                     <div
-                                        className={`absolute inset-0 rounded-full blur-sm ${isLineActive ? 'bg-green-400' : 'bg-red-400'
+                                        className={`absolute inset-0 rounded-full blur-sm ${isLineActive ? 'bg-green-400' : 'bg-slate-300'
                                             }`}
                                         style={{
                                             opacity: isLineActive ? 0.5 : 0.3,
@@ -803,12 +835,12 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                     <div
                                         className={`w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 rounded-full border ${isLineActive
                                             ? 'bg-green-500 border-green-400'
-                                            : 'bg-red-500 border-red-400'
+                                            : 'bg-slate-400 border-slate-300'
                                             }`}
                                         style={{
                                             boxShadow: isLineActive
                                                 ? '0 0 6px rgba(34, 197, 94, 0.8), 0 0 8px rgba(34, 197, 94, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3)'
-                                                : '0 0 4px rgba(239, 68, 68, 0.6), inset 0 0 3px rgba(0, 0, 0, 0.2)'
+                                                : 'inset 0 0 3px rgba(0, 0, 0, 0.2)'
                                         }}
                                     >
                                         {/* Inner highlight untuk efek lampu menyala */}

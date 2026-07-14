@@ -15,6 +15,9 @@ export type CommandCenterOrder = {
 type CommandCenterHeaderProps = {
   line: string;
   order: CommandCenterOrder;
+  orderOptions?: Record<keyof CommandCenterOrder, string[]>;
+  fieldFilters?: Partial<CommandCenterOrder>;
+  onFieldFilterChange?: (key: keyof CommandCenterOrder, value: string) => void;
   filterDateFrom: string;
   filterDateTo: string;
   onDateFromChange: (val: string) => void;
@@ -44,6 +47,9 @@ const ORDER_ROW_BOTTOM: { key: keyof CommandCenterOrder; label: string }[] = [
 const CommandCenterHeader: React.FC<CommandCenterHeaderProps> = memo(({
   line,
   order,
+  orderOptions,
+  fieldFilters,
+  onFieldFilterChange,
   filterDateFrom,
   filterDateTo,
   onDateFromChange,
@@ -63,12 +69,26 @@ const CommandCenterHeader: React.FC<CommandCenterHeaderProps> = memo(({
         <div className={cn('grid h-full min-h-0 grid-rows-2 items-stretch', FLUID.metaGap)}>
           <div className={cn('grid h-full min-h-0 grid-cols-4 items-stretch', FLUID.metaGap)}>
             {ORDER_ROW_TOP.map(({ key, label }) => (
-              <OrderMetaField key={key} label={label} value={order[key]} />
+              <OrderMetaField 
+                key={key} 
+                label={label} 
+                value={order[key]} 
+                options={orderOptions?.[key]}
+                filterValue={fieldFilters?.[key]}
+                onFilterChange={(val) => onFieldFilterChange?.(key, val)}
+              />
             ))}
           </div>
           <div className={cn('grid h-full min-h-0 grid-cols-2 items-stretch', FLUID.metaGap)}>
             {ORDER_ROW_BOTTOM.map(({ key, label }) => (
-              <OrderMetaField key={key} label={label} value={order[key]} />
+              <OrderMetaField 
+                key={key} 
+                label={label} 
+                value={order[key]} 
+                options={orderOptions?.[key]}
+                filterValue={fieldFilters?.[key]}
+                onFilterChange={(val) => onFieldFilterChange?.(key, val)}
+              />
             ))}
           </div>
         </div>

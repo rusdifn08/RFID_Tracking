@@ -26,17 +26,24 @@ const MiniMetric = ({
   label,
   value,
   unit,
+  tone,
   className,
   valueClassName,
 }: {
   label: string;
   value: string | number;
   unit?: string;
-  tone?: string;
+  tone?: 'amber' | 'violet' | 'emerald' | 'slate' | 'blue';
   className?: string;
   valueClassName?: string;
 }) => {
   const shell = 'border-blue-100/70 bg-blue-50/35';
+
+  let toneColorClass = 'text-blue-700';
+  if (tone === 'amber') toneColorClass = 'text-orange-600';
+  else if (tone === 'violet') toneColorClass = 'text-violet-600';
+  else if (tone === 'emerald') toneColorClass = 'text-emerald-600';
+  else if (tone === 'slate') toneColorClass = 'text-slate-700';
 
   return (
     <div
@@ -58,7 +65,8 @@ const MiniMetric = ({
       <span className="flex w-full items-baseline justify-center gap-0.5">
         <strong
           className={cn(
-            'truncate font-black tabular-nums text-blue-700',
+            'truncate font-black tabular-nums',
+            toneColorClass,
             FLUID.metricSm,
             valueClassName
           )}
@@ -230,11 +238,13 @@ const HIGHLIGHT_BADGE: Record<
 
 const batchHeaderBadges = (
   highlights: ProductionBatchHighlight[] | undefined,
-  currentBundle: number
+  currentBundle: number,
+  hideBundleBadge = false
 ) => {
   if (!HIDE_SEWING_BATCH_HIGHLIGHT_BADGES && highlights && highlights.length > 0) {
     return highlights.map((h) => HIGHLIGHT_BADGE[h]);
   }
+  if (hideBundleBadge) return [];
   return [
     {
       text: `Bundle-${currentBundle}`,
@@ -266,16 +276,27 @@ export const BatchOverviewCard = memo(
     /** Output pcs: pakai nilai aktual dari API jika tersedia, fallback = bundle OUT × pcs per bundle */
     const outputPcs = (batch.outputPcs != null && batch.outputPcs > 0) ? batch.outputPcs : pcsToBundleCount(batch.pcsOut, pcsPerBundle) * pcsPerBundle;
     const progressPct = Math.min(100, batch.outProgressPct);
-    const badges = batchHeaderBadges(highlight, currentBundle);
+    const isAssembly = batch.type === 'ASSEMBLY';
+    const badges = batchHeaderBadges(highlight, currentBundle, isAssembly);
+
+    const cardBorderHover = isAssembly ? 'hover:border-emerald-300 focus-visible:outline-emerald-600' : 'hover:border-blue-300 focus-visible:outline-blue-600';
+    const headerBorder = isAssembly ? 'border-emerald-50' : 'border-blue-50';
+    const headerBg = isAssembly ? 'from-emerald-50/90' : 'from-blue-50/90';
+    const headerTypeColor = isAssembly ? 'text-emerald-700' : 'text-blue-700';
+    const inOutBorder = isAssembly ? 'border-emerald-100' : 'border-blue-100';
+    const inOutBg = isAssembly ? 'from-emerald-50/80' : 'from-blue-50/80';
+    const inOutLabelColor = isAssembly ? 'text-emerald-600' : 'text-blue-500';
+    const inTextColor = isAssembly ? 'text-emerald-700' : 'text-blue-700';
+    const inOutUnitColor = isAssembly ? 'text-emerald-500/80' : 'text-blue-400/80';
+    const progressBg = isAssembly ? 'from-emerald-400 via-emerald-500 to-emerald-600' : 'from-blue-500 via-blue-600 to-emerald-500';
 
     return (
       <article
         data-batch-card
         className={cn(
           'flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-xl',
-          'border border-blue-100/80 bg-white shadow-sm transition-all duration-200',
-          'hover:border-blue-300 hover:shadow-[0_6px_20px_rgba(37,99,235,0.12)]',
-          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+          'border border-blue-100/80 bg-white shadow-sm transition-all duration-200 hover:shadow-[0_6px_20px_rgba(37,99,235,0.12)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2',
+          cardBorderHover
         )}
         role="button"
         tabIndex={0}
@@ -289,11 +310,11 @@ export const BatchOverviewCard = memo(
         aria-label={`Detail Batch ${batch.batch}: IN ${displayIn} ${unitLabel}, OUT ${displayOut} ${unitLabel}`}
       >
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between gap-1 border-b border-blue-50 bg-gradient-to-r from-blue-50/90 to-white px-[clamp(0.4rem,0.75vw,0.65rem)] py-[clamp(0.3rem,0.55vh,0.45rem)]">
+        <div className={cn('flex shrink-0 items-center justify-between gap-1 border-b bg-gradient-to-r to-white px-[clamp(0.4rem,0.75vw,0.65rem)] py-[clamp(0.3rem,0.55vh,0.45rem)]', headerBorder, headerBg)}>
           <h3 className={cn('m-0 min-w-0 truncate font-bold leading-tight text-slate-900', FLUID.body)}>
             Batch {batch.batch}
             <span className="font-medium text-slate-400"> · </span>
-            <span className="font-semibold text-blue-700">{batch.type}</span>
+            <span className={cn('font-semibold', headerTypeColor)}>{batch.type}</span>
           </h3>
           <span className="flex shrink-0 flex-wrap items-center justify-end gap-0.5">
             {badges.map((badge) => (
@@ -326,22 +347,22 @@ export const BatchOverviewCard = memo(
         >
           {/* IN / OUT — tinggi = 2× kartu WIP */}
           <div className={cn('grid min-h-0 h-full grid-cols-2', FLUID.gap)}>
-            <div className="flex h-full min-h-0 items-center justify-between gap-2 rounded-lg border border-blue-100 bg-gradient-to-r from-blue-50/80 to-white px-[clamp(0.35rem,0.55vw,0.5rem)]">
-              <span className={cn('shrink-0 font-bold uppercase tracking-wide text-blue-500', FLUID.body)}>IN</span>
+            <div className={cn('flex h-full min-h-0 items-center justify-between gap-2 rounded-lg border bg-gradient-to-r to-white px-[clamp(0.35rem,0.55vw,0.5rem)]', inOutBorder, inOutBg)}>
+              <span className={cn('shrink-0 font-bold uppercase tracking-wide', inOutLabelColor, FLUID.body)}>IN</span>
               <span className="flex items-baseline gap-0.5">
-                <strong className={cn('font-black tabular-nums leading-none text-blue-700', FLUID.metricInOut)}>
+                <strong className={cn('font-black tabular-nums leading-none', inTextColor, FLUID.metricInOut)}>
                   {displayIn}
                 </strong>
-                <span className={cn('font-semibold text-blue-400/80', FLUID.caption)}>{unitLabel}</span>
+                <span className={cn('font-semibold', inOutUnitColor, FLUID.caption)}>{unitLabel}</span>
               </span>
             </div>
-            <div className="flex h-full min-h-0 items-center justify-between gap-2 rounded-lg border border-blue-100 bg-gradient-to-r from-blue-50/80 to-white px-[clamp(0.35rem,0.55vw,0.5rem)]">
-              <span className={cn('shrink-0 font-bold uppercase tracking-wide text-blue-500', FLUID.body)}>OUT</span>
+            <div className={cn('flex h-full min-h-0 items-center justify-between gap-2 rounded-lg border bg-gradient-to-r to-white px-[clamp(0.35rem,0.55vw,0.5rem)]', inOutBorder, inOutBg)}>
+              <span className={cn('shrink-0 font-bold uppercase tracking-wide', inOutLabelColor, FLUID.body)}>OUT</span>
               <span className="flex items-baseline gap-0.5">
-                <strong className={cn('font-black tabular-nums leading-none text-blue-700', FLUID.metricInOut)}>
+                <strong className={cn('font-black tabular-nums leading-none text-emerald-600', FLUID.metricInOut)}>
                   {displayOut}
                 </strong>
-                <span className={cn('font-semibold text-blue-400/80', FLUID.caption)}>{unitLabel}</span>
+                <span className={cn('font-semibold', inOutUnitColor, FLUID.caption)}>{unitLabel}</span>
               </span>
             </div>
           </div>
@@ -355,7 +376,7 @@ export const BatchOverviewCard = memo(
           >
             <MiniMetric label="WIP" value={displayWip} unit={headerUnitLabel} tone="amber" />
             <MiniMetric label="Percentage" value={`${batch.efficiencyPct}%`} tone="violet" />
-            <MiniMetric label="Output" value={outputPcs} unit="pcs" tone="slate" />
+            <MiniMetric label="Output" value={outputPcs} unit="pcs" tone="emerald" />
           </div>
 
           {/* Progress OUT/IN — sedikit di atas dasar kartu + padding bawah */}
@@ -365,7 +386,7 @@ export const BatchOverviewCard = memo(
           >
             <div className="h-[clamp(0.32rem,0.75vh,0.55rem)] overflow-hidden rounded-full bg-slate-200">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 via-blue-600 to-emerald-500 transition-[width] duration-500 ease-out"
+                className={cn('h-full rounded-full transition-[width] duration-500 ease-out bg-gradient-to-r', progressBg)}
                 style={{ width: `${progressPct}%` }}
               />
             </div>

@@ -12,34 +12,34 @@ const KPI_THEMES: Record<string, OverviewStatTheme> = {
     sub: 'text-blue-500/75',
     icon: 'text-blue-500',
     iconWrap: 'ring-1 ring-blue-100/80',
-    watermark: 'text-blue-500/[0.12]',
+    watermark: 'hidden',
   },
   finishBatch: {
     shell: 'border-blue-200/90 bg-gradient-to-br from-blue-50 via-sky-50/90 to-white',
     label: 'text-slate-600',
-    value: 'text-blue-600',
+    value: 'text-emerald-600',
     sub: 'text-blue-500/75',
     icon: 'text-blue-500',
     iconWrap: 'ring-1 ring-blue-100/80',
-    watermark: 'text-blue-500/[0.12]',
+    watermark: 'hidden',
   },
   wip: {
     shell: 'border-blue-200/90 bg-gradient-to-br from-blue-50 via-sky-50/90 to-white',
     label: 'text-slate-600',
-    value: 'text-blue-600',
+    value: 'text-orange-600',
     sub: 'text-blue-500/75',
     icon: 'text-blue-500',
     iconWrap: 'ring-1 ring-blue-100/80',
-    watermark: 'text-blue-500/[0.12]',
+    watermark: 'hidden',
   },
   efficiencyPct: {
     shell: 'border-blue-200/90 bg-gradient-to-br from-blue-50 via-sky-50/90 to-white',
     label: 'text-slate-600',
-    value: 'text-blue-600',
+    value: 'text-violet-600',
     sub: 'text-blue-500/75',
     icon: 'text-blue-500',
     iconWrap: 'ring-1 ring-blue-100/80',
-    watermark: 'text-blue-500/[0.12]',
+    watermark: 'hidden',
   },
 };
 
@@ -88,12 +88,17 @@ const SewingBatchOverviewKpi = memo(({ data }: { data: LineOverviewKpi }) => (
       const raw = data[item.key];
       const display =
         item.key === 'efficiencyPct'
-          ? `${raw}%`
+          ? (
+            <>
+              {raw}
+              <span className={cn('font-bold text-blue-600', FLUID.caption)}>%</span>
+            </>
+          )
           : item.unit
             ? (
               <>
                 {raw}{' '}
-                <span className={cn('font-bold', FLUID.caption)}>{item.unit}</span>
+                <span className={cn('font-bold text-blue-600', FLUID.caption)}>{item.unit}</span>
               </>
             )
             : String(raw);

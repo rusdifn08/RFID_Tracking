@@ -178,7 +178,7 @@ export default function Breadcrumb() {
                 '5': 'Sewing Line 5', '6': 'Sewing Line 6', '7': 'Sewing Line 7', '8': 'Sewing Line 8', '9': 'Sewing Line 9',
             };
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             const defaultSewingLabel = lineTitles[lineId || '1'] || `Sewing Line ${lineId}`;
@@ -188,7 +188,7 @@ export default function Breadcrumb() {
             });
         } else if (path.startsWith('/sewing/all')) {
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             breadcrumbs.push({
@@ -197,7 +197,7 @@ export default function Breadcrumb() {
             });
         } else if (path.startsWith('/sewing')) {
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 isActive: true,
             });
         } else if (path.startsWith('/line/')) {
@@ -306,7 +306,7 @@ export default function Breadcrumb() {
             });
         } else if (path.startsWith('/sewing/rfid-identity')) {
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             breadcrumbs.push({
@@ -317,7 +317,7 @@ export default function Breadcrumb() {
             const dashboardLineMatch = path.match(/\/dashboard-sewing-line\/(\d+)/);
             const dashboardLineId = dashboardLineMatch?.[1] ?? '1';
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             breadcrumbs.push({
@@ -330,7 +330,7 @@ export default function Breadcrumb() {
             });
         } else if (path.startsWith('/sewing/report/')) {
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             breadcrumbs.push({
@@ -341,7 +341,7 @@ export default function Breadcrumb() {
             const layoutLineMatch = path.match(/\/sewing\/layout\/(\d+)/);
             const layoutLineId = layoutLineMatch?.[1] ?? '1';
             breadcrumbs.push({
-                label: 'Sewing',
+                label: 'RFID Batch Proses',
                 path: '/sewing',
             });
             breadcrumbs.push({

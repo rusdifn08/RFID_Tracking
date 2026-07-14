@@ -1,5 +1,6 @@
 import { useParams, useLocation } from 'react-router-dom';
 import { memo, useMemo, useState, useEffect } from 'react';
+import { Database, LayoutDashboard, ClipboardList, Maximize, MapPin } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumb from '../components/Breadcrumb';
@@ -149,45 +150,40 @@ const LineDetail = memo(() => {
                     title: identityHub.hubCard.title,
                     subtitle: identityHub.hubCard.subtitle,
                     icon: null,
-                    iconImage: daftarRfidIcon,
                     path: '/sewing/rfid-identity',
-                    sewingHub: { ...identityHub.hubCard, path: '/sewing/rfid-identity', iconImage: daftarRfidIcon, tone: 'blue' as const },
+                    sewingHub: { ...identityHub.hubCard, path: '/sewing/rfid-identity', icon: Database, tone: 'blue' as const },
                 },
                 {
                     id: 2,
                     title: batchHub.hubCard.title,
                     subtitle: batchHub.hubCard.subtitle,
                     icon: null,
-                    iconImage: dashboardRfidIcon,
                     path: `/dashboard-sewing-line/${id}`,
-                    sewingHub: { ...batchHub.hubCard, path: `/dashboard-sewing-line/${id}`, iconImage: dashboardRfidIcon, tone: 'orange' as const },
+                    sewingHub: { ...batchHub.hubCard, path: `/dashboard-sewing-line/${id}`, icon: LayoutDashboard, tone: 'orange' as const },
                 },
                 {
                     id: 3,
                     title: reportHub.hubCard.title,
                     subtitle: reportHub.hubCard.subtitle,
                     icon: null,
-                    iconImage: listRfidIcon,
                     path: `/sewing/report/${id}`,
-                    sewingHub: { ...reportHub.hubCard, path: `/sewing/report/${id}`, iconImage: listRfidIcon, tone: 'green' as const },
+                    sewingHub: { ...reportHub.hubCard, path: `/sewing/report/${id}`, icon: ClipboardList, tone: 'green' as const },
                 },
                 {
                     id: 4,
                     title: layoutHub.hubCard.title,
                     subtitle: layoutHub.hubCard.subtitle,
                     icon: null,
-                    iconImage: targetIcon,
                     path: `/sewing/layout/${id}`,
-                    sewingHub: { ...layoutHub.hubCard, path: `/sewing/layout/${id}`, iconImage: targetIcon, tone: 'purple' as const },
+                    sewingHub: { ...layoutHub.hubCard, path: `/sewing/layout/${id}`, icon: Maximize, tone: 'purple' as const },
                 },
                 {
                     id: 5,
                     title: 'Batch Position',
                     subtitle: 'Atur posisi batch mesin',
                     icon: null,
-                    iconImage: targetIcon,
                     path: `/sewing/positioning/${id}`,
-                    sewingHub: { title: 'Batch Position', subtitle: 'Assign pengaturan batch mesin, dan operator.', path: `/sewing/positioning/${id}`, iconImage: targetIcon, tone: 'blue' as const, highlights: ['Assign Mesin', 'Plotting Batch'] },
+                    sewingHub: { title: 'Batch Position', subtitle: 'Assign pengaturan batch mesin, dan operator.', path: `/sewing/positioning/${id}`, icon: MapPin, tone: 'blue' as const },
                 },
             ];
         }

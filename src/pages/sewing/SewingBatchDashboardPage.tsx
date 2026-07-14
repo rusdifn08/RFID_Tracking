@@ -23,6 +23,7 @@ import {
 import type { BatchHourlyOutputPoint } from '../../utils/sewingBatchHourlyOutput';
 import { getBatchGridConfig } from '../../utils/sewingBatchGridLayout';
 import { SEWING_DASHBOARD_BATCH_DEFAULT } from '../../utils/sewingBatchVisibility';
+import logo from '../../assets/logo.svg';
 
 const SewingBatchDashboardPage = memo(() => {
   const { id } = useParams<{ id: string }>();
@@ -82,6 +83,16 @@ const SewingBatchDashboardPage = memo(() => {
   const [appliedDateFrom, setAppliedDateFrom] = useState('');
   const [appliedDateTo, setAppliedDateTo] = useState('');
 
+  // Field level filters (untuk filter lokal)
+  const [fieldFilters, setFieldFilters] = useState<{
+    wo?: string;
+    style?: string;
+    size?: string;
+    buyer?: string;
+    item?: string;
+    color?: string;
+  }>({});
+
   // Fetch real-time API data
   const { data: apiResponse, isLoading } = useSewingBatchDashboardQuery(
     apiLineId,
@@ -94,27 +105,100 @@ const SewingBatchDashboardPage = memo(() => {
   const pcsPerBundle = batchData.defaults.pcsPerBundle ?? 15;
   const [batchDetailNo, setBatchDetailNo] = useState<number | null>(null);
 
+  const orderOptions = useMemo(() => {
+    if (apiResponse?.data && apiResponse.data.length > 0) {
+      const allData = apiResponse.data;
+      const getUnique = (key: string) => Array.from(new Set(allData.map((d: any) => d[key]).filter((v: any) => v && v !== '—'))) as string[];
+      
+      return {
+        wo: getUnique('wo'),
+        style: getUnique('style'),
+        size: getUnique('size'),
+        buyer: getUnique('buyer'),
+        item: getUnique('item'),
+        color: getUnique('color'),
+      };
+    }
+    return { wo: [], style: [], size: [], buyer: [], item: [], color: [] };
+  }, [apiResponse]);
+
+  const filteredData = useMemo(() => {
+    if (!apiResponse?.data) return [];
+    return apiResponse.data.filter((d: any) => {
+      if (fieldFilters.wo && d.wo !== fieldFilters.wo) return false;
+      if (fieldFilters.style && d.style !== fieldFilters.style) return false;
+      if (fieldFilters.size && d.size !== fieldFilters.size) return false;
+      if (fieldFilters.buyer && d.buyer !== fieldFilters.buyer) return false;
+      if (fieldFilters.item && d.item !== fieldFilters.item) return false;
+      if (fieldFilters.color && d.color !== fieldFilters.color) return false;
+      return true;
+    });
+  }, [apiResponse, fieldFilters]);
+
   const batchesFromApi = useMemo(() => {
-    if (apiResponse?.data?.[0]?.batch && apiResponse.data[0].batch.length > 0) {
-      return apiResponse.data[0].batch;
+    if (filteredData.length > 0) {
+      const aggregatedBatches = new Map<string, SewingBatchData>();
+      
+      filteredData.forEach((d: any) => {
+        if (d.batch && Array.isArray(d.batch)) {
+          d.batch.forEach((b: SewingBatchData) => {
+            const key = String(b.no_batch);
+            if (aggregatedBatches.has(key)) {
+              const existing = aggregatedBatches.get(key)!;
+              existing.in += Number(b.in) || 0;
+              existing.out += Number(b.out) || 0;
+              existing.output_pcs += Number(b.output_pcs) || 0;
+            } else {
+              aggregatedBatches.set(key, { 
+                ...b, 
+                in: Number(b.in) || 0, 
+                out: Number(b.out) || 0, 
+                output_pcs: Number(b.output_pcs) || 0 
+              });
+            }
+          });
+        }
+      });
+      
+      if (aggregatedBatches.size > 0) {
+        const arr = Array.from(aggregatedBatches.values()).sort((a, b) => Number(a.no_batch) - Number(b.no_batch));
+        const hasAssembly = arr.some(b => b.nama_batch?.toUpperCase().includes('ASSEMBLY') || b.nama_batch?.toUpperCase().includes('ASSEMBLING'));
+        if (!hasAssembly) {
+            const nextBatchNo = arr.length > 0 ? Math.max(...arr.map(a => Number(a.no_batch))) + 1 : 1;
+            arr.push({
+                no_batch: nextBatchNo,
+                nama_batch: 'ASSEMBLY',
+                in: 0,
+                out: 0,
+                output_pcs: 0
+            } as any);
+        }
+        return arr;
+      }
     }
     // Fallback dummy untuk line 12
     if (apiLineId === '12') return DUMMY_LINE12_BATCHES;
     return [];
-  }, [apiResponse, apiLineId]);
+  }, [filteredData, apiLineId]);
 
   const order = useMemo(() => {
-    if (apiResponse?.data?.[0]) {
-      const d = apiResponse.data[0];
-      const hasData = d.wo || d.style || d.size || d.buyer || d.item || d.color;
+    if (filteredData.length > 0) {
+      const allData = filteredData;
+      
+      const getUniqueJoined = (key: string) => {
+        const uniqueValues = Array.from(new Set(allData.map((d: any) => d[key]).filter((v: any) => v && v !== '—')));
+        return uniqueValues.length > 0 ? uniqueValues.join(', ') : '—';
+      };
+
+      const hasData = allData.some((d: any) => d.wo || d.style || d.size || d.buyer || d.item || d.color);
       if (hasData) {
         return {
-          wo: d.wo || '—',
-          style: d.style || '—',
-          size: d.size || '—',
-          buyer: d.buyer || '—',
-          item: d.item || '—',
-          color: d.color || '—',
+          wo: getUniqueJoined('wo'),
+          style: getUniqueJoined('style'),
+          size: getUniqueJoined('size'),
+          buyer: getUniqueJoined('buyer'),
+          item: getUniqueJoined('item'),
+          color: getUniqueJoined('color'),
         };
       }
     }
@@ -128,7 +212,7 @@ const SewingBatchDashboardPage = memo(() => {
       item: '—',
       color: '—',
     };
-  }, [apiResponse, apiLineId]);
+  }, [filteredData, apiLineId]);
 
   const batchOverviewList = useMemo(() => {
     if (batchesFromApi.length === 0) return [];
@@ -137,7 +221,7 @@ const SewingBatchDashboardPage = memo(() => {
     const raw = batchesFromApi.map((b: SewingBatchData) => {
       const batchNo = Number(b.no_batch) || 0;
       const type = b.nama_batch || 'Proses';
-      const isAssembly = isAssemblyBatch(batchNo);
+      const isAssembly = type.toUpperCase().includes('ASSEMBLY') || type.toUpperCase().includes('ASSEMBLING');
       
       // ASSEMBLING batch: API returns in/out already in pcs, not bundle count
       // Production batches (1-5): API returns in/out in bundle count, multiply by pcsPerBundle
@@ -270,6 +354,7 @@ const SewingBatchDashboardPage = memo(() => {
     setFilterDateTo('');
     setAppliedDateFrom('');
     setAppliedDateTo('');
+    setFieldFilters({});
   }, []);
 
   const handleExportExcel = useCallback(() => {
@@ -304,6 +389,11 @@ const SewingBatchDashboardPage = memo(() => {
             <CommandCenterHeader
               line={displayLineTitle}
               order={order}
+              orderOptions={orderOptions}
+              fieldFilters={fieldFilters}
+              onFieldFilterChange={(key, value) => {
+                setFieldFilters(prev => ({ ...prev, [key]: value || undefined }));
+              }}
               filterDateFrom={filterDateFrom}
               filterDateTo={filterDateTo}
               onDateFromChange={setFilterDateFrom}
@@ -334,8 +424,18 @@ const SewingBatchDashboardPage = memo(() => {
           }}
           aria-label={`Dashboard batch — ${batchGrid.cols}×${batchGrid.rows}`}
         >
-          {Array.from({ length: TARGET_BATCH_COUNT }).map((_, i) => {
+          {Array.from({ length: Math.max(TARGET_BATCH_COUNT, batchGrid.slots) }).map((_, i) => {
             const batchNo = i + 1;
+            
+            // Tampilkan logo Gistex untuk sisa slot kosong yang melebihi TARGET_BATCH_COUNT
+            if (batchNo > TARGET_BATCH_COUNT) {
+              return (
+                <div key={`empty-slot-${batchNo}`} className="flex items-center justify-center p-6 bg-white/40 rounded-[1.25rem] border-2 border-dashed border-slate-200/60 shadow-[inset_0_2px_10px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:bg-white/60">
+                  <img src={logo} alt="Gistex Logo" className="w-24 h-auto opacity-[0.15] grayscale transition-opacity duration-300 hover:opacity-30" />
+                </div>
+              );
+            }
+
             const b = batchOverviewList.find((x) => x.batch === batchNo);
 
             if (b) {
@@ -345,16 +445,17 @@ const SewingBatchDashboardPage = memo(() => {
                   batch={b as any}
                   pcsPerBundle={pcsPerBundle}
                   highlight={batchHighlights.get(b.batch) ?? undefined}
-                  usePcsUnit={isAssemblyBatch(batchNo)}
+                  usePcsUnit={b.type.toUpperCase().includes('ASSEMBLY') || b.type.toUpperCase().includes('ASSEMBLING')}
                   onOpen={() => openBatchDetail(b.batch)}
                 />
               );
             } else {
+              const isAssembly = batchNo === TARGET_BATCH_COUNT;
               const emptyBatch = {
                 batch: batchNo,
-                type: '—',
+                type: isAssembly ? 'ASSEMBLY' : '—',
                 label: `B${batchNo}`,
-                desc: '—',
+                desc: isAssembly ? 'ASSEMBLY' : '—',
                 currentBundle: 0,
                 pcsIn: 0,
                 pcsOut: 0,
@@ -367,7 +468,7 @@ const SewingBatchDashboardPage = memo(() => {
                   key={batchNo}
                   batch={emptyBatch as any}
                   pcsPerBundle={pcsPerBundle}
-                  usePcsUnit={isAssemblyBatch(batchNo)}
+                  usePcsUnit={isAssembly}
                   onOpen={() => openBatchDetail(batchNo)}
                 />
               );
@@ -385,6 +486,8 @@ const SewingBatchDashboardPage = memo(() => {
         sim={undefined}
         useLiveSim={false}
         inOutMetrics={batchDetailInOut}
+        tanggalfrom={appliedDateFrom}
+        tanggalto={appliedDateTo}
         onClose={closeBatchDetail}
       />
     </SewingPageShell>

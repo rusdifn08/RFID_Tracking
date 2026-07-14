@@ -191,8 +191,22 @@ export const OverviewLineCard = memo(({ lineNo }: { lineNo: string }) => (
 
 OverviewLineCard.displayName = 'OverviewLineCard';
 
-/** Kartu data order — WO, Style, Size, Buyer, Item, Color */
-export const OrderMetaField = memo(({ label, value }: { label: string; value: string }) => (
+export const OrderMetaField = memo(({ 
+  label, 
+  value,
+  options = [],
+  filterValue = '',
+  onFilterChange
+}: { 
+  label: string; 
+  value: string;
+  options?: string[];
+  filterValue?: string;
+  onFilterChange?: (val: string) => void;
+}) => {
+  const showDropdown = options.length > 1 || filterValue;
+
+  return (
   <div
     role="group"
     aria-label={label}
@@ -213,16 +227,35 @@ export const OrderMetaField = memo(({ label, value }: { label: string; value: st
     >
       {label}
     </p>
-    <p
-      className={cn(
-        'm-0 mt-[clamp(0.06rem,0.12vh,0.14rem)] w-full min-h-0 truncate text-center font-semibold leading-tight text-blue-700',
-        FLUID.metaValue
-      )}
-      title={value}
-    >
-      {value}
-    </p>
+    {showDropdown ? (
+      <select
+        className={cn(
+          'm-0 mt-[clamp(0.06rem,0.12vh,0.14rem)] w-full min-h-0 truncate text-center font-semibold leading-tight text-blue-700 bg-transparent cursor-pointer hover:bg-blue-50/50 outline-none focus:ring-1 focus:ring-blue-300 rounded appearance-none',
+          FLUID.metaValue
+        )}
+        title={filterValue ? filterValue : value}
+        value={filterValue}
+        onChange={(e) => onFilterChange?.(e.target.value)}
+        style={{ textAlignLast: 'center' }}
+      >
+        <option value="">{filterValue ? 'Semua' : value}</option>
+        {options.map((opt) => (
+           <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    ) : (
+      <p
+        className={cn(
+          'm-0 mt-[clamp(0.06rem,0.12vh,0.14rem)] w-full min-h-0 truncate text-center font-semibold leading-tight text-blue-700',
+          FLUID.metaValue
+        )}
+        title={value}
+      >
+        {value}
+      </p>
+    )}
   </div>
-));
+  );
+});
 
 OrderMetaField.displayName = 'OrderMetaField';

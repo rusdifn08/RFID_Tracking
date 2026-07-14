@@ -27,7 +27,7 @@ const MonitoringMachine = memo(() => {
 
                 <main className="flex flex-col flex-1 min-h-0 w-full bg-slate-50/50 px-2 md:px-3 pb-2 md:pb-3 pt-10 xs:pt-12 sm:pt-14 md:pt-[3.5rem] lg:pt-[4.5rem] overflow-hidden">
                      <DynamicEmbed 
-                         baseUrl="http://10.5.0.8:5000" 
+                         baseUrl="http://10.5.0.8:5173" 
                          prefix="/monitoring-machine" 
                      />
                 </main>
