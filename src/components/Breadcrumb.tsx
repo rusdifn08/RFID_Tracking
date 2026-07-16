@@ -794,9 +794,10 @@ export default function Breadcrumb() {
                                         const isSewingPage = location.pathname.startsWith('/sewing');
                                         const hasCustomTitle = !!displayTitlesData[lineIdStr]?.trim();
                                         const resolvedTitle = resolveLineDisplayTitle(line.id, line.title, displayTitlesData);
-                                        const shownTitle = isSewingPage && !hasCustomTitle
-                                            ? resolvedTitle.replace(/^Production Line /i, 'Sewing Line ')
-                                            : resolvedTitle;
+                                        let shownTitle = resolvedTitle;
+                                        if (isSewingPage && shownTitle.match(/^Production Line /i)) {
+                                            shownTitle = shownTitle.replace(/^Production Line /i, 'Sewing Line ');
+                                        }
                                         const isEditing = editingLine === line.id;
 
                                         return (

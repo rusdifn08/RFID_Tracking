@@ -713,11 +713,15 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
 
                     // Di konteks Sewing: tampilkan "Sewing Line" / "All Sewing Line", bukan "Production Line"
                     const isAllLine = line.id === 0 || line.id === 111 || line.id === 112 || line.id === 113;
-                    const hasCustomTitle = !!displayTitlesData[line.id.toString()]?.trim();
                     const resolvedTitle = resolveLineDisplayTitle(line.id, line.title, displayTitlesData);
-                    let finalTitle = linePathPrefix === '/sewing' && !hasCustomTitle
-                        ? (isAllLine ? 'All Sewing Line' : resolvedTitle.replace(/^Production Line /i, 'Sewing Line '))
-                        : resolvedTitle;
+                    let finalTitle = resolvedTitle;
+                    if (linePathPrefix === '/sewing' || pageType === 'sewing') {
+                        if (isAllLine) {
+                            finalTitle = 'All Sewing Line';
+                        } else if (finalTitle.match(/^Production Line /i)) {
+                            finalTitle = finalTitle.replace(/^Production Line /i, 'Sewing Line ');
+                        }
+                    }
                         
                     // Auto-fix for old data where "Sewing Line" was accidentally saved to the production key
                     if (pageType === 'production' && finalTitle.match(/^Sewing Line /i)) {

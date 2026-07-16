@@ -40,17 +40,18 @@ const SewingBatchDashboardPage = memo(() => {
         const data = await getSupervisorDataFromAPI(env, 'sewing');
         if (!isMounted) return;
         
-        let customTitle = urlLineId;
-        if (data && data.displayTitles) {
-          customTitle = data.displayTitles[urlLineId] || urlLineId;
+        let customTitle = `Sewing Line ${urlLineId}`;
+        if (data && data.displayTitles && data.displayTitles[urlLineId]) {
+          customTitle = data.displayTitles[urlLineId];
+          // Force it to use "Sewing Line" instead of "Production Line"
+          if (customTitle.match(/^Production Line /i)) {
+            customTitle = customTitle.replace(/^Production Line /i, 'Sewing Line ');
+          }
         }
         
-        // Ekstrak angka dari nama line (misal: "Sewing Line 10" -> "10")
-        const match = customTitle.match(/\d+/);
-        const resolvedLineId = match ? match[0] : urlLineId;
-        
-        setApiLineId(resolvedLineId);
-        setDisplayLineTitle(resolvedLineId);
+        // Use the exact urlLineId as the API parameter, do not extract from title
+        setApiLineId(urlLineId);
+        setDisplayLineTitle(customTitle);
       } catch (e) {
         console.error(e);
       }
@@ -142,15 +143,19 @@ const SewingBatchDashboardPage = memo(() => {
       filteredData.forEach((d: any) => {
         if (d.batch && Array.isArray(d.batch)) {
           d.batch.forEach((b: SewingBatchData) => {
-            const key = String(b.no_batch);
+            const batchName = (b.nama_batch || '').trim().toUpperCase();
+            const key = batchName || String(b.no_batch);
+            
             if (aggregatedBatches.has(key)) {
               const existing = aggregatedBatches.get(key)!;
               existing.in += Number(b.in) || 0;
               existing.out += Number(b.out) || 0;
               existing.output_pcs += Number(b.output_pcs) || 0;
+              existing.no_batch = Math.min(Number(existing.no_batch), Number(b.no_batch));
             } else {
               aggregatedBatches.set(key, { 
                 ...b, 
+                no_batch: Number(b.no_batch),
                 in: Number(b.in) || 0, 
                 out: Number(b.out) || 0, 
                 output_pcs: Number(b.output_pcs) || 0 
@@ -425,55 +430,27 @@ const SewingBatchDashboardPage = memo(() => {
           }}
           aria-label={`Dashboard batch — ${batchGrid.cols}×${batchGrid.rows}`}
         >
-          {Array.from({ length: Math.max(TARGET_BATCH_COUNT, batchGrid.slots) }).map((_, i) => {
-            const batchNo = i + 1;
+          {Array.from({ length: Math.max(batchOverviewList.length, batchGrid.slots) }).map((_, i) => {
+            const b = batchOverviewList[i];
             
-            // Tampilkan logo Gistex untuk sisa slot kosong yang melebihi TARGET_BATCH_COUNT
-            if (batchNo > TARGET_BATCH_COUNT) {
+            if (!b) {
               return (
-                <div key={`empty-slot-${batchNo}`} className="flex items-center justify-center p-6 bg-white/40 rounded-[1.25rem] border-2 border-dashed border-slate-200/60 shadow-[inset_0_2px_10px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:bg-white/60">
+                <div key={`empty-slot-${i}`} className="flex items-center justify-center p-6 bg-white/40 rounded-[1.25rem] border-2 border-dashed border-slate-200/60 shadow-[inset_0_2px_10px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:bg-white/60">
                   <img src={logo} alt="Gistex Logo" className="w-32 xs:w-40 sm:w-48 md:w-56 lg:w-64 h-auto opacity-[0.25] grayscale transition-opacity duration-300 hover:opacity-[0.4]" />
                 </div>
               );
             }
 
-            const b = batchOverviewList.find((x) => x.batch === batchNo);
-
-            if (b) {
-              return (
-                <BatchOverviewCard
-                  key={batchNo}
-                  batch={b as any}
-                  pcsPerBundle={pcsPerBundle}
-                  highlight={batchHighlights.get(b.batch) ?? undefined}
-                  usePcsUnit={b.type.toUpperCase().includes('ASSEMBLY') || b.type.toUpperCase().includes('ASSEMBLING')}
-                  onOpen={() => openBatchDetail(b.batch)}
-                />
-              );
-            } else {
-              const isAssembly = batchNo === TARGET_BATCH_COUNT;
-              const emptyBatch = {
-                batch: batchNo,
-                type: isAssembly ? 'ASSEMBLY' : '—',
-                label: `B${batchNo}`,
-                desc: isAssembly ? 'ASSEMBLY' : '—',
-                currentBundle: 0,
-                pcsIn: 0,
-                pcsOut: 0,
-                wip: 0,
-                efficiencyPct: 0,
-                outProgressPct: 0,
-              };
-              return (
-                <BatchOverviewCard
-                  key={batchNo}
-                  batch={emptyBatch as any}
-                  pcsPerBundle={pcsPerBundle}
-                  usePcsUnit={isAssembly}
-                  onOpen={() => openBatchDetail(batchNo)}
-                />
-              );
-            }
+            return (
+              <BatchOverviewCard
+                key={b.batch}
+                batch={b as any}
+                pcsPerBundle={pcsPerBundle}
+                highlight={batchHighlights.get(b.batch) ?? undefined}
+                usePcsUnit={b.type.toUpperCase().includes('ASSEMBLY') || b.type.toUpperCase().includes('ASSEMBLING')}
+                onOpen={() => openBatchDetail(b.batch)}
+              />
+            );
           })}
         </section>
       </div>
