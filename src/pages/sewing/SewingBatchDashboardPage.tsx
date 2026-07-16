@@ -109,7 +109,11 @@ const SewingBatchDashboardPage = memo(() => {
   const orderOptions = useMemo(() => {
     if (apiResponse?.data && apiResponse.data.length > 0) {
       const allData = apiResponse.data;
-      const getUnique = (key: string) => Array.from(new Set(allData.map((d: any) => d[key]).filter((v: any) => v && v !== '—'))) as string[];
+      const getUnique = (key: string) => {
+        const rawValues = allData.map((d: any) => d[key]).filter((v: any) => v && v !== '—');
+        const splitValues = rawValues.flatMap((v: string) => v.split(',').map((s) => s.trim()));
+        return Array.from(new Set(splitValues)) as string[];
+      };
       
       return {
         wo: getUnique('wo'),
@@ -126,12 +130,18 @@ const SewingBatchDashboardPage = memo(() => {
   const filteredData = useMemo(() => {
     if (!apiResponse?.data) return [];
     return apiResponse.data.filter((d: any) => {
-      if (fieldFilters.wo && d.wo !== fieldFilters.wo) return false;
-      if (fieldFilters.style && d.style !== fieldFilters.style) return false;
-      if (fieldFilters.size && d.size !== fieldFilters.size) return false;
-      if (fieldFilters.buyer && d.buyer !== fieldFilters.buyer) return false;
-      if (fieldFilters.item && d.item !== fieldFilters.item) return false;
-      if (fieldFilters.color && d.color !== fieldFilters.color) return false;
+      const match = (fieldValue: string | undefined, dataValue: string | undefined) => {
+        if (!fieldValue) return true;
+        if (!dataValue) return false;
+        return dataValue.split(',').map((s) => s.trim()).includes(fieldValue);
+      };
+
+      if (!match(fieldFilters.wo, d.wo)) return false;
+      if (!match(fieldFilters.style, d.style)) return false;
+      if (!match(fieldFilters.size, d.size)) return false;
+      if (!match(fieldFilters.buyer, d.buyer)) return false;
+      if (!match(fieldFilters.item, d.item)) return false;
+      if (!match(fieldFilters.color, d.color)) return false;
       return true;
     });
   }, [apiResponse, fieldFilters]);

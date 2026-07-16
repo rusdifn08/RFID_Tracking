@@ -1,5 +1,5 @@
 import { memo, type ComponentType, type ReactNode } from 'react';
-import { Layers, type LucideProps } from 'lucide-react';
+import { Layers, ChevronDown, type LucideProps } from 'lucide-react';
 import { cn, FLUID } from './sewingBatchTw';
 
 const KPI_DESC_CLASS = cn(
@@ -228,21 +228,26 @@ export const OrderMetaField = memo(({
       {label}
     </p>
     {showDropdown ? (
-      <select
-        className={cn(
-          'm-0 mt-[clamp(0.06rem,0.12vh,0.14rem)] w-full min-h-0 truncate text-center font-semibold leading-tight text-blue-700 bg-transparent cursor-pointer hover:bg-blue-50/50 outline-none focus:ring-1 focus:ring-blue-300 rounded appearance-none',
-          FLUID.metaValue
-        )}
-        title={filterValue ? filterValue : value}
-        value={filterValue}
-        onChange={(e) => onFilterChange?.(e.target.value)}
-        style={{ textAlignLast: 'center' }}
-      >
-        <option value="">{filterValue ? 'Semua' : value}</option>
-        {options.map((opt) => (
-           <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
+      <div className="relative w-full h-full min-h-0 mt-[clamp(0.06rem,0.12vh,0.14rem)] flex items-center justify-center">
+        <select
+          className={cn(
+            'm-0 w-full h-full min-h-0 truncate font-semibold leading-tight text-blue-700 bg-transparent cursor-pointer hover:bg-blue-50/50 outline-none focus:ring-1 focus:ring-blue-300 rounded appearance-none relative z-10',
+            FLUID.metaValue
+          )}
+          title={filterValue ? filterValue : value}
+          value={filterValue}
+          onChange={(e) => onFilterChange?.(e.target.value)}
+          style={{ textAlignLast: 'center', paddingRight: '1rem' }}
+        >
+          <option value="">{filterValue ? 'Semua' : value}</option>
+          {options.map((opt) => (
+             <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+        <div className="absolute right-1 inset-y-0 flex items-center pointer-events-none z-0">
+          <ChevronDown className="w-3 h-3 text-blue-500 opacity-70" />
+        </div>
+      </div>
     ) : (
       <p
         className={cn(
