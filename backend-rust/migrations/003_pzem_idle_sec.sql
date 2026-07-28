@@ -1,0 +1,2 @@
+ALTER TABLE detection_compare_daily ADD COLUMN IF NOT EXISTS pzem_idle_sec INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE detection_compare_daily ADD COLUMN IF NOT EXISTS adxl_idle_sec INTEGER NOT NULL DEFAULT 0;

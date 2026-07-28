@@ -5,10 +5,14 @@ import { BatchOverviewCard } from '../../components/sewing/SewingBatchCards';
 import BatchDetailModal from '../../components/sewing/BatchDetailModal';
 import SewingBatchHourlyChart from '../../components/sewing/SewingBatchHourlyChart';
 import SewingBatchOverviewKpi from '../../components/sewing/SewingBatchOverviewKpi';
-import CommandCenterHeader from '../../components/sewing/CommandCenterHeader';
+import CommandCenterHeader, { type SewingExportKind } from '../../components/sewing/CommandCenterHeader';
 import { useSewingBatchDashboardQuery, type SewingBatchData } from '../../hooks/useSewingBatchDashboardQuery';
-import { getEnvironmentFromAPI, getSupervisorDataFromAPI } from '../../config/api';
-import { exportSewingBatchToExcel } from '../../utils/exportSewingBatchToExcel';
+import { getEnvironmentFromAPI, getSupervisorDataFromAPI, getDefaultHeaders } from '../../config/api';
+import {
+  exportSewingBatchToExcel,
+  exportSewingBatchDetailToExcel,
+  type SewingBatchDetailTap,
+} from '../../utils/exportSewingBatchToExcel';
 import batchData from '../../data/sewing/sewing-batch-dashboard.json';
 import flowData from '../../data/sewing/sewing-flow-detail.json';
 import {
@@ -16,10 +20,7 @@ import {
   type SewingBatchMeta,
   type SewingFlowBatch,
 } from '../../types/sewingDashboard';
-import {
-  computeProductionBatchHighlights,
-  isAssemblyBatch,
-} from '../../utils/sewingBatchInOut';
+import { computeProductionBatchHighlights } from '../../utils/sewingBatchInOut';
 import type { BatchHourlyOutputPoint } from '../../utils/sewingBatchHourlyOutput';
 import { getBatchGridConfig } from '../../utils/sewingBatchGridLayout';
 import { SEWING_DASHBOARD_BATCH_DEFAULT } from '../../utils/sewingBatchVisibility';
@@ -94,17 +95,30 @@ const SewingBatchDashboardPage = memo(() => {
     color?: string;
   }>({});
 
+  // Filter field (WO/Style/dst) aktif → tampilkan seluruh riwayat filter tsb
+  // dari awal periode produksi s/d hari ini, abaikan range tanggal manual.
+  // ponytail: tanggal mulai data produksi di-hardcode; ubah bila periode baru dimulai
+  const FIELD_FILTER_HISTORY_FROM = '2026-07-08';
+  const hasFieldFilter = Object.values(fieldFilters).some(Boolean);
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+  const queryDateFrom = hasFieldFilter ? FIELD_FILTER_HISTORY_FROM : appliedDateFrom;
+  const queryDateTo = hasFieldFilter ? todayStr : appliedDateTo;
+
   // Fetch real-time API data
   const { data: apiResponse, isLoading } = useSewingBatchDashboardQuery(
     apiLineId,
     undefined,
     undefined,
-    appliedDateFrom,
-    appliedDateTo
+    queryDateFrom,
+    queryDateTo
   );
 
   const pcsPerBundle = batchData.defaults.pcsPerBundle ?? 15;
   const [batchDetailNo, setBatchDetailNo] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const orderOptions = useMemo(() => {
     if (apiResponse?.data && apiResponse.data.length > 0) {
@@ -153,7 +167,13 @@ const SewingBatchDashboardPage = memo(() => {
       filteredData.forEach((d: any) => {
         if (d.batch && Array.isArray(d.batch)) {
           d.batch.forEach((b: SewingBatchData) => {
-            const batchName = (b.nama_batch || '').trim().toUpperCase();
+            // Normalisasi agresif: NBSP/spasi ganda/karakter tak terlihat antar-WO
+            // membuat nama batch sama dianggap beda → card dobel saat filter.
+            const batchName = String(b.nama_batch || '')
+              .normalize('NFKC')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .toUpperCase();
             const key = batchName || String(b.no_batch);
             
             if (aggregatedBatches.has(key)) {
@@ -311,10 +331,12 @@ const SewingBatchDashboardPage = memo(() => {
     });
   }, [batchesFromApi]);
 
-  const TARGET_BATCH_COUNT = useMemo(() => {
-    if (batchOverviewList.length === 0) return 6;
-    return Math.max(6, ...batchOverviewList.map((b) => b.batch));
-  }, [batchOverviewList]);
+  // Grid mengikuti jumlah card sebenarnya (bukan nomor batch terbesar),
+  // agar tidak meluber saat hasil filter punya nomor batch tinggi/duplikat nama.
+  const TARGET_BATCH_COUNT = useMemo(
+    () => Math.max(SEWING_DASHBOARD_BATCH_DEFAULT, batchOverviewList.length),
+    [batchOverviewList]
+  );
 
   const batchGrid = useMemo(
     () => getBatchGridConfig(TARGET_BATCH_COUNT),
@@ -373,15 +395,67 @@ const SewingBatchDashboardPage = memo(() => {
     setFieldFilters({});
   }, []);
 
-  const handleExportExcel = useCallback(() => {
-    exportSewingBatchToExcel(
-      apiLineId,
-      order,
-      batchesFromApi,
-      appliedDateFrom || 'Semua Tanggal',
-      appliedDateTo || 'Semua Tanggal'
-    );
-  }, [apiLineId, order, batchesFromApi, appliedDateFrom, appliedDateTo]);
+  const handleExportExcel = useCallback(async (kind: SewingExportKind) => {
+    const dateFrom = appliedDateFrom || filterDateFrom || 'Semua Tanggal';
+    const dateTo = appliedDateTo || filterDateTo || 'Semua Tanggal';
+
+    if (kind === 'kumulatif') {
+      if (batchesFromApi.length === 0) {
+        window.alert('Tidak ada data kumulatif untuk diekspor.');
+        return;
+      }
+      try {
+        setExporting(true);
+        await exportSewingBatchToExcel(apiLineId, order, batchesFromApi, dateFrom, dateTo);
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : 'Gagal export kumulatif');
+      } finally {
+        setExporting(false);
+      }
+      return;
+    }
+
+    // Detail: fetch semua tap dari API detail berdasarkan line + tanggal
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      params.append('line', apiLineId);
+      if (appliedDateFrom || filterDateFrom) {
+        params.append('tanggalfrom', appliedDateFrom || filterDateFrom);
+      }
+      if (appliedDateTo || filterDateTo) {
+        params.append('tanggalto', appliedDateTo || filterDateTo);
+      }
+
+      const res = await fetch(`/api/sewing/dashboard/detail?${params.toString()}`, {
+        headers: {
+          ...getDefaultHeaders(),
+          'rfid-key': '0011779933',
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const rows: SewingBatchDetailTap[] = Array.isArray(json?.data) ? json.data : [];
+      if (rows.length === 0) {
+        window.alert('Tidak ada data detail tap untuk diekspor.');
+        return;
+      }
+      await exportSewingBatchDetailToExcel(apiLineId, rows, dateFrom, dateTo, pcsPerBundle);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Gagal export detail');
+    } finally {
+      setExporting(false);
+    }
+  }, [
+    apiLineId,
+    order,
+    batchesFromApi,
+    appliedDateFrom,
+    appliedDateTo,
+    filterDateFrom,
+    filterDateTo,
+    pcsPerBundle,
+  ]);
 
   if (isLoading) {
     return (
@@ -417,6 +491,7 @@ const SewingBatchDashboardPage = memo(() => {
               onSearchClick={handleSearch}
               onResetClick={handleReset}
               onExportExcelClick={handleExportExcel}
+              exporting={exporting}
             />
 
             <div className="min-h-0 h-full">
@@ -474,8 +549,8 @@ const SewingBatchDashboardPage = memo(() => {
         sim={undefined}
         useLiveSim={false}
         inOutMetrics={batchDetailInOut}
-        tanggalfrom={appliedDateFrom}
-        tanggalto={appliedDateTo}
+        tanggalfrom={queryDateFrom}
+        tanggalto={queryDateTo}
         onClose={closeBatchDetail}
       />
     </SewingPageShell>

@@ -1,5 +1,5 @@
 import { memo, type ComponentType, type ReactNode } from 'react';
-import { Layers, ChevronDown, type LucideProps } from 'lucide-react';
+import { Layers, type LucideProps } from 'lucide-react';
 import { cn, FLUID } from './sewingBatchTw';
 
 const KPI_DESC_CLASS = cn(
@@ -237,16 +237,13 @@ export const OrderMetaField = memo(({
           title={filterValue ? filterValue : value}
           value={filterValue}
           onChange={(e) => onFilterChange?.(e.target.value)}
-          style={{ textAlignLast: 'center', paddingRight: '1rem' }}
+          style={{ textAlignLast: 'center' }}
         >
           <option value="">{filterValue ? 'Semua' : value}</option>
           {options.map((opt) => (
              <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
-        <div className="absolute right-1 inset-y-0 flex items-center pointer-events-none z-0">
-          <ChevronDown className="w-3 h-3 text-blue-500 opacity-70" />
-        </div>
       </div>
     ) : (
       <p

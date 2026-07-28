@@ -52,6 +52,7 @@ const MonitoringShipmentHub = lazy(() => import('../pages/MonitoringShipmentHub.
 const MonitoringShipment = lazy(() => import('../pages/MonitoringShipment.tsx'));
 const MonitoringShipment2 = lazy(() => import('../pages/MonitoringShipment2.tsx'));
 const MonitoringMachine = lazy(() => import('../pages/MonitoringMachine.tsx'));
+const MachineProductivityPage = lazy(() => import('../pages/MachineProductivityPage.tsx'));
 const VibePrendi = lazy(() => import('../pages/VibePrendi.tsx'));
 
 // Loading component untuk Suspense (ringan agar paint cepat)
@@ -642,6 +643,96 @@ const router = createBrowserRouter([
             <ProtectedRoute>
                 <LazyWrapper>
                     <MonitoringMachine />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/resume',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/detail',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/detail/:machineId',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/detail/:machineId/pzem',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/detail/:machineId/adxl',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/compare',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/pzem',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/adxl',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
                 </LazyWrapper>
             </ProtectedRoute>
         ),

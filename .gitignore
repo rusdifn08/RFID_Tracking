@@ -29,3 +29,10 @@ Test/
 
 # Scratch directory
 scratch/
+
+# Secrets / env
+.env
+backend-rust/.env
+backend-rust/target/
+
+backend-rust/tmp_mqtt.json

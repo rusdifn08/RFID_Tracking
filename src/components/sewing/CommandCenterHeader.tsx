@@ -1,5 +1,5 @@
-import React, { memo, useMemo } from 'react';
-import { Search, FileSpreadsheet } from 'lucide-react';
+import React, { memo, useMemo, useState } from 'react';
+import { Search, FileSpreadsheet, X, ListTree, Sigma } from 'lucide-react';
 import { cn, FLUID } from './sewingBatchTw';
 import { OrderMetaField, OverviewLineCard } from './OverviewStatCard';
 
@@ -11,6 +11,8 @@ export type CommandCenterOrder = {
   item: string;
   color: string;
 };
+
+export type SewingExportKind = 'kumulatif' | 'detail';
 
 type CommandCenterHeaderProps = {
   line: string;
@@ -24,7 +26,8 @@ type CommandCenterHeaderProps = {
   onDateToChange: (val: string) => void;
   onSearchClick: () => void;
   onResetClick: () => void;
-  onExportExcelClick: () => void;
+  onExportExcelClick: (kind: SewingExportKind) => void;
+  exporting?: boolean;
 };
 
 const parseLineNo = (line: string): string => {
@@ -57,8 +60,15 @@ const CommandCenterHeader: React.FC<CommandCenterHeaderProps> = memo(({
   onSearchClick,
   onResetClick,
   onExportExcelClick,
+  exporting = false,
 }) => {
   const lineNo = useMemo(() => parseLineNo(line), [line]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  const pickExport = (kind: SewingExportKind) => {
+    setExportDialogOpen(false);
+    onExportExcelClick(kind);
+  };
 
   return (
     <header className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
@@ -137,8 +147,10 @@ const CommandCenterHeader: React.FC<CommandCenterHeaderProps> = memo(({
               RESET
             </button>
             <button
-              onClick={onExportExcelClick}
-              className="w-full h-[clamp(1.5rem,1.3vw+1.3vh,2.4rem)] text-[clamp(0.62rem,0.5vw+0.6vh,1.1rem)] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded transition flex items-center justify-center shadow-sm"
+              type="button"
+              onClick={() => setExportDialogOpen(true)}
+              disabled={exporting}
+              className="w-full h-[clamp(1.5rem,1.3vw+1.3vh,2.4rem)] text-[clamp(0.62rem,0.5vw+0.6vh,1.1rem)] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded transition flex items-center justify-center shadow-sm"
               title="Export to Excel"
             >
               <FileSpreadsheet className="h-[clamp(0.7rem,0.6vw+0.6vh,1.1rem)] w-[clamp(0.7rem,0.6vw+0.6vh,1.1rem)] shrink-0" strokeWidth={2.5} />
@@ -146,6 +158,77 @@ const CommandCenterHeader: React.FC<CommandCenterHeaderProps> = memo(({
           </div>
         </div>
       </div>
+
+      {exportDialogOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4"
+          onClick={() => !exporting && setExportDialogOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sewing-export-title"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="sewing-export-title" className="text-base font-bold text-slate-800">
+                  Pilih jenis export
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Data diekspor sesuai filter tanggal From–To, lengkap No. Batch dan Nama Batch.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExportDialogOpen(false)}
+                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-2.5">
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={() => pickExport('kumulatif')}
+                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-left transition hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-60"
+              >
+                <span className="mt-0.5 rounded-lg bg-emerald-600 p-2 text-white">
+                  <Sigma className="h-4 w-4" strokeWidth={2.5} />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-800">Kumulatif</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Akumulasi dari tanggal from ke to (API dashboard), 1 baris per batch.
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={() => pickExport('detail')}
+                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-left transition hover:border-blue-400 hover:bg-blue-50 disabled:opacity-60"
+              >
+                <span className="mt-0.5 rounded-lg bg-blue-600 p-2 text-white">
+                  <ListTree className="h-4 w-4" strokeWidth={2.5} />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-800">Detail</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Ringkasan per tanggal &amp; per batch (IN/OUT dari tap RFID).
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 });

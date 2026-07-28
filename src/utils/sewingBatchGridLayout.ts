@@ -4,5 +4,7 @@ export const getBatchGridConfig = (count: number): { cols: number; rows: number;
   if (count <= 4) return { cols: count, rows: 1, slots: count };
   if (count <= 6) return { cols: 3, rows: 2, slots: 6 };
   if (count <= 8) return { cols: 4, rows: 2, slots: 8 };
-  return { cols: 5, rows: 2, slots: 10 };
+  if (count <= 10) return { cols: 5, rows: 2, slots: 10 };
+  if (count <= 12) return { cols: 4, rows: 3, slots: 12 };
+  return { cols: 5, rows: 3, slots: 15 };
 };

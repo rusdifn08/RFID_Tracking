@@ -11,6 +11,7 @@ import {
     HIDE_HOME_CARD_RFID_SEWING_PROSES,
     HIDE_HOME_CARD_RFID_TRACKING,
     HIDE_HOME_CARD_MONITORING_MACHINE,
+    HIDE_HOME_CARD_MACHINE_PRODUCTIVITY,
     HIDE_HOME_CARD_MONITORING_SHIPMENT,
     HIDE_HOME_CARD_VIBE_PRENDI,
     isHomeCardHidden,
@@ -67,6 +68,15 @@ export default function HomeContent() {
             bgEnd: 'to-blue-700',
         },
         {
+            id: 'machine-productivity',
+            title: 'Machine Productivity',
+            subtitle: 'IoT ADXL345 + PZEM deteksi kerja mesin',
+            path: '/machine-productivity',
+            icon: machineIcon,
+            bgStart: 'from-teal-400',
+            bgEnd: 'to-cyan-800',
+        },
+        {
             id: 'monitoring-shipment',
             title: 'Monitoring Shipment',
             subtitle: 'Proses Serah Terima dan Monitoring Shipment',
@@ -93,6 +103,7 @@ export default function HomeContent() {
             HIDE_HOME_CARD_NEEDLE_MANAGER,
             HIDE_HOME_CARD_RFID_SEWING_PROSES,
             HIDE_HOME_CARD_MONITORING_MACHINE,
+            HIDE_HOME_CARD_MACHINE_PRODUCTIVITY,
             HIDE_HOME_CARD_MONITORING_SHIPMENT,
             HIDE_HOME_CARD_VIBE_PRENDI,
         ]

@@ -45,7 +45,7 @@ const LOCAL_IP = getLocalIP(); // IP local untuk Proxy Server (mengikuti PC yang
 
 // Backend IP - bisa diatur melalui environment variable atau command line argument
 // Default: 10.8.0.104 (CLN)
-// Alternatif: 10.5.0.106 (MJL) - set via BACKEND_IP environment variable
+// Alternatif: 10.5.0.107 (MJL) - set via BACKEND_IP environment variable
 let BACKEND_IP = process.env.BACKEND_IP || '10.8.0.104';
 
 // Variabel untuk menyimpan environment (CLN, MJL, atau MJL2)
@@ -59,13 +59,13 @@ if (args.includes('cln')) {
     BACKEND_IP = '10.8.0.104';
     CURRENT_ENV = 'CLN';
 } else if (args.includes('mjl')) {
-    BACKEND_IP = '10.5.0.106';
+    BACKEND_IP = '10.5.0.107';
     CURRENT_ENV = 'MJL';
 } else if (args.includes('mjl2')) {
     BACKEND_IP = '10.6.0.99';
     CURRENT_ENV = 'MJL2';
 } else if (args.includes('gcc')) {
-    // Route /gcc/* (daily-output, dll.) di lab: sama dengan host MJL; override dengan BACKEND_IP jika backend GCC terpisah.
+    // Route /gcc/* (daily-output, dll.) di lab: host lama MJL; override dengan BACKEND_IP jika backend GCC terpisah.
     BACKEND_IP = '10.5.0.106';
     CURRENT_ENV = 'GCC';
 } else if (ENV_OVERRIDE === 'MJL' || ENV_OVERRIDE === 'MJL2' || ENV_OVERRIDE === 'CLN' || ENV_OVERRIDE === 'GCC') {
@@ -130,7 +130,7 @@ function getMqttLineNumbers() {
     if (CURRENT_ENV === 'GCC') return Array.from({ length: 21 }, (_, i) => i + 1);
     return Array.from({ length: 5 }, (_, i) => i + 1); // CLN default
 }
-
+    
 // API Key untuk MJL dan CLN (sama untuk semua environment)
 const API_KEY = '6lYZkryM.j50CVZgnpBl8X7Nx6sy5KRyY6ET7k3Cb';
 const API_KEY_HEADER = 'X-Api-Key';
@@ -702,7 +702,7 @@ function loadActiveSessionsFromFile() {
             // Filter berdasarkan environment - hanya load user dari environment yang sesuai
             // Cek environment dari log.environment atau log.backendIP
             const logEnvironment = log.environment || (log.backendIP === '10.8.0.104' ? 'CLN' :
-                log.backendIP === '10.5.0.106' ? 'MJL' :
+                (log.backendIP === '10.5.0.107' || log.backendIP === '10.5.0.106') ? 'MJL' :
                     log.backendIP === '10.6.0.99' ? 'MJL2' :
                         log.backendIP === '10.5.0.201' ? 'GCC' : null);
             const isSameEnvironment = logEnvironment === CURRENT_ENV;
@@ -887,7 +887,7 @@ function updateUserLogout(nik, req) {
             if (loggedOutUser) {
                 const lineNumber = extractLineNumber(loggedOutUser.name) || loggedOutUser.line;
                 const logEnvironment = loggedOutUser.environment || (loggedOutUser.backendIP === '10.8.0.104' ? 'CLN' :
-                    loggedOutUser.backendIP === '10.5.0.106' ? 'MJL' :
+                    (loggedOutUser.backendIP === '10.5.0.107' || loggedOutUser.backendIP === '10.5.0.106') ? 'MJL' :
                         loggedOutUser.backendIP === '10.6.0.99' ? 'MJL2' :
                             loggedOutUser.backendIP === '10.5.0.201' ? 'GCC' : null);
                 const isSameEnvironment = logEnvironment === CURRENT_ENV;
@@ -1635,10 +1635,10 @@ const BACKEND_API_URL_CHECK = process.env.BACKEND_API_URL || BACKEND_API_URL;
 
 // MySQL Configuration - Berbeda untuk setiap IP
 // CLN (10.8.0.104): user 'robot', password 'robot123'
-// MJL (10.5.0.106): user 'root', password 'satu1'
+// MJL (10.5.0.107): user 'root', password 'satu1' (106 = host lama)
 let MYSQL_USER, MYSQL_PASSWORD;
 
-if (BACKEND_IP === '10.5.0.106') {
+if (CURRENT_ENV === 'MJL' || BACKEND_IP === '10.5.0.107' || BACKEND_IP === '10.5.0.106') {
     // Konfigurasi untuk MJL
     MYSQL_USER = 'root';
     MYSQL_PASSWORD = 'satu1';
@@ -3272,7 +3272,7 @@ app.get('/report/wira', async (req, res) => {
  * bukan GET /daily-output tanpa prefix.
  */
 app.get('/daily-output', async (req, res) => {
-    const useGccDailyOutput = CURRENT_ENV === 'GCC' || BACKEND_IP === '10.5.0.106';
+    const useGccDailyOutput = CURRENT_ENV === 'GCC' || CURRENT_ENV === 'MJL' || BACKEND_IP === '10.5.0.106' || BACKEND_IP === '10.5.0.107';
     const backendPath = useGccDailyOutput ? '/gcc/daily-output' : '/daily-output';
     return await proxyRequest(backendPath, req, res);
 });
@@ -4021,7 +4021,7 @@ app.get('/cycletime', async (req, res) => {
     try {
         // Gunakan BACKEND_API_URL sesuai environment
         // CLN: 10.8.0.104:7000
-        // MJL: 10.5.0.106:7000
+        // MJL: 10.5.0.107:7000
         // MJL2: 10.6.0.99:7000 (atau sesuai konfigurasi)
 
         // Build query parameters
@@ -6431,7 +6431,7 @@ app.listen(PORT, HOST, () => {
                     for (let i = userLogs.length - 1; i >= 0; i--) {
                         const log = userLogs[i];
                         const logEnvironment = log.environment || (log.backendIP === '10.8.0.104' ? 'CLN' :
-                            log.backendIP === '10.5.0.106' ? 'MJL' :
+                            (log.backendIP === '10.5.0.107' || log.backendIP === '10.5.0.106') ? 'MJL' :
                                 log.backendIP === '10.6.0.99' ? 'MJL2' : null);
 
                         if (log.nik === user.nik &&

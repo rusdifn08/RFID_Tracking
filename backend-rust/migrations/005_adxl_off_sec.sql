@@ -1,0 +1,1 @@
+ALTER TABLE detection_compare_daily ADD COLUMN IF NOT EXISTS adxl_off_sec INTEGER NOT NULL DEFAULT 0;

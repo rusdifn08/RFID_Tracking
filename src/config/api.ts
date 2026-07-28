@@ -77,7 +77,7 @@ const getBackendIP = (): string => {
     if (typeof window !== 'undefined') {
         const storedEnv = localStorage.getItem('backend_environment');
         if (storedEnv === 'MJL') {
-            return '10.5.0.106';
+            return '10.5.0.107';
         } else if (storedEnv === 'MJL2') {
             return '10.6.0.99';
         } else if (storedEnv === 'GCC') {
@@ -138,7 +138,7 @@ export const PROD_SCH_API_KEY = '332100185';
 // MJL API KEY CONFIGURATION
 // ============================================
 
-// API Key untuk MJL Backend (10.5.0.106)
+// API Key untuk MJL Backend (10.5.0.107)
 export const MJL_API_KEY = '6lYZkryM.j50CVZgnpBl8X7Nx6sy5KRyY6ET7k3Cb';
 export const MJL_API_KEY_HEADER = 'X-Api-Key';
 

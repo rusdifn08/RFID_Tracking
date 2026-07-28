@@ -18,7 +18,7 @@ const root = path.join(__dirname, '..');
 
 const ENV_PRESETS = {
   cln: { serverArg: 'cln', defaultFrontend: 5173, backendIp: '10.8.0.104' },
-  mjl: { serverArg: 'mjl', defaultFrontend: 5173, backendIp: '10.5.0.106' },
+  mjl: { serverArg: 'mjl', defaultFrontend: 5173, backendIp: '10.5.0.107' },
   mjl2: { serverArg: 'mjl2', defaultFrontend: 5174, backendIp: '10.6.0.99' },
   gcc: { serverArg: 'gcc', defaultFrontend: 5175, backendIp: '10.5.0.106' },
   default: { serverArg: '', defaultFrontend: 5173, backendIp: '10.8.0.104' },
