@@ -15,47 +15,227 @@ pub async fn find_by_id(state: &AppState, id: Uuid) -> anyhow::Result<Option<Mac
     Ok(m)
 }
 
+/// Normalisasi & validasi kode mesin (contoh: JUKI001, SEW-001).
+pub fn normalize_machine_code(raw: &str) -> anyhow::Result<String> {
+    let u = raw.trim().to_uppercase();
+    if u.len() < 3 || u.len() > 32 {
+        anyhow::bail!("machine_code panjang tidak valid (3–32): {raw}");
+    }
+    if !u
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!("machine_code karakter tidak valid: {raw}");
+    }
+    if !u.chars().any(|c| c.is_ascii_alphabetic()) || !u.chars().any(|c| c.is_ascii_digit()) {
+        anyhow::bail!("machine_code harus ada huruf dan angka: {raw}");
+    }
+    Ok(u)
+}
+
+fn normalize_device_uid(raw: &str) -> anyhow::Result<String> {
+    let u = raw.trim().to_string();
+    if u.is_empty() || u.len() > 64 {
+        anyhow::bail!("device_uid tidak valid");
+    }
+    if !u
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        anyhow::bail!("device_uid karakter tidak valid: {raw}");
+    }
+    // Alias UID firmware lama → 004 (sticker/QR tetap /ops/ml/004)
+    Ok(match u.as_str() {
+        "esp-c6-pzem-001" => "004".into(),
+        _ => u,
+    })
+}
+
+/// Parse JUKI002 → brand=JUKI, name, barcode MESIN002
+fn identity_from_code(code: &str) -> (String, String, String, Option<String>) {
+    let bytes = code.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    let brand = if i > 0 {
+        code[..i].to_string()
+    } else {
+        "MESIN".into()
+    };
+    let mut j = i;
+    while j < bytes.len() && (bytes[j] == b'-' || bytes[j] == b'_') {
+        j += 1;
+    }
+    let digits: String = code[j..].chars().filter(|c| c.is_ascii_digit()).collect();
+    let num: u32 = digits.parse().unwrap_or(0);
+    let process_name = if brand == "JUKI" {
+        "Zigzag Plaket".into()
+    } else {
+        String::new()
+    };
+    let name = if process_name.is_empty() {
+        format!("{brand} {digits}")
+    } else {
+        format!("{brand} {process_name}")
+    };
+    let barcode = if (1..=100).contains(&num) {
+        Some(format!("MESIN{num:03}"))
+    } else {
+        None
+    };
+    (name, brand, process_name, barcode)
+}
+
 pub async fn find_by_code_or_device(
     state: &AppState,
     machine_code: Option<&str>,
     device_uid: &str,
 ) -> anyhow::Result<Option<Machine>> {
     if let Some(code) = machine_code {
-        if let Some(m) = state.machine_cache.get(code) {
+        let code = code.trim().to_uppercase();
+        if let Some(m) = state.machine_cache.get(&code) {
             return Ok(Some(m.clone()));
         }
     }
-    if let Some(m) = state.machine_cache.get(device_uid) {
-        return Ok(Some(m.clone()));
+    if !device_uid.is_empty() {
+        if let Some(m) = state.machine_cache.get(device_uid) {
+            return Ok(Some(m.clone()));
+        }
     }
 
-    let found = if let Some(code) = machine_code {
-        sqlx::query_as::<_, Machine>(r#"SELECT * FROM machines WHERE code = $1"#)
-            .bind(code)
-            .fetch_optional(&state.pool)
-            .await?
-    } else {
-        None
-    };
-
-    let m = match found {
-        Some(m) => Some(m),
-        None => {
-            sqlx::query_as::<_, Machine>(
-                r#"SELECT m.* FROM machines m
-                   JOIN devices d ON d.machine_id = m.id
-                   WHERE d.device_uid = $1"#,
-            )
-            .bind(device_uid)
-            .fetch_optional(&state.pool)
-            .await?
+    // Kode mesin = identitas utama (jangan fallback device jika code ada tapi belum terdaftar)
+    if let Some(code) = machine_code {
+        let code = code.trim().to_uppercase();
+        if !code.is_empty() {
+            let found = sqlx::query_as::<_, Machine>(r#"SELECT * FROM machines WHERE code = $1"#)
+                .bind(&code)
+                .fetch_optional(&state.pool)
+                .await?;
+            if let Some(ref machine) = found {
+                cache_machine(state, machine, device_uid);
+                return Ok(found);
+            }
+            return Ok(None);
         }
-    };
+    }
 
-    if let Some(ref machine) = m {
+    if device_uid.is_empty() {
+        return Ok(None);
+    }
+
+    let found = sqlx::query_as::<_, Machine>(
+        r#"SELECT m.* FROM machines m
+           JOIN devices d ON d.machine_id = m.id
+           WHERE d.device_uid = $1"#,
+    )
+    .bind(device_uid)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some(ref machine) = found {
         cache_machine(state, machine, device_uid);
     }
-    Ok(m)
+    Ok(found)
+}
+
+/// UID yang sengaja tidak dipakai — jangan auto-daftar dari MQTT.
+fn is_blocked_device_uid(uid: &str) -> bool {
+    matches!(uid.trim(), "0001" | "0002")
+}
+
+fn is_blocked_machine_code(code: &str) -> bool {
+    matches!(code.trim(), "JUKI0001" | "JUKI0002")
+}
+
+/// Cari mesin; jika belum ada dan `machine_code` valid → buat otomatis + tautkan device.
+pub async fn find_or_provision(
+    state: &AppState,
+    machine_code: Option<&str>,
+    device_uid: &str,
+) -> anyhow::Result<Machine> {
+    let uid = if device_uid.trim().is_empty() {
+        String::new()
+    } else {
+        normalize_device_uid(device_uid)?
+    };
+
+    if !uid.is_empty() && is_blocked_device_uid(&uid) {
+        anyhow::bail!("device_uid {uid} dinonaktifkan (tidak dipakai)");
+    }
+
+    // Binding device_uid sudah ada → jangan ikut machine_code MQTT (sering salah di ESP)
+    if !uid.is_empty() {
+        if let Some(m) = find_by_code_or_device(state, None, &uid).await? {
+            touch_device(state, m.id, &uid).await?;
+            cache_machine(state, &m, &uid);
+            return Ok(m);
+        }
+    }
+
+    if let Some(m) = find_by_code_or_device(state, machine_code, &uid).await? {
+        if !uid.is_empty() {
+            touch_device(state, m.id, &uid).await?;
+            cache_machine(state, &m, &uid);
+        }
+        return Ok(m);
+    }
+
+    let raw_code = machine_code.unwrap_or("").trim();
+    if raw_code.is_empty() {
+        anyhow::bail!("machine_code wajib untuk auto-daftar device {device_uid}");
+    }
+    let code = normalize_machine_code(raw_code)?;
+    if is_blocked_machine_code(&code) {
+        anyhow::bail!("machine_code {code} dinonaktifkan (tidak dipakai)");
+    }
+    let (name, brand, process_name, barcode) = identity_from_code(&code);
+
+    let row = sqlx::query_as::<_, Machine>(
+        r#"INSERT INTO machines (code, name, brand, process_name, machine_type, kpi_source)
+           VALUES ($1, $2, $3, $4, 'sewing', 'esp')
+           ON CONFLICT (code) DO UPDATE SET
+             updated_at = NOW()
+           RETURNING *"#,
+    )
+    .bind(&code)
+    .bind(&name)
+    .bind(&brand)
+    .bind(&process_name)
+    .fetch_one(&state.pool)
+    .await?;
+
+    // Barcode MESIN00N hanya jika belum dipakai mesin lain
+    if let Some(bc) = barcode.as_deref() {
+        let _ = sqlx::query(
+            r#"UPDATE machines SET barcode = $2, updated_at = NOW()
+               WHERE id = $1
+                 AND barcode IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM machines WHERE barcode = $2)"#,
+        )
+        .bind(row.id)
+        .bind(bc)
+        .execute(&state.pool)
+        .await;
+    }
+
+    // reload setelah barcode opsional
+    let row = sqlx::query_as::<_, Machine>(r#"SELECT * FROM machines WHERE id = $1"#)
+        .bind(row.id)
+        .fetch_one(&state.pool)
+        .await?;
+
+    if !uid.is_empty() {
+        touch_device(state, row.id, &uid).await?;
+    }
+    cache_machine(state, &row, &uid);
+    tracing::info!(
+        "auto-provision machine {} device={} name={}",
+        row.code,
+        uid,
+        row.name
+    );
+    Ok(row)
 }
 
 pub fn cache_machine(state: &AppState, machine: &Machine, device_uid: &str) {
@@ -67,6 +247,10 @@ pub fn cache_machine(state: &AppState, machine: &Machine, device_uid: &str) {
             .machine_cache
             .insert(device_uid.to_string(), machine.clone());
     }
+}
+
+pub fn invalidate_code_cache(state: &AppState, old_code: &str) {
+    state.machine_cache.remove(old_code);
 }
 
 pub fn patch_cached_adxl_status(state: &AppState, machine_id: Uuid, status_adxl: &str) {
@@ -97,17 +281,62 @@ pub fn patch_cached_adxl_force_off(state: &AppState, machine_id: Uuid, force_off
 }
 
 pub async fn touch_device(state: &AppState, machine_id: Uuid, device_uid: &str) -> anyhow::Result<()> {
+    let uid = normalize_device_uid(device_uid)?;
+    // ponytail: jangan pindah machine_id saat UPSERT — binding UID sekali set, ubah lewat Control
     sqlx::query(
         r#"INSERT INTO devices (machine_id, device_uid, last_seen_at, is_online)
            VALUES ($1, $2, NOW(), TRUE)
            ON CONFLICT (device_uid) DO UPDATE
-           SET last_seen_at = NOW(), is_online = TRUE, machine_id = EXCLUDED.machine_id"#,
+           SET last_seen_at = NOW(), is_online = TRUE"#,
     )
     .bind(machine_id)
-    .bind(device_uid)
+    .bind(&uid)
     .execute(&state.pool)
     .await?;
+    // Bersihkan UID lama jika masih tersisa di DB
+    if device_uid.trim() != uid {
+        let _ = sqlx::query(r#"DELETE FROM devices WHERE device_uid = $1"#)
+            .bind(device_uid.trim())
+            .execute(&state.pool)
+            .await;
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{identity_from_code, is_blocked_device_uid, is_blocked_machine_code, normalize_machine_code};
+
+    #[test]
+    fn block_zigbee_dummy_0001_0002() {
+        assert!(is_blocked_device_uid("0001"));
+        assert!(is_blocked_device_uid("0002"));
+        assert!(!is_blocked_device_uid("004"));
+        assert!(is_blocked_machine_code("JUKI0001"));
+        assert!(!is_blocked_machine_code("SEW-001"));
+    }
+
+    #[test]
+    fn code_normalize_ok() {
+        assert_eq!(normalize_machine_code(" juki002 ").unwrap(), "JUKI002");
+        assert_eq!(normalize_machine_code("SEW-001").unwrap(), "SEW-001");
+    }
+
+    #[test]
+    fn code_normalize_bad() {
+        assert!(normalize_machine_code("!!").is_err());
+        assert!(normalize_machine_code("ONLYLETTER").is_err());
+        assert!(normalize_machine_code("123").is_err());
+    }
+
+    #[test]
+    fn identity_juki() {
+        let (name, brand, proc, barcode) = identity_from_code("JUKI002");
+        assert_eq!(brand, "JUKI");
+        assert_eq!(proc, "Zigzag Plaket");
+        assert!(name.contains("JUKI"));
+        assert_eq!(barcode.as_deref(), Some("MESIN002"));
+    }
 }
 
 pub async fn open_session(state: &AppState, machine_id: Uuid, energy: Option<f64>) -> anyhow::Result<()> {
@@ -238,6 +467,16 @@ pub async fn mark_offline_stale(state: &AppState) -> anyhow::Result<()> {
         .bind(m.id)
         .execute(&state.pool)
         .await?;
+
+        if pzem_stale {
+            let _ = sqlx::query(
+                r#"UPDATE devices SET is_online = FALSE, wifi_ok = FALSE, mqtt_ok = FALSE
+                   WHERE machine_id = $1"#,
+            )
+            .bind(m.id)
+            .execute(&state.pool)
+            .await;
+        }
 
         if pzem_stale || adxl_stale {
             sqlx::query(

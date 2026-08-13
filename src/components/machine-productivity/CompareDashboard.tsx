@@ -1,16 +1,29 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MachineLive, MachineRow, PzemDailyStats } from './types';
-import MachineStatusBadge, { derivePzemStatus } from './MachineStatusBadge';
+import MachineStatusBadge, { derivePzemStatus, kpiFromCurrentSeries } from './MachineStatusBadge';
 import OperationKpiStrip from './OperationKpiStrip';
 import SensorTrendChart, { TrendRangeBar, type TrendHours } from './SensorTrendChart';
+import EspSyncPanel from './EspSyncPanel';
 
 type Props = {
     machine: MachineRow;
     live?: MachineLive;
     pzemStats?: PzemDailyStats;
-    adxlStats?: PzemDailyStats;
     apiBase: string;
-    onResetBoth?: () => Promise<{ archived?: boolean } | void>;
+    machines?: MachineRow[];
+    selectedId?: string | null;
+    onSelectId?: (id: string) => void;
+    onRefresh?: () => void;
+    onResetPzem?: () => Promise<{ archived?: boolean } | void>;
+    onMachineUpdated?: (m: MachineRow) => void;
+    onSaveThresholds?: (patch: {
+        current_threshold_a: number;
+        off_current_a: number;
+        power_threshold_w: number;
+        g_force_threshold: number;
+        filter_aktif_ms: number;
+        filter_diam_ms: number;
+    }) => Promise<void>;
 };
 
 function formatDuration(sec: number) {
@@ -20,10 +33,6 @@ function formatDuration(sec: number) {
     if (h > 0) return `${h}j ${m}m`;
     if (m > 0) return `${m}m ${s}dtk`;
     return `${s}dtk`;
-}
-
-function formatPct(pct: number) {
-    return `${pct.toFixed(1)}%`;
 }
 
 function kpisFromStats(stats: PzemDailyStats | undefined) {
@@ -36,52 +45,61 @@ function kpisFromStats(stats: PzemDailyStats | undefined) {
     return { running, idle, powerOn, loss, prod, off };
 }
 
-function deltaClass(n: number): string {
-    if (n > 0) return 'text-emerald-700 bg-emerald-50';
-    if (n < 0) return 'text-rose-700 bg-rose-50';
-    return 'text-slate-600 bg-slate-50';
-}
-
-function signedDur(sec: number) {
-    const sign = sec > 0 ? '+' : sec < 0 ? '−' : '';
-    return `${sign}${formatDuration(Math.abs(sec))}`;
-}
-
-function signedPct(pct: number) {
-    const sign = pct > 0 ? '+' : pct < 0 ? '−' : '';
-    return `${sign}${formatPct(Math.abs(pct))}`;
-}
-
 export default function CompareDashboard({
     machine,
     live,
     pzemStats,
-    adxlStats,
     apiBase,
-    onResetBoth,
+    machines,
+    selectedId,
+    onSelectId,
+    onRefresh,
+    onResetPzem,
+    onSaveThresholds,
+    onMachineUpdated,
 }: Props) {
-    const [hours, setHours] = useState<TrendHours | 'custom'>('today');
+    const [hours, setHours] = useState<TrendHours>('today');
     const [fromLocal, setFromLocal] = useState('');
     const [toLocal, setToLocal] = useState('');
     const [resetting, setResetting] = useState(false);
+    const [runThr, setRunThr] = useState(machine.current_threshold_a ?? 0.6);
+    const [offThr, setOffThr] = useState(machine.off_current_a ?? 0.03);
+    const [savingThr, setSavingThr] = useState(false);
+    const [thrMsg, setThrMsg] = useState<string | null>(null);
+    const [seriesPoints, setSeriesPoints] = useState<
+        Array<{ ts: string; current_a?: number; value?: number }>
+    >([]);
 
-    const pKpi = useMemo(() => kpisFromStats(pzemStats), [pzemStats]);
-    const aKpi = useMemo(() => kpisFromStats(adxlStats), [adxlStats]);
+    const espKpi = useMemo(() => kpisFromStats(pzemStats), [pzemStats]);
 
-    const delta = useMemo(
-        () => ({
-            powerOn: aKpi.powerOn - pKpi.powerOn,
-            running: aKpi.running - pKpi.running,
-            loss: aKpi.loss - pKpi.loss,
-            prod: aKpi.prod - pKpi.prod,
-        }),
-        [aKpi, pKpi],
+    // Hari ini: KPI dari API telemetry (sama Resume). Rentang lain: dari titik grafik.
+    const pKpi = useMemo(() => {
+        if (hours === 'today' && pzemStats) {
+            return espKpi;
+        }
+        if (seriesPoints.length >= 2) {
+            return kpiFromCurrentSeries(seriesPoints, offThr, runThr);
+        }
+        return espKpi;
+    }, [hours, pzemStats, espKpi, seriesPoints, offThr, runThr]);
+
+    const onPointsChange = useCallback(
+        (pts: Array<{ ts: string; current_a?: number; value?: number }>) => {
+            setSeriesPoints(pts);
+        },
+        [],
     );
+
+    useEffect(() => {
+        setRunThr(machine.current_threshold_a ?? 0.6);
+        setOffThr(machine.off_current_a ?? 0.03);
+        setThrMsg(null);
+    }, [machine.id, machine.current_threshold_a, machine.off_current_a]);
 
     const refreshMs = hours === 'today' ? 5_000 : 12_000;
     const rangeLabel =
         hours === 'today'
-            ? 'Hari ini (00:00 → sekarang)'
+            ? 'Hari ini'
             : hours === 'custom'
               ? 'Rentang kustom'
               : `${hours} jam terakhir`;
@@ -89,50 +107,158 @@ export default function CompareDashboard({
     const pzemLiveStatus =
         derivePzemStatus(
             live?.pzem?.current_a,
-            machine.current_threshold_a,
+            runThr,
             live?.pzem?.power_w ?? 0,
             machine.power_threshold_w,
+            offThr,
         ) ?? machine.status_pzem;
+
+    const saveThresholds = async () => {
+        if (!onSaveThresholds) return;
+        if (!(offThr >= 0 && runThr > offThr)) {
+            setThrMsg('Off harus ≥ 0 dan Running harus > Off.');
+            return;
+        }
+        setSavingThr(true);
+        setThrMsg(null);
+        try {
+            await onSaveThresholds({
+                current_threshold_a: runThr,
+                off_current_a: offThr,
+                power_threshold_w: machine.power_threshold_w,
+                g_force_threshold: machine.g_force_threshold,
+                filter_aktif_ms: machine.filter_aktif_ms,
+                filter_diam_ms: machine.filter_diam_ms,
+            });
+            setThrMsg('Threshold tersimpan & dikirim ke ESP.');
+        } catch (e) {
+            setThrMsg(e instanceof Error ? e.message : 'Gagal simpan');
+        } finally {
+            setSavingThr(false);
+        }
+    };
 
     return (
         <div className="space-y-3">
-            {/* Header + selisih ringkas */}
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100">
                     <div>
                         <h2 className="text-base font-bold text-slate-800">
                             {machine.code} · {machine.name}
                         </h2>
                         <p className="text-xs text-slate-500">
-                            ADXL (kiri) vs PZEM (kanan) · live WebSocket · grafik {rangeLabel}
+                            Monitor PZEM · KPI dari arus grafik · {rangeLabel}
                         </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-semibold text-emerald-700">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Live
-                    </span>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        {machines && machines.length > 0 && onSelectId && (
+                            <label className="flex items-center gap-2 text-xs text-slate-600">
+                                <span className="font-semibold">Mesin</span>
+                                <select
+                                    value={selectedId ?? ''}
+                                    onChange={(e) => onSelectId(e.target.value)}
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                >
+                                    {machines.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                            {m.code} — {m.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
+
+                        {onRefresh && (
+                            <button
+                                type="button"
+                                onClick={onRefresh}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700 shadow-sm transition-all"
+                            >
+                                Refresh
+                            </button>
+                        )}
+
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-semibold text-emerald-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Live
+                        </span>
+                    </div>
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200">
+
+                <div className="px-4 py-3 flex flex-wrap items-end gap-3 bg-slate-50/80 border-b border-slate-100">
+                    <label className="text-xs text-slate-600 font-medium">
+                        Running ≥ (A)
+                        <input
+                            type="number"
+                            step={0.01}
+                            min={0.01}
+                            value={runThr}
+                            onChange={(e) => setRunThr(Number(e.target.value))}
+                            className="mt-1 block w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800"
+                        />
+                    </label>
+                    <label className="text-xs text-slate-600 font-medium">
+                        Mati {'<'} (A)
+                        <input
+                            type="number"
+                            step={0.01}
+                            min={0}
+                            value={offThr}
+                            onChange={(e) => setOffThr(Number(e.target.value))}
+                            className="mt-1 block w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800"
+                        />
+                    </label>
+                    <button
+                        type="button"
+                        disabled={savingThr || !onSaveThresholds}
+                        onClick={() => void saveThresholds()}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+                    >
+                        {savingThr ? 'Menyimpan…' : 'Simpan threshold'}
+                    </button>
+                    <p className="text-[11px] text-slate-500 self-center">
+                        Loss = Idle saja · waktu mati tidak dihitung
+                        {thrMsg ? ` · ${thrMsg}` : ''}
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-slate-200">
                     {[
-                        { label: 'Δ Power On', value: signedDur(delta.powerOn), n: delta.powerOn },
-                        { label: 'Δ Running', value: signedDur(delta.running), n: delta.running },
-                        { label: 'Δ Loss', value: signedDur(delta.loss), n: delta.loss },
-                        { label: 'Δ Produktivitas', value: signedPct(delta.prod), n: delta.prod },
+                        { label: 'Power On', value: formatDuration(pKpi.powerOn), danger: false },
+                        { label: 'Running', value: formatDuration(pKpi.running), danger: false },
+                        { label: 'Loss (Idle)', value: formatDuration(pKpi.loss), danger: false },
+                        { label: 'Produktivitas', value: `${pKpi.prod.toFixed(1)}%`, danger: false },
+                        { label: 'Machine Off', value: formatDuration(pKpi.off), danger: true },
                     ].map((d) => (
-                        <div key={d.label} className="bg-white px-3 py-2.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        <div key={d.label} className={`px-3 py-2.5 ${d.danger ? 'bg-red-50' : 'bg-white'}`}>
+                            <p
+                                className={`text-[10px] font-semibold uppercase tracking-wider ${
+                                    d.danger ? 'text-red-600' : 'text-slate-500'
+                                }`}
+                            >
                                 {d.label}
                             </p>
                             <p
-                                className={`mt-0.5 text-base font-bold tabular-nums inline-block px-1.5 py-0.5 rounded ${deltaClass(d.n)}`}
+                                className={`mt-0.5 text-base font-bold tabular-nums ${
+                                    d.danger ? 'text-red-700' : 'text-slate-800'
+                                }`}
                             >
                                 {d.value}
                             </p>
-                            <p className="text-[10px] text-slate-400">ADXL − PZEM</p>
                         </div>
                     ))}
                 </div>
             </section>
+
+            <EspSyncPanel
+                machine={machine}
+                apiBase={apiBase}
+                onMachineUpdated={(m) => {
+                    onMachineUpdated?.(m);
+                    onRefresh?.();
+                }}
+            />
 
             <TrendRangeBar
                 hours={hours}
@@ -144,13 +270,13 @@ export default function CompareDashboard({
                     setToLocal(t);
                 }}
                 onResetBoth={
-                    onResetBoth
+                    onResetPzem
                         ? async () => {
                               setResetting(true);
                               try {
-                                  const r = await onResetBoth();
+                                  const r = await onResetPzem();
                                   if (r && 'archived' in r && r.archived) {
-                                      alert('Rekap tersimpan. PZEM + ADXL di-reset (dashboard & ESP).');
+                                      alert('Rekap tersimpan. PZEM di-reset (dashboard & ESP).');
                                   }
                               } catch (e) {
                                   alert(e instanceof Error ? e.message : 'Reset gagal');
@@ -161,74 +287,45 @@ export default function CompareDashboard({
                         : undefined
                 }
                 resetting={resetting}
+                resetLabel="Reset PZEM"
+                resetConfirm="Reset waktu PZEM hari ini?\nRekap disimpan ke database. Counter dashboard & ESP di-nolkan via MQTT."
             />
 
-            {/* Kiri ADXL · Kanan PZEM */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* ADXL — kiri */}
-                <section className="rounded-2xl border border-teal-200 bg-white shadow-sm overflow-hidden flex flex-col">
-                    <div className="px-4 py-3 border-b border-teal-100 bg-gradient-to-r from-teal-50 to-white flex items-center justify-between gap-2">
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-teal-600">
-                                ADXL345 · Getaran
-                            </p>
-                            <h3 className="text-sm font-bold text-teal-950">Data & Grafik ADXL</h3>
-                        </div>
-                        <MachineStatusBadge status={machine.status_adxl} />
+            <section className="rounded-2xl border border-sky-200 bg-white shadow-sm overflow-hidden flex flex-col">
+                <div className="px-4 py-3 border-b border-sky-100 bg-gradient-to-r from-sky-50 to-white flex items-center justify-between gap-2">
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600">
+                            No.{machine.code} · PZEM
+                        </p>
+                        <h3 className="text-sm font-bold text-sky-950">{machine.name}</h3>
+                        <p className="text-[11px] text-sky-600/80">Data & Grafik PZEM</p>
                     </div>
-                    <div className="p-3 space-y-3 flex-1">
-                        <OperationKpiStrip
-                            runningSec={aKpi.running}
-                            idleSec={aKpi.idle}
-                            offSec={aKpi.off}
-                            tone="teal"
-                        />
-                        <SensorTrendChart
-                            apiBase={apiBase}
-                            machineId={machine.id}
-                            sensor="adxl"
-                            hours={hours}
-                            fromLocal={fromLocal}
-                            toLocal={toLocal}
-                            hideFilters
-                            compact
-                            refreshMs={refreshMs}
-                        />
-                    </div>
-                </section>
-
-                {/* PZEM — kanan */}
-                <section className="rounded-2xl border border-sky-200 bg-white shadow-sm overflow-hidden flex flex-col">
-                    <div className="px-4 py-3 border-b border-sky-100 bg-gradient-to-r from-sky-50 to-white flex items-center justify-between gap-2">
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600">
-                                PZEM-004T · Listrik
-                            </p>
-                            <h3 className="text-sm font-bold text-sky-950">Data & Grafik PZEM</h3>
-                        </div>
-                        <MachineStatusBadge status={pzemLiveStatus} />
-                    </div>
-                    <div className="p-3 space-y-3 flex-1">
-                        <OperationKpiStrip
-                            runningSec={pKpi.running}
-                            idleSec={pKpi.idle}
-                            offSec={pKpi.off}
-                            tone="sky"
-                        />
-                        <SensorTrendChart
-                            apiBase={apiBase}
-                            machineId={machine.id}
-                            sensor="pzem"
-                            hours={hours}
-                            fromLocal={fromLocal}
-                            toLocal={toLocal}
-                            hideFilters
-                            compact
-                            refreshMs={refreshMs}
-                        />
-                    </div>
-                </section>
-            </div>
+                    <MachineStatusBadge status={pzemLiveStatus} />
+                </div>
+                <div className="p-3 space-y-3 flex-1">
+                    <OperationKpiStrip
+                        runningSec={pKpi.running}
+                        idleSec={pKpi.idle}
+                        offSec={pKpi.off}
+                        tone="sky"
+                    />
+                    <SensorTrendChart
+                        apiBase={apiBase}
+                        machineId={machine.id}
+                        sensor="pzem"
+                        hours={hours}
+                        fromLocal={fromLocal}
+                        toLocal={toLocal}
+                        hideFilters
+                        compact
+                        refreshMs={refreshMs}
+                        currentThresholdA={runThr}
+                        offCurrentA={offThr}
+                        colorByStatus
+                        onPointsChange={onPointsChange}
+                    />
+                </div>
+            </section>
         </div>
     );
 }

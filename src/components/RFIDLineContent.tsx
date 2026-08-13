@@ -13,7 +13,7 @@ import {
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 import { preloadLineDetail } from '../utils/preload';
 import { resolveLineDisplayTitle } from '../utils/lineDisplayTitle';
-import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines, HIGHLIGHT_SEWING_LINE_5_ONLY } from '../config/hide';
+import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines, DISABLED_SEWING_LINE_IDS } from '../config/hide';
 import brandIconMontbell from '../assets/montbell.svg';
 
 // Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
@@ -148,11 +148,12 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
             });
         }
 
-        if (pageType === 'sewing' && HIGHLIGHT_SEWING_LINE_5_ONLY) {
+        if (pageType === 'sewing' && DISABLED_SEWING_LINE_IDS.length > 0) {
+            const disabled = new Set(DISABLED_SEWING_LINE_IDS);
             finalOrder = [...finalOrder].sort((a, b) => {
-                if (a.id === 5) return -1;
-                if (b.id === 5) return 1;
-                return 0;
+                const aDis = disabled.has(a.id) ? 1 : 0;
+                const bDis = disabled.has(b.id) ? 1 : 0;
+                return aDis - bDis;
             });
         }
         return finalOrder;
@@ -728,7 +729,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                         finalTitle = finalTitle.replace(/^Sewing Line /i, 'Production Line ');
                     }
 
-                    const isGreyedOut = pageType === 'sewing' && HIGHLIGHT_SEWING_LINE_5_ONLY && currentLine.id !== 5;
+                    const isGreyedOut = pageType === 'sewing' && DISABLED_SEWING_LINE_IDS.includes(currentLine.id);
 
                     return (
                         <div

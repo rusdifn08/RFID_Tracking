@@ -3,12 +3,12 @@ use axum::{
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
 mod config;
 mod db;
+mod logbuf;
 mod models;
 mod mqtt;
 mod services;
@@ -21,9 +21,10 @@ use state::AppState;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+    // Terminal: hanya ERROR + banner println. Operasional MQTT → /devices.
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            "backend_rust=info,tower_http=info".into()
+            "warn,tower_http=off,rumqttc=off,sqlx=off".into()
         }))
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -36,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
     let state_mqtt = state.clone();
     tokio::spawn(async move {
         if let Err(e) = mqtt::run_mqtt_loop(state_mqtt).await {
+            logbuf::error(format!("MQTT loop stopped: {e:#}"));
             tracing::error!("MQTT loop stopped: {e:#}");
         }
     });
@@ -43,15 +45,46 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         services::detection::run_day_cut_loop(state_day).await;
     });
+    let state_sim = state.clone();
+    tokio::spawn(async move {
+        services::sim::run_sim_loop(state_sim.pool.clone()).await;
+    });
 
     let app = Router::new()
         .route("/health", get(api::health::health))
+        .route("/devices", get(api::devices_dash::devices_dashboard))
+        .route("/api/devices/logs", get(api::devices_dash::devices_logs))
+        .route(
+            "/api/devices/{id}/wifi-scan",
+            get(api::devices_dash::get_wifi_scan).post(api::devices_dash::request_wifi_scan),
+        )
+        .route(
+            "/api/devices/{id}/wifi-config",
+            post(api::devices_dash::set_wifi_config),
+        )
         .route("/api/machines", get(api::machines::list_machines).post(api::machines::create_machine))
+        .route(
+            "/api/machines/by-barcode/{barcode}",
+            get(api::machines::get_machine_by_barcode),
+        )
+        .route(
+            "/api/machines/by-gate/{uid}/{slug}",
+            get(api::machines::get_machine_by_gate),
+        )
+        .route(
+            "/api/machines/by-gate/{uid}",
+            get(api::machines::get_machine_by_uid_gate),
+        )
         .route("/api/machines/resume", get(api::shifts::machines_resume))
+        .route("/api/machines/{id}/sim-chart", get(api::shifts::sim_chart))
+        .route("/api/machines/control", get(api::machines::list_control_machines))
+        .route("/api/zigbee/mesh", get(api::zigbee::mesh_status))
         .route("/api/machines/{id}", get(api::machines::get_machine).patch(api::machines::update_calibration))
+        .route("/api/machines/{id}/sync-esp", axum::routing::post(api::machines::sync_esp))
         .route("/api/machines/{id}/adxl-force-off", axum::routing::post(api::machines::set_adxl_force_off))
         .route("/api/machines/{id}/telemetry", get(api::telemetry::recent_telemetry))
         .route("/api/machines/{id}/telemetry-series", get(api::telemetry::telemetry_series))
+        .route("/api/machines/{id}/deep-sleep", get(api::telemetry::list_deep_sleep))
         .route("/api/machines/{id}/sessions", get(api::telemetry::work_sessions))
         .route("/api/machines/{id}/productivity", get(api::telemetry::daily_productivity))
         .route("/api/machines/{id}/pzem-stats", get(api::telemetry::pzem_daily_stats).post(api::telemetry::reset_pzem_daily_stats))
@@ -71,12 +104,32 @@ async fn main() -> anyhow::Result<()> {
                 .allow_methods(Any)
                 .allow_headers(Any),
         )
-        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("IoT backend listening on http://{addr}");
+    // 0.0.0.0 = bind semua NIC (localhost + LAN). Akses lewat IP mesin, bukan 0.0.0.0 di browser.
+    let lan_ip = std::env::var("LAN_IP").unwrap_or_else(|_| "10.5.0.2".into());
+    let db_hint = cfg
+        .database_url
+        .split('@')
+        .nth(1)
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("(set)");
+    println!("────────────────────────────────────────────────");
+    println!("  Rust Axum — IoT Backend");
+    println!("────────────────────────────────────────────────");
+    println!("  bind     {addr}  (0.0.0.0 = semua interface)");
+    println!("  local    http://127.0.0.1:{}", cfg.port);
+    println!("  LAN      http://{lan_ip}:{}", cfg.port);
+    println!("  health   http://{lan_ip}:{}/health", cfg.port);
+    println!("  devices  http://{lan_ip}:{}/devices", cfg.port);
+    println!("  ws       ws://{lan_ip}:{}/ws", cfg.port);
+    println!("  MQTT     {}:{}  prefix={}", cfg.mqtt_host, cfg.mqtt_port, cfg.mqtt_topic_prefix);
+    println!("  DB       {db_hint}");
+    println!("  offline  {}s (last_seen)", cfg.offline_timeout_sec);
+    println!("  logs     panel bawah di /devices (bukan terminal)");
+    println!("────────────────────────────────────────────────");
     axum::serve(listener, app).await?;
     Ok(())
 }

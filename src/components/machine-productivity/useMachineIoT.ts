@@ -33,7 +33,10 @@ export function useMachineIoT() {
                 ...m,
                 status_adxl: m.status_adxl ?? 'offline',
                 status_pzem: m.status_pzem ?? 'offline',
-                current_threshold_a: m.current_threshold_a ?? 0.15,
+                current_threshold_a: m.current_threshold_a ?? 0.6,
+                off_current_a: m.off_current_a ?? 0.03,
+                brand: m.brand ?? '',
+                process_name: m.process_name ?? '',
             }));
             setMachines(normalized);
             setSelectedId((prev) => prev ?? normalized[0]?.id ?? null);
@@ -323,7 +326,7 @@ export function useMachineIoT() {
                                 let status_pzem = m.status_pzem;
                                 if (m.status_pzem === 'offline') {
                                     status_pzem = 'idle';
-                                } else if (a < 0.03) {
+                                } else if (a < (m.off_current_a ?? 0.03)) {
                                     status_pzem = 'off';
                                 } else if (
                                     a >= thr ||
@@ -343,20 +346,7 @@ export function useMachineIoT() {
                                 };
                             })
                         );
-                        if (msg.running_sec != null && msg.idle_sec != null) {
-                            setPzemStatsByMachine((prev) => ({
-                                ...prev,
-                                [id]: {
-                                    work_date: new Date().toISOString().slice(0, 10),
-                                    running_sec: msg.running_sec!,
-                                    idle_sec: msg.idle_sec!,
-                                    off_sec: msg.off_sec ?? 0,
-                                    running_pct: msg.running_pct ?? 0,
-                                    idle_pct: msg.idle_pct ?? 0,
-                                    off_pct: msg.off_pct ?? 0,
-                                },
-                            }));
-                        }
+                        // KPI harian dari /pzem-stats (telemetry), bukan counter ESP di WS
                     }
                 } catch {
                     /* ignore */
@@ -374,6 +364,14 @@ export function useMachineIoT() {
         };
     }, [patchMachine, patchLive]);
 
+    // Poll KPI telemetry agar Compare = Resume
+    useEffect(() => {
+        if (!selectedId) return;
+        void fetchPzemStats(selectedId);
+        const t = setInterval(() => void fetchPzemStats(selectedId), 15_000);
+        return () => clearInterval(t);
+    }, [selectedId, fetchPzemStats]);
+
     const saveCalibration = async (
         machineId: string,
         patch: {
@@ -382,6 +380,7 @@ export function useMachineIoT() {
             filter_diam_ms: number;
             power_threshold_w: number;
             current_threshold_a: number;
+            off_current_a?: number;
         }
     ) => {
         const res = await fetch(`${apiBase}/api/machines/${machineId}`, {

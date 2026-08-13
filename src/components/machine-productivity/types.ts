@@ -7,7 +7,10 @@ export type DashboardView =
     | 'detail-adxl'
     | 'compare'
     | 'pzem'
-    | 'adxl';
+    | 'adxl'
+    | 'login'
+    | 'control'
+    | 'zigbee';
 
 export type MachineRow = {
     id: string;
@@ -15,6 +18,10 @@ export type MachineRow = {
     name: string;
     machine_type: string;
     location_note: string | null;
+    /** Branch pabrik, contoh GM1 */
+    branch?: string | null;
+    /** Line, contoh Line 1 */
+    line_name?: string | null;
     status: string;
     status_adxl: string;
     status_pzem: string;
@@ -23,7 +30,22 @@ export type MachineRow = {
     filter_diam_ms: number;
     power_threshold_w: number;
     current_threshold_a: number;
+    /** Arus di bawah ini = mesin mati (default 0.01 A) */
+    off_current_a?: number;
+    brand?: string;
+    process_name?: string;
+    barcode?: string | null;
+    /** UID ESP untuk link QR /ops/ml/{uid} */
+    device_uid?: string | null;
+    /** "esp" | "telemetry" — sumber KPI dashboard ↔ LCD */
+    kpi_source?: string;
+    lcd_auto_ms?: number;
     adxl_force_off?: boolean;
+    /** true = wajib login harian di ESP; false = jalan tanpa login */
+    login_required?: boolean;
+    /** Default operator dari Control Machine */
+    default_operator_nik?: string | null;
+    default_operator_name?: string | null;
 };
 
 export type PzemDailyStats = {
@@ -96,13 +118,37 @@ export type DisputeRow = {
 };
 
 export const DASHBOARD_CARDS: Array<{
-    id: 'resume' | 'detail' | 'compare' | 'pzem' | 'adxl';
+    id: 'resume' | 'detail' | 'compare' | 'pzem' | 'adxl' | 'login' | 'control' | 'zigbee';
     title: string;
     subtitle: string;
     path: string;
     accent: string;
     icon: string;
 }> = [
+    {
+        id: 'zigbee',
+        title: 'Monitor Zigbee Nodes',
+        subtitle: 'Status mesh via MQTT bridge: online/offline, LQI, last V/A per Router Node',
+        path: '/machine-productivity/zigbee',
+        accent: 'from-cyan-500 to-sky-700',
+        icon: '⬡',
+    },
+    {
+        id: 'control',
+        title: 'Control Machine',
+        subtitle: 'Kelola mesin aktif: topic MQTT, UID, nama, style/proses, threshold — termasuk status Off',
+        path: '/machine-productivity/control',
+        accent: 'from-indigo-500 to-blue-700',
+        icon: '⚙',
+    },
+    {
+        id: 'login',
+        title: 'Login Mesin',
+        subtitle: 'QR /ops/ml/{UID} — scan HP buka login; LCD tampil Login Sukses 5 dtk',
+        path: '/machine-productivity/login',
+        accent: 'from-emerald-500 to-teal-600',
+        icon: '⎔',
+    },
     {
         id: 'detail',
         title: 'Detail Data',
@@ -114,7 +160,7 @@ export const DASHBOARD_CARDS: Array<{
     {
         id: 'resume',
         title: 'Resume Mesin',
-        subtitle: 'Tabel Running / Idle / Mati semua mesin — PZEM & ADXL',
+        subtitle: 'Tabel Running / Idle / Mati semua mesin — PZEM',
         path: '/machine-productivity/resume',
         accent: 'from-sky-500 to-blue-600',
         icon: '▦',
@@ -122,7 +168,7 @@ export const DASHBOARD_CARDS: Array<{
     {
         id: 'compare',
         title: 'Compare Data',
-        subtitle: 'Bandingkan waktu Running / Idle / Mati PZEM vs ADXL (mesin sama)',
+        subtitle: 'Monitor PZEM: Running / Idle / Mati + grafik arus berwana status',
         path: '/machine-productivity/compare',
         accent: 'from-violet-500 to-indigo-600',
         icon: '⚖',

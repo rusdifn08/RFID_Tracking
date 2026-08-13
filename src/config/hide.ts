@@ -31,7 +31,7 @@ export const HIDE_HOME_CARD_RFID_SEWING_PROSES = false;
 /** Kartu Monitoring Machine di home */
 export const HIDE_HOME_CARD_MONITORING_MACHINE = false;
 
-/** Kartu Machine Productivity di home */
+/** Kartu Machine Productivity di home (`/machine-productivity`). true = disembunyikan */
 export const HIDE_HOME_CARD_MACHINE_PRODUCTIVITY = false;
 
 /** Kartu Monitoring Shipment di home */
@@ -149,5 +149,77 @@ export const COMINGSOON_SUPPLY_SEWING = false;
 /** Menyembunyikan tombol filter di dalam setiap card di Dashboard Cutting */
 export const HIDE_CUTTING_CARD_FILTERS = true;
 
-/** Jika true, pada halaman Sewing hanya Line 5 yang aktif (sisanya abu-abu seperti nonaktif) */
-export const HIGHLIGHT_SEWING_LINE_5_ONLY = true;
+/**
+ * Line ID yang di-nonaktifkan (abu-abu, tidak bisa diklik) di halaman /sewing.
+ * Hapus ID dari array → card aktif. Array kosong → semua line aktif.
+ * Card tetap tampil (bukan filter render).
+ */
+export const DISABLED_SEWING_LINE_IDS: readonly number[] = [
+    111, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13,
+];
+
+// --- Machine Productivity Dashboard Cards ---
+/** Kartu Detail Data di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_DETAIL = false;
+
+/** Kartu PZEM-004T Data di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_PZEM = false;
+
+/** Kartu ADXL345 Data di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_ADXL = false;
+
+/** Kartu Resume Mesin di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_RESUME = false;
+
+/** Kartu Compare Data di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_COMPARE = false;
+
+/** Kartu Login Mesin di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_LOGIN = false;
+
+/** Kartu Control Machine di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_CONTROL = false;
+
+/** Kartu Monitor Zigbee Nodes di Machine Productivity. true = disembunyikan */
+export const HIDE_MACHINE_PRODUCTIVITY_CARD_ZIGBEE = false;
+
+/**
+ * Simulasi data dummy — HANYA aktif di `/monitoring-machine/juki` (enableSim prop).
+ * Resume di `/machine-productivity/resume` selalu data real (tanpa &sim=1).
+ */
+export const SIMULASI_MACHINE = true;
+
+export type MachineProductivityCardId =
+    | 'detail'
+    | 'resume'
+    | 'compare'
+    | 'pzem'
+    | 'adxl'
+    | 'login'
+    | 'control'
+    | 'zigbee';
+
+/** Cek apakah kartu Machine Productivity disembunyikan */
+export function isMachineProductivityCardHidden(cardId: MachineProductivityCardId): boolean {
+    switch (cardId) {
+        case 'detail':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_DETAIL;
+        case 'pzem':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_PZEM;
+        case 'adxl':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_ADXL;
+        case 'resume':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_RESUME;
+        case 'compare':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_COMPARE;
+        case 'login':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_LOGIN;
+        case 'control':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_CONTROL;
+        case 'zigbee':
+            return HIDE_MACHINE_PRODUCTIVITY_CARD_ZIGBEE;
+        default:
+            return true;
+    }
+}
+

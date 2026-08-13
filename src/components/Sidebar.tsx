@@ -1,7 +1,7 @@
 import { memo, useMemo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useSidebar } from '../context/SidebarContext';
-import { Home, LogOut, Activity, Scissors, CheckCircle, List, MapPin, Target, LayoutDashboard, Briefcase, Server, PackageOpen, Shirt } from 'lucide-react';
+import { Home, LogOut, Activity, Scissors, Cpu, CheckCircle, List, MapPin, Target, LayoutDashboard, Briefcase, Server, PackageOpen, Shirt, Zap, ScanLine, Settings, Radio } from 'lucide-react';
 import headerIcon from '../assets/header.svg';
 import rfidIcon from '../assets/rfid.webp';
 import needleIcon from '../assets/needle.webp';
@@ -11,11 +11,15 @@ import shipmentIcon from '../assets/shipment.webp';
 import prendiIcon from '../assets/report_detail.webp';
 import { logoutUser } from '../config/api';
 import { preloadLineDetail } from '../utils/preload';
+import { isMachineProductivityCardHidden } from '../config/hide';
+import { useAuth } from '../hooks/useAuth';
+import { canAccessMachineProductivity } from '../utils/machineProductivityAccess';
 
 const Sidebar = memo(() => {
     const location = useLocation();
     const navigate = useNavigate();
     const { isOpen, closeSidebar } = useSidebar();
+    const { user } = useAuth();
 
     // Data production lines - dipindahkan ke useMemo untuk optimasi
     const productionLines = useMemo(() => [
@@ -186,6 +190,51 @@ const Sidebar = memo(() => {
     }, [location.pathname, showShipment]);
 
     const showMachine = useMemo(() => location.pathname.startsWith('/monitoring-machine'), [location.pathname]);
+    
+    const machineSubNav = useMemo(() => {
+        if (!showMachine) return [];
+        return [
+            { label: 'Machine Template', to: '/monitoring-machine/template', icon: <Cpu size={14} /> },
+            { label: 'Machine AutoCutter', to: '/monitoring-machine/bullmer', icon: <Scissors size={14} /> },
+            { label: 'Machine Template JUKI', to: '/monitoring-machine/juki', icon: <Server size={14} /> },
+        ];
+    }, [showMachine]);
+
+    const showMachineProductivity = useMemo(
+        () => canAccessMachineProductivity(user) && location.pathname.startsWith('/machine-productivity'),
+        [user, location.pathname]
+    );
+
+    const machineProductivitySubNav = useMemo(() => {
+        if (!showMachineProductivity) return [];
+        const items = [];
+        if (!isMachineProductivityCardHidden('zigbee')) {
+            items.push({ label: 'Monitor Zigbee Nodes', to: '/machine-productivity/zigbee', icon: <Radio size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('control')) {
+            items.push({ label: 'Control Machine', to: '/machine-productivity/control', icon: <Settings size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('login')) {
+            items.push({ label: 'Login Mesin', to: '/machine-productivity/login', icon: <ScanLine size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('detail')) {
+            items.push({ label: 'Detail Data', to: '/machine-productivity/detail', icon: <List size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('resume')) {
+            items.push({ label: 'Resume Mesin', to: '/machine-productivity/resume', icon: <Server size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('compare')) {
+            items.push({ label: 'Compare Data', to: '/machine-productivity/compare', icon: <Activity size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('pzem')) {
+            items.push({ label: 'PZEM-004T Data', to: '/machine-productivity/pzem', icon: <Zap size={14} /> });
+        }
+        if (!isMachineProductivityCardHidden('adxl')) {
+            items.push({ label: 'ADXL345 Data', to: '/machine-productivity/adxl', icon: <Activity size={14} /> });
+        }
+        return items;
+    }, [showMachineProductivity]);
+
     const showVibePrendi = useMemo(() => location.pathname.startsWith('/vibe-prendi'), [location.pathname]);
 
     // Dapatkan data line berdasarkan ID - dioptimasi dengan useMemo
@@ -683,6 +732,92 @@ const Sidebar = memo(() => {
                                     )}
                                 </div>
                             </Link>
+
+                            {showMachine && machineSubNav.length > 0 && (
+                                <div className={`mt-2 flex flex-col gap-1 ${isOpen ? 'ml-3' : 'items-center'}`}>
+                                    {machineSubNav.map((item, idx) => {
+                                        const isSubActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
+                                        return (
+                                            <Link
+                                                key={idx}
+                                                to={item.to}
+                                                className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center w-10'} py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] ${isSubActive
+                                                    ? 'bg-white/20 shadow-lg shadow-white/10 border-l-2 border-yellow-400/70'
+                                                    : 'hover:bg-white/10 border-l-2 border-transparent hover:border-yellow-400/50'
+                                                    }`}
+                                                style={{ color: isSubActive ? '#f7f9fa' : '#e6f2ff' }}
+                                            >
+                                                <div className="flex-shrink-0">{item.icon}</div>
+                                                {isOpen && <span className="truncate">{item.label}</span>}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* MACHINE PRODUCTIVITY */}
+                    {showMachineProductivity && (
+                        <div className="space-y-1">
+                            <Link
+                                to="/machine-productivity"
+                                className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center px-0'} py-2.5 rounded-lg transition-all duration-300 font-medium text-sm overflow-hidden min-h-[44px] ${location.pathname.startsWith('/machine-productivity')
+                                    ? 'bg-white/25 shadow-xl shadow-white/20 border-l-4 border-yellow-400'
+                                    : 'hover:bg-white/15 hover:shadow-lg hover:shadow-white/10 border-l-4 border-transparent hover:border-yellow-400/50'
+                                    }`}
+                                style={{ 
+                                    color: location.pathname.startsWith('/machine-productivity') ? '#f7f9fa' : '#e6f2ff' 
+                                }}
+                            >
+                                {(location.pathname.startsWith('/machine-productivity')) && isOpen && (
+                                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-yellow-400 rounded-r-full shadow-lg shadow-yellow-400/70 animate-pulse"></div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/15 to-white/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                                <div className={`relative z-10 flex items-center ${isOpen ? 'gap-2 flex-1' : 'justify-center'}`}>
+                                    <div className={`transform transition-all duration-500 ease-in-out flex-shrink-0 flex items-center justify-center ${!isOpen ? 'scale-110' : ''}`}>
+                                        <div 
+                                            className="w-[18px] h-[18px] transition-all duration-500 ease-in-out drop-shadow-lg"
+                                            style={{
+                                                maskImage: `url(${machineIcon})`,
+                                                WebkitMaskImage: `url(${machineIcon})`,
+                                                maskSize: 'contain',
+                                                WebkitMaskSize: 'contain',
+                                                maskRepeat: 'no-repeat',
+                                                WebkitMaskRepeat: 'no-repeat',
+                                                maskPosition: 'center',
+                                                WebkitMaskPosition: 'center',
+                                                background: location.pathname.startsWith('/machine-productivity') ? '#f7f9fa' : '#e6f2ff',
+                                            }}
+                                        />
+                                    </div>
+                                    {isOpen && (
+                                        <span className="transition-all duration-300 font-semibold tracking-wide flex-1 text-left text-sm">{'MACHINE PRODUCTIVITY'}</span>
+                                    )}
+                                </div>
+                            </Link>
+
+                            {showMachineProductivity && machineProductivitySubNav.length > 0 && (
+                                <div className={`mt-2 flex flex-col gap-1 ${isOpen ? 'ml-3' : 'items-center'}`}>
+                                    {machineProductivitySubNav.map((item, idx) => {
+                                        const isSubActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
+                                        return (
+                                            <Link
+                                                key={idx}
+                                                to={item.to}
+                                                className={`group relative flex items-center ${isOpen ? 'justify-start gap-2 px-3' : 'justify-center w-10'} py-1.5 rounded-md transition-all duration-300 font-medium text-[10px] overflow-hidden min-h-[32px] ${isSubActive
+                                                    ? 'bg-white/20 shadow-lg shadow-white/10 border-l-2 border-yellow-400/70'
+                                                    : 'hover:bg-white/10 border-l-2 border-transparent hover:border-yellow-400/50'
+                                                    }`}
+                                                style={{ color: isSubActive ? '#f7f9fa' : '#e6f2ff' }}
+                                            >
+                                                <div className="flex-shrink-0">{item.icon}</div>
+                                                {isOpen && <span className="truncate">{item.label}</span>}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
 

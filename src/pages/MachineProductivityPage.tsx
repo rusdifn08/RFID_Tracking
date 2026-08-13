@@ -1,7 +1,10 @@
 import { memo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { canAccessMachineProductivity } from '../utils/machineProductivityAccess';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import Breadcrumb from '../components/Breadcrumb';
 import backgroundImage from '../assets/background.jpg';
 import MachineProductivityHub from '../components/machine-productivity/MachineProductivityHub';
 import MachineResumePage from '../components/machine-productivity/MachineResumePage';
@@ -17,6 +20,9 @@ import MachineShiftPanels from '../components/machine-productivity/MachineShiftP
 import AdxlDashboard from '../components/machine-productivity/AdxlDashboard';
 import AdxlSidebarPanel from '../components/machine-productivity/AdxlSidebarPanel';
 import PzemSidebarPanel from '../components/machine-productivity/PzemSidebarPanel';
+import MachineLoginPage from '../components/machine-productivity/MachineLoginPage';
+import MachineControlPage from '../components/machine-productivity/MachineControlPage';
+import ZigbeeMeshPage from '../components/machine-productivity/ZigbeeMeshPage';
 import { useMachineIoT } from '../components/machine-productivity/useMachineIoT';
 import type { DashboardView } from '../components/machine-productivity/types';
 
@@ -26,7 +32,10 @@ function viewFromPath(pathname: string): DashboardView {
     if (/\/detail\/[^/]+$/.test(pathname)) return 'detail-pick';
     if (pathname.includes('/detail')) return 'detail';
     if (pathname.includes('/resume')) return 'resume';
+    if (pathname.includes('/control')) return 'control';
+    if (pathname.includes('/login')) return 'login';
     if (pathname.includes('/compare')) return 'compare';
+    if (pathname.includes('/zigbee')) return 'zigbee';
     if (pathname.includes('/pzem')) return 'pzem';
     if (pathname.includes('/adxl')) return 'adxl';
     return 'hub';
@@ -41,8 +50,13 @@ const TITLES: Partial<Record<DashboardView, string>> = {
 const MachineProductivityPage = memo(() => {
     const location = useLocation();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const view = viewFromPath(location.pathname);
     const iot = useMachineIoT();
+
+    if (!canAccessMachineProductivity(user)) {
+        return <Navigate to="/" replace />;
+    }
 
     const saveCalibration = (patch: {
         g_force_threshold: number;
@@ -76,10 +90,14 @@ const MachineProductivityPage = memo(() => {
                 }}
             >
                 <Header />
+                <Breadcrumb />
 
-                <main className="flex flex-col flex-1 min-h-0 w-full bg-slate-50/50 px-2 md:px-4 pb-3 pt-10 xs:pt-12 sm:pt-14 md:pt-[3.5rem] lg:pt-[4.5rem] overflow-y-auto">
+                <main className="flex flex-col flex-1 min-h-0 w-full bg-slate-50/50 px-2 md:px-4 pb-3 pt-2 overflow-y-auto">
                     {view === 'hub' && <MachineProductivityHub />}
-                    {view === 'resume' && <MachineResumePage />}
+                    {view === 'zigbee' && <ZigbeeMeshPage />}
+                    {view === 'control' && <MachineControlPage />}
+                    {view === 'login' && <MachineLoginPage />}
+                    {view === 'resume' && <MachineResumePage enableSim={false} />}
                     {view === 'detail' && <DetailMachinesPage />}
                     {view === 'detail-pick' && <DetailSensorPickPage />}
                     {view === 'detail-pzem' && <DetailSensorDataPage sensor="pzem" />}
@@ -89,50 +107,19 @@ const MachineProductivityPage = memo(() => {
                         <div
                             className={`w-full mx-auto space-y-4 ${view === 'compare' ? 'max-w-[1600px]' : 'max-w-7xl'}`}
                         >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate('/machine-productivity')}
-                                        className="text-sm text-sky-600 hover:text-sky-800 font-medium"
-                                    >
-                                        ← Dashboard
-                                    </button>
-                                    <div>
-                                        <h1 className="text-lg md:text-xl font-bold text-slate-800">
-                                            {TITLES[view]}
-                                        </h1>
-                                        <p className="text-xs text-slate-500">
-                                            API: {iot.apiBase} · live via WebSocket
-                                        </p>
+                            {view !== 'compare' && (
+                                <div className="flex flex-wrap items-center justify-end gap-3">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => void iot.loadMachines()}
+                                            className="px-3 py-2 text-sm rounded-lg bg-sky-600 text-white hover:bg-sky-700"
+                                        >
+                                            Refresh
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {view === 'compare' && iot.machines.length > 0 && (
-                                        <label className="flex items-center gap-2 text-xs text-slate-600">
-                                            <span className="font-semibold">Mesin</span>
-                                            <select
-                                                value={iot.selectedId ?? ''}
-                                                onChange={(e) => iot.setSelectedId(e.target.value)}
-                                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800"
-                                            >
-                                                {iot.machines.map((m) => (
-                                                    <option key={m.id} value={m.id}>
-                                                        {m.code} — {m.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </label>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => void iot.loadMachines()}
-                                        className="px-3 py-2 text-sm rounded-lg bg-sky-600 text-white hover:bg-sky-700"
-                                    >
-                                        Refresh
-                                    </button>
-                                </div>
-                            </div>
+                            )}
 
                             {iot.error && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2 text-sm">
@@ -147,17 +134,18 @@ const MachineProductivityPage = memo(() => {
                                         live={iot.selectedLive}
                                         apiBase={iot.apiBase}
                                         pzemStats={iot.selectedPzemStats}
-                                        adxlStats={iot.selectedAdxlStats}
-                                        onResetBoth={async () => {
-                                            const id = iot.selected!.id;
-                                            const [pzem, adxl] = await Promise.all([
-                                                iot.resetPzemStats(id),
-                                                iot.resetAdxlStats(id),
-                                            ]);
+                                        machines={iot.machines}
+                                        selectedId={iot.selectedId}
+                                        onSelectId={iot.setSelectedId}
+                                        onRefresh={() => void iot.loadMachines()}
+                                        onMachineUpdated={(m) => iot.patchMachine(m.id, m)}
+                                        onSaveThresholds={(patch) =>
+                                            iot.saveCalibration(iot.selected!.id, patch)
+                                        }
+                                        onResetPzem={async () => {
+                                            const pzem = await iot.resetPzemStats(iot.selected!.id);
                                             return {
-                                                archived:
-                                                    !!(pzem && 'archived' in pzem && pzem.archived) ||
-                                                    !!(adxl && 'archived' in adxl && adxl.archived),
+                                                archived: !!(pzem && 'archived' in pzem && pzem.archived),
                                             };
                                         }}
                                     />

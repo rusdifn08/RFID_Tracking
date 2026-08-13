@@ -54,6 +54,15 @@ pub struct ShiftQuery {
     pub date: Option<NaiveDate>,
     pub from: Option<NaiveDate>,
     pub to: Option<NaiveDate>,
+    /// 1/true = merge KPI simulasi (run/idle dari tabel sim; off tetap real)
+    pub sim: Option<String>,
+}
+
+fn sim_enabled(q: &ShiftQuery) -> bool {
+    match q.sim.as_deref().map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("1") | Some("true") | Some("yes") | Some("on") => true,
+        _ => false,
+    }
 }
 
 pub async fn get_shift(
@@ -101,6 +110,34 @@ pub async fn assign_shift(
     }
     let work_date = body.work_date.unwrap_or_else(crate::services::detection::work_date_wib);
 
+    let shift_status = match body.shift_status.as_deref().unwrap_or("work").trim().to_ascii_lowercase().as_str() {
+        "broken" | "rusak" => "broken",
+        "maintenance" | "maint" | "perbaikan" => "maintenance",
+        _ => "work",
+    };
+
+    let opt = |v: &Option<String>| v.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let garment_style = opt(&body.garment_style);
+    let wo = opt(&body.wo);
+    let size_label = opt(&body.size_label);
+    let buyer = opt(&body.buyer);
+    let item_name = opt(&body.item_name);
+    let color_name = opt(&body.color_name);
+    let notes = opt(&body.notes);
+
+    if shift_status == "work" && garment_style.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Style garment wajib diisi saat login kerja (contoh 1101494)".into(),
+        ));
+    }
+    if shift_status != "work" && notes.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Catatan wajib diisi untuk laporan rusak / maintenance".into(),
+        ));
+    }
+
     let op = sqlx::query_as::<_, Operator>(
         r#"INSERT INTO operators (nik, name)
            VALUES ($1, $2)
@@ -116,26 +153,88 @@ pub async fn assign_shift(
     .await
     .map_err(internal)?;
 
-    let row = sqlx::query_as::<_, (Uuid, NaiveDate, String, String, Option<String>)>(
-        r#"INSERT INTO daily_shifts (machine_id, work_date, operator_id, operator_nik, operator_name, notes)
-           VALUES ($1, $2, $3, $4, $5, $6)
+    let row = sqlx::query_as::<_, (
+        Uuid,
+        NaiveDate,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    )>(
+        r#"INSERT INTO daily_shifts (
+             machine_id, work_date, operator_id, operator_nik, operator_name, notes,
+             shift_status, garment_style, wo, size_label, buyer, item_name, color_name
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (machine_id, work_date) DO UPDATE SET
              operator_id = EXCLUDED.operator_id,
              operator_nik = EXCLUDED.operator_nik,
              operator_name = EXCLUDED.operator_name,
              notes = EXCLUDED.notes,
+             shift_status = EXCLUDED.shift_status,
+             garment_style = EXCLUDED.garment_style,
+             wo = EXCLUDED.wo,
+             size_label = EXCLUDED.size_label,
+             buyer = EXCLUDED.buyer,
+             item_name = EXCLUDED.item_name,
+             color_name = EXCLUDED.color_name,
              updated_at = NOW()
-           RETURNING id, work_date, operator_nik, operator_name, notes"#,
+           RETURNING id, work_date, operator_nik, operator_name, notes,
+                     shift_status, garment_style, wo"#,
     )
     .bind(id)
     .bind(work_date)
     .bind(op.id)
     .bind(nik)
     .bind(name)
-    .bind(&body.notes)
+    .bind(&notes)
+    .bind(shift_status)
+    .bind(&garment_style)
+    .bind(&wo)
+    .bind(&size_label)
+    .bind(&buyer)
+    .bind(&item_name)
+    .bind(&color_name)
     .fetch_one(&state.pool)
     .await
     .map_err(internal)?;
+
+    // Dorong ke LCD ESP
+    let machine_meta = sqlx::query_as::<_, (String, Option<String>)>(
+        r#"SELECT m.code,
+                  (SELECT d.device_uid FROM devices d
+                   WHERE d.machine_id = m.id
+                   ORDER BY d.last_seen_at DESC NULLS LAST LIMIT 1)
+           FROM machines m WHERE m.id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some((code, uid)) = machine_meta {
+        let lcd_msg = match shift_status {
+            "broken" => "Mesin Rusak",
+            "maintenance" => "Maintenance",
+            _ => "Login Sukses",
+        };
+        let payload = json!({
+            "command": "login_success",
+            "operator_nik": nik,
+            "operator_name": name,
+            "lcd_message": lcd_msg,
+            "shift_status": shift_status,
+            "garment_style": garment_style,
+        });
+        let body_s = payload.to_string();
+        crate::mqtt::publish_command(&state, &code, &body_s);
+        if let Some(ref u) = uid {
+            crate::mqtt::publish_device_command(&state, u, &body_s);
+        }
+    }
 
     Ok(Json(json!({
         "id": row.0,
@@ -143,6 +242,9 @@ pub async fn assign_shift(
         "operator_nik": row.2,
         "operator_name": row.3,
         "notes": row.4,
+        "shift_status": row.5,
+        "garment_style": row.6,
+        "wo": row.7,
         "operator_id": op.id,
     })))
 }
@@ -242,6 +344,41 @@ pub async fn daily_usage(
     Ok(Json(json!({ "from": from, "to": to, "days": list })))
 }
 
+#[derive(sqlx::FromRow)]
+struct ResumeDbRow {
+    id: Uuid,
+    code: String,
+    name: String,
+    brand: String,
+    process_name: String,
+    location_note: Option<String>,
+    branch: String,
+    line_name: String,
+    work_date: NaiveDate,
+    p_run: i32,
+    p_idle: i32,
+    p_off: i32,
+    a_run: i32,
+    a_idle: i32,
+    a_off: i32,
+    operator_nik: Option<String>,
+    operator_name: Option<String>,
+    notes: Option<String>,
+    shift_status: Option<String>,
+    garment_style: Option<String>,
+    wo: Option<String>,
+    size_label: Option<String>,
+    buyer: Option<String>,
+    item_name: Option<String>,
+    color_name: Option<String>,
+    status_pzem: String,
+    status_adxl: String,
+    default_operator_nik: Option<String>,
+    default_operator_name: Option<String>,
+    device_uid: Option<String>,
+    is_online: bool,
+}
+
 pub async fn machines_resume(
     State(state): State<AppState>,
     Query(q): Query<ShiftQuery>,
@@ -249,77 +386,136 @@ pub async fn machines_resume(
     let today = crate::services::detection::work_date_wib();
     let to = q.to.or(q.date).unwrap_or(today);
     let from = q.from.unwrap_or(to);
+    let use_sim = sim_enabled(&q);
 
-    // ponytail: sqlx tuple max 16 field — pecah jadi query ringkas
-    let rows = sqlx::query_as::<_, (
-        Uuid,
-        String,
-        String,
-        Option<String>,
-        NaiveDate,
-        i32,
-        i32,
-        i32,
-        i32,
-        i32,
-        i32,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )>(
-        r#"SELECT m.id, m.code, m.name, m.location_note,
-                  d.work_date::date,
+    if use_sim {
+        // ponytail: sim gagal jangan blank-kan seluruh resume
+        if let Err(e) = crate::services::sim::ensure_today(&state.pool).await {
+            tracing::error!("sim ensure: {e:#}");
+        }
+        let _ = crate::services::sim::tick_today(&state.pool).await;
+    }
+
+    let sim_map = if use_sim {
+        crate::services::sim::kpi_map_today(&state.pool)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!("sim map: {e:#}");
+                std::collections::HashMap::new()
+            })
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let rows = sqlx::query_as::<_, ResumeDbRow>(
+        r#"SELECT m.id, m.code, m.name,
+                  COALESCE(m.brand, '') AS brand,
+                  COALESCE(m.process_name, '') AS process_name,
+                  m.location_note,
+                  COALESCE(m.branch, '') AS branch,
+                  COALESCE(m.line_name, '') AS line_name,
+                  d.work_date::date AS work_date,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.pzem_running_sec, 0)
                        ELSE COALESCE((SELECT SUM(running_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'pzem'), 0)
-                  END::int,
+                  END::int AS p_run,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.pzem_idle_sec, 0)
                        ELSE COALESCE((SELECT SUM(idle_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'pzem'), 0)
-                  END::int,
+                  END::int AS p_idle,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.pzem_off_sec, 0)
                        ELSE COALESCE((SELECT SUM(off_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'pzem'), 0)
-                  END::int,
+                  END::int AS p_off,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.adxl_running_sec, 0)
                        ELSE COALESCE((SELECT SUM(running_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'adxl'), 0)
-                  END::int,
+                  END::int AS a_run,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.adxl_idle_sec, 0)
                        ELSE COALESCE((SELECT SUM(idle_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'adxl'), 0)
-                  END::int,
+                  END::int AS a_idle,
                   CASE WHEN c.machine_id IS NOT NULL THEN COALESCE(c.adxl_off_sec, 0)
                        ELSE COALESCE((SELECT SUM(off_sec) FROM operation_periods
                             WHERE machine_id = m.id AND work_date = d.work_date::date AND sensor = 'adxl'), 0)
-                  END::int,
+                  END::int AS a_off,
                   s.operator_nik,
                   s.operator_name,
                   s.notes,
+                  s.shift_status,
+                  COALESCE(
+                    NULLIF(TRIM(s.garment_style), ''),
+                    (
+                      SELECT NULLIF(TRIM(s2.garment_style), '')
+                      FROM daily_shifts s2
+                      WHERE s2.machine_id = m.id
+                        AND s2.work_date < d.work_date::date
+                        AND s2.garment_style IS NOT NULL
+                        AND TRIM(s2.garment_style) <> ''
+                      ORDER BY s2.work_date DESC
+                      LIMIT 1
+                    )
+                  ) AS garment_style,
+                  s.wo,
+                  s.size_label,
+                  s.buyer,
+                  s.item_name,
+                  s.color_name,
                   m.status_pzem,
-                  m.status_adxl
+                  m.status_adxl,
+                  m.default_operator_nik,
+                  m.default_operator_name,
+                  (SELECT dvc.device_uid FROM devices dvc
+                   WHERE dvc.machine_id = m.id
+                   ORDER BY dvc.last_seen_at DESC NULLS LAST
+                   LIMIT 1) AS device_uid,
+                  COALESCE((
+                    SELECT dvc.is_online FROM devices dvc
+                    WHERE dvc.machine_id = m.id
+                    ORDER BY dvc.last_seen_at DESC NULLS LAST
+                    LIMIT 1
+                  ), FALSE) AS is_online
            FROM machines m
            CROSS JOIN generate_series($1::date, $2::date, interval '1 day') AS d(work_date)
            LEFT JOIN detection_compare_daily c
              ON c.machine_id = m.id AND c.work_date = d.work_date::date
            LEFT JOIN daily_shifts s
              ON s.machine_id = m.id AND s.work_date = d.work_date::date
-           WHERE c.machine_id IS NOT NULL
-              OR EXISTS (
-                   SELECT 1 FROM operation_periods op
-                   WHERE op.machine_id = m.id AND op.work_date = d.work_date::date
+           WHERE EXISTS (SELECT 1 FROM devices dvc WHERE dvc.machine_id = m.id)
+             AND m.code NOT IN ('JUKI0001', 'JUKI0002')
+             AND NOT EXISTS (
+               SELECT 1 FROM devices dx
+               WHERE dx.machine_id = m.id AND dx.device_uid IN ('0001', '0002')
+             )
+             -- UID 001–003 / JUKI001–003: data mulai 2026-08-04 saja
+             AND NOT (
+               (
+                 m.code IN ('JUKI001', 'JUKI002', 'JUKI003')
+                 OR EXISTS (
+                   SELECT 1 FROM devices dx
+                   WHERE dx.machine_id = m.id
+                     AND dx.device_uid IN ('001', '002', '003')
                  )
-              OR d.work_date::date = $3
+               )
+               AND d.work_date::date < DATE '2026-08-04'
+             )
            ORDER BY d.work_date DESC, m.code"#,
     )
     .bind(from)
     .bind(to)
-    .bind(today)
     .fetch_all(&state.pool)
     .await
     .map_err(internal)?;
+
+    let from_tel = crate::services::detection::pzem_band_totals_from_telemetry(&state, from, to)
+        .await
+        .unwrap_or_default();
+
+    let kpi_rows = sqlx::query_as::<_, (Uuid, String)>(r#"SELECT id, kpi_source FROM machines"#)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(internal)?;
+    let kpi_map: std::collections::HashMap<Uuid, String> = kpi_rows.into_iter().collect();
 
     let pct = |part: i32, total: i32| {
         if total == 0 {
@@ -331,63 +527,102 @@ pub async fn machines_resume(
 
     let list: Vec<Value> = rows
         .into_iter()
-        .map(
-            |(
-                id,
-                code,
-                name,
-                loc,
-                work_date,
-                p_run,
-                p_idle,
-                p_off,
-                a_run,
-                a_idle,
-                a_off,
-                nik,
-                oname,
-                notes,
-                st_pzem,
-                st_adxl,
-            )| {
-                let p_tot = p_run + p_idle + p_off;
-                let a_tot = a_run + a_idle + a_off;
-                json!({
-                    "id": id,
-                    "code": code,
-                    "name": name,
-                    "location_note": loc,
-                    "status_pzem": st_pzem,
-                    "status_adxl": st_adxl,
-                    "work_date": work_date,
-                    "pzem": {
-                        "running_sec": p_run,
-                        "idle_sec": p_idle,
-                        "off_sec": p_off,
-                        "running_pct": pct(p_run, p_tot),
-                        "idle_pct": pct(p_idle, p_tot),
-                        "off_pct": pct(p_off, p_tot),
-                    },
-                    "adxl": {
-                        "running_sec": a_run,
-                        "idle_sec": a_idle,
-                        "off_sec": a_off,
-                        "running_pct": pct(a_run, a_tot),
-                        "idle_pct": pct(a_idle, a_tot),
-                        "off_pct": pct(a_off, a_tot),
-                    },
-                    "operator_nik": nik,
-                    "operator_name": oname,
-                    "operator_note": notes,
-                })
-            },
-        )
+        .map(|r| {
+            let mut p_run = r.p_run;
+            let mut p_idle = r.p_idle;
+            let mut p_off = r.p_off;
+            let use_tel = kpi_map.get(&r.id).map(|s| s.as_str() != "esp").unwrap_or(true);
+            if use_tel {
+                if let Some((run, idle, off)) = from_tel.get(&(r.id, r.work_date)) {
+                    p_run = *run;
+                    p_idle = *idle;
+                    p_off = *off;
+                }
+            }
+            let mut status_pzem = r.status_pzem.clone();
+            let mut is_online = r.is_online;
+            // Simulasi hanya di SIM_WORK_DATE: run/idle beku 8–9 jam; off = real
+            if use_sim && r.work_date == crate::services::sim::sim_work_date() {
+                if let Some(sim) = sim_map.get(&r.id) {
+                    p_run = sim.run_sec;
+                    p_idle = sim.idle_sec;
+                    p_off = sim.off_sec;
+                    status_pzem = sim.phase.clone();
+                    is_online = true;
+                }
+            }
+            let p_tot = p_run + p_idle + p_off;
+            let a_tot = r.a_run + r.a_idle + r.a_off;
+            let display_name = {
+                let b = r.brand.trim();
+                let p = r.process_name.trim();
+                if !b.is_empty() && !p.is_empty() {
+                    format!("{b} {p}")
+                } else if !b.is_empty() {
+                    b.to_string()
+                } else if !p.is_empty() {
+                    p.to_string()
+                } else {
+                    r.name.clone()
+                }
+            };
+            json!({
+                "id": r.id,
+                "code": r.code,
+                "name": r.name,
+                "brand": r.brand,
+                "process_name": r.process_name,
+                "display_name": display_name,
+                "device_uid": r.device_uid,
+                "location_note": r.location_note,
+                "branch": r.branch,
+                "line_name": r.line_name,
+                "status_pzem": status_pzem,
+                "status_adxl": r.status_adxl,
+                "is_online": is_online,
+                "work_date": r.work_date,
+                "kpi_source": kpi_map.get(&r.id).cloned().unwrap_or_else(|| "esp".into()),
+                "pzem": {
+                    "running_sec": p_run,
+                    "idle_sec": p_idle,
+                    "off_sec": p_off,
+                    "running_pct": pct(p_run, p_tot),
+                    "idle_pct": pct(p_idle, p_tot),
+                    "off_pct": pct(p_off, p_tot),
+                },
+                "adxl": {
+                    "running_sec": r.a_run,
+                    "idle_sec": r.a_idle,
+                    "off_sec": r.a_off,
+                    "running_pct": pct(r.a_run, a_tot),
+                    "idle_pct": pct(r.a_idle, a_tot),
+                    "off_pct": pct(r.a_off, a_tot),
+                },
+                "operator_nik": r
+                    .operator_nik
+                    .filter(|s| !s.trim().is_empty())
+                    .or(r.default_operator_nik),
+                "operator_name": r
+                    .operator_name
+                    .filter(|s| !s.trim().is_empty())
+                    .or(r.default_operator_name),
+                "operator_note": r.notes,
+                "shift_status": r.shift_status.unwrap_or_else(|| "work".into()),
+                "garment_style": r.garment_style,
+                "wo": r.wo,
+                "size_label": r.size_label,
+                "buyer": r.buyer,
+                "item_name": r.item_name,
+                "color_name": r.color_name,
+            })
+        })
         .collect();
 
     Ok(Json(json!({
         "work_date": today,
         "from": from,
         "to": to,
+        "sim": use_sim,
         "machines": list
     })))
 }
@@ -395,4 +630,33 @@ pub async fn machines_resume(
 fn internal(e: sqlx::Error) -> (StatusCode, String) {
     tracing::error!("{e:#}");
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
+
+/// Grafik arus simulasi dari tabel sementara
+pub async fn sim_chart(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<ShiftQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let work_date = q.date.unwrap_or_else(crate::services::detection::work_date_wib);
+    let pts = crate::services::sim::chart_points(&state.pool, id, work_date)
+        .await
+        .map_err(|e| {
+            tracing::error!("sim chart: {e:#}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+    let list: Vec<Value> = pts
+        .into_iter()
+        .map(|(ts, phase, current_a, power_w, voltage_v)| {
+            json!({
+                "ts": ts.to_rfc3339(),
+                "phase": phase,
+                "current_a": current_a,
+                "power_w": power_w,
+                "voltage_v": voltage_v,
+                "value": current_a,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "machine_id": id, "work_date": work_date, "points": list })))
 }

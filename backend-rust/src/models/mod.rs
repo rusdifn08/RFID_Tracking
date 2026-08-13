@@ -7,8 +7,27 @@ pub struct Machine {
     pub id: Uuid,
     pub code: String,
     pub name: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub process_name: String,
+    /// QR barcode label, e.g. MESIN001
+    pub barcode: Option<String>,
     pub machine_type: String,
     pub location_note: Option<String>,
+    /// Branch pabrik, contoh GM1
+    #[serde(default)]
+    pub branch: String,
+    /// Line produksi, contoh Line 1
+    #[serde(default)]
+    pub line_name: String,
+    /// true = wajib login harian di ESP
+    #[serde(default = "default_true")]
+    pub login_required: bool,
+    /// NIK operator default (Control Machine)
+    pub default_operator_nik: Option<String>,
+    /// Nama operator default (Control Machine)
+    pub default_operator_name: Option<String>,
     pub status: String,
     pub status_adxl: String,
     pub status_pzem: String,
@@ -17,6 +36,13 @@ pub struct Machine {
     pub filter_diam_ms: i32,
     pub power_threshold_w: f64,
     pub current_threshold_a: f64,
+    #[serde(default = "default_off_current_a")]
+    pub off_current_a: f64,
+    /// "esp" = KPI dari counter ESP/LCD | "telemetry" = KPI dari telemetry DB
+    #[serde(default = "default_kpi_source")]
+    pub kpi_source: String,
+    #[serde(default = "default_lcd_auto_ms")]
+    pub lcd_auto_ms: i32,
     #[serde(default)]
     pub adxl_force_off: bool,
     pub created_at: DateTime<Utc>,
@@ -37,15 +63,48 @@ fn default_type() -> String {
     "sewing".into()
 }
 
+fn default_off_current_a() -> f64 {
+    0.01
+}
+
+fn default_kpi_source() -> String {
+    "esp".into()
+}
+
+fn default_lcd_auto_ms() -> i32 {
+    5000
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateMachine {
     pub name: Option<String>,
+    pub brand: Option<String>,
+    pub process_name: Option<String>,
     pub location_note: Option<String>,
+    pub branch: Option<String>,
+    pub line_name: Option<String>,
+    /// true = System Login ON (wajib login), false = OFF
+    pub login_required: Option<bool>,
+    /// NIK default operator (kirim null untuk hapus)
+    pub default_operator_nik: Option<String>,
+    pub default_operator_name: Option<String>,
+    /// MQTT machine code / topic suffix (contoh JUKI002)
+    pub code: Option<String>,
+    pub barcode: Option<String>,
+    /// Device UID ESP (contoh 001)
+    pub device_uid: Option<String>,
     pub g_force_threshold: Option<f64>,
     pub filter_aktif_ms: Option<i32>,
     pub filter_diam_ms: Option<i32>,
     pub power_threshold_w: Option<f64>,
     pub current_threshold_a: Option<f64>,
+    pub off_current_a: Option<f64>,
+    pub kpi_source: Option<String>,
+    pub lcd_auto_ms: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +119,15 @@ pub struct AssignShift {
     pub name: String,
     pub work_date: Option<chrono::NaiveDate>,
     pub notes: Option<String>,
+    /// work | broken | maintenance
+    pub shift_status: Option<String>,
+    /// Nomor style garment (contoh 1101494) — bukan machine code
+    pub garment_style: Option<String>,
+    pub wo: Option<String>,
+    pub size_label: Option<String>,
+    pub buyer: Option<String>,
+    pub item_name: Option<String>,
+    pub color_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -118,6 +186,9 @@ pub struct PzemPayload {
     pub loss_sec: Option<u32>,
     #[serde(default)]
     pub off_sec: Option<u32>,
+    /// "zigbee" = lewat Coordinator bridge; kosong = ESP Wi‑Fi langsung
+    #[serde(default)]
+    pub transport: Option<String>,
     #[serde(default)]
     pub ts: Option<DateTime<Utc>>,
 }
@@ -145,6 +216,10 @@ pub struct DeviceStatusPayload {
     #[serde(default)]
     pub ip: Option<String>,
     #[serde(default)]
+    pub wifi_ssid: Option<String>,
+    #[serde(default)]
+    pub ip_once: Option<bool>,
+    #[serde(default)]
     pub uptime_sec: Option<u64>,
     #[serde(default)]
     pub fail_count: Option<u32>,
@@ -152,6 +227,22 @@ pub struct DeviceStatusPayload {
     pub mqtt_fail_count: Option<u32>,
     #[serde(default)]
     pub wifi_fail_count: Option<u32>,
+    /// "zigbee" = lewat Coordinator bridge
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Deep sleep: unix epoch atau ISO — mesin OFF dari kapan
+    #[serde(default)]
+    pub deep_sleep_from: Option<serde_json::Value>,
+    #[serde(default)]
+    pub deep_sleep_to: Option<serde_json::Value>,
+    #[serde(default)]
+    pub duration_sec: Option<i64>,
+    #[serde(default)]
+    pub run_sec: Option<u64>,
+    #[serde(default)]
+    pub loss_sec: Option<u64>,
+    #[serde(default)]
+    pub off_sec: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Clone)]

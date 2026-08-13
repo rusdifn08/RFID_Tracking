@@ -19,7 +19,13 @@ function listStatus(
     if (view === 'pzem' || view === 'detail-pzem') {
         const a = liveCurrentById?.[m.id];
         return (
-            derivePzemStatus(a, m.current_threshold_a, 0, m.power_threshold_w) ?? m.status_pzem
+            derivePzemStatus(
+                a,
+                m.current_threshold_a,
+                0,
+                m.power_threshold_w,
+                m.off_current_a ?? 0.01,
+            ) ?? m.status_pzem
         );
     }
     if (view === 'adxl' || view === 'detail-adxl') return m.status_adxl;

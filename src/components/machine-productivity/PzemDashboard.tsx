@@ -57,6 +57,7 @@ export default function PzemDashboard({ machine, live, stats, apiBase, onResetSt
             machine.current_threshold_a,
             p?.power_w ?? 0,
             machine.power_threshold_w,
+            machine.off_current_a ?? 0.03,
         ) ?? machine.status_pzem;
 
     return (

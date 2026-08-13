@@ -5,8 +5,40 @@ use crate::models::{Machine, MachineRuntime, SensorRuntime, WsEvent};
 use crate::services::{compare, machine as machine_svc};
 use crate::state::AppState;
 
-/// Arus di bawah ini = mesin mati (OFF). Standby sewing sering ~0.02–0.05 A.
-pub const PZEM_OFF_CURRENT_A: f64 = 0.03;
+/// Arus di bawah ini = mesin mati (OFF). Idle / MSN ON mulai >= 0.01 A.
+pub const PZEM_OFF_CURRENT_A: f64 = 0.01;
+
+/// Setelah reset_day: tolak counter ESP non-zero sebentar (tunggu ESP konfirmasi 0).
+/// Grace habis → selalu ikut ESP (angka LCD). Jangan pakai tahun — reset MQTT gagal
+/// membuat dashboard under-count seharian.
+const ESP_RESET_GRACE: ChronoDuration = ChronoDuration::seconds(90);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EspKpiAction {
+    /// Tulis run/loss/off dari ESP ke cache+DB.
+    Apply,
+    /// Abaikan paket ini.
+    Skip,
+}
+
+/// Keputusan terima counter ESP agar dashboard = LCD.
+/// `ignore_until`: deadline grace setelah reset_day (None = tidak dalam grace).
+fn esp_kpi_accept(
+    ignore_until: Option<chrono::DateTime<Utc>>,
+    incoming: i32,
+    db_total: i32,
+    now: chrono::DateTime<Utc>,
+) -> (EspKpiAction, bool) {
+    // return (action, clear_ignore)
+    match ignore_until {
+        Some(_) if incoming == 0 => (EspKpiAction::Apply, true),
+        Some(until) if now < until => (EspKpiAction::Skip, false),
+        // ponytail: grace habis / ignore basi → percaya ESP; upgrade: work_date di payload
+        Some(_) => (EspKpiAction::Apply, true),
+        None if incoming == 0 && db_total > 0 => (EspKpiAction::Skip, false),
+        None => (EspKpiAction::Apply, false),
+    }
+}
 
 /// Tanggal kerja pabrik = kalender WIB (UTC+7), cut 00:00 WIB.
 pub fn work_date_wib() -> chrono::NaiveDate {
@@ -44,10 +76,9 @@ async fn cut_all_machines_for_new_day(state: &AppState) -> anyhow::Result<()> {
             rt.last_adxl_totals = Some((0, 0, 0));
             rt.last_pzem_tick_at = Some(now);
             rt.last_adxl_tick_at = Some(now);
-            // Blokir counter ESP lama sampai ESP kirim 0 (tanpa flash: MQTT reset
-            // mungkin gagal — backend tetap hitung sendiri dari evaluate).
-            rt.pzem_ignore_esp_until = Some(now + ChronoDuration::days(3650));
-            rt.adxl_ignore_esp_until = Some(now + ChronoDuration::days(3650));
+            // Grace singkat: kalau ESP belum 0, setelah 90s tetap ikut angka LCD.
+            rt.pzem_ignore_esp_until = Some(now + ESP_RESET_GRACE);
+            rt.adxl_ignore_esp_until = Some(now + ESP_RESET_GRACE);
         }
         let pzem = serde_json::json!({ "command": "reset_day", "sensor": "pzem" }).to_string();
         let adxl = serde_json::json!({ "command": "reset_day", "sensor": "adxl" }).to_string();
@@ -217,14 +248,15 @@ pub async fn evaluate_pzem(
     rt.last_seen = Some(now);
     rt.pzem.last_seen = Some(now);
 
-    // Running = A >= thr (atau power fallback); Idle = 0 < A < thr; Mati = A ≈ 0
-    let want_running = current_a >= machine.current_threshold_a
-        || (machine.power_threshold_w > 0.0 && power_w >= machine.power_threshold_w);
+    // ponytail: status PZEM murni pakai arus (A) saja.
+    // Off < off_current_a, idle = off_current_a <= A < current_threshold_a, running >= current_threshold_a.
+    let want_running = current_a >= machine.current_threshold_a;
     let next = pzem_next_status(
         &rt.pzem,
         machine.status_pzem.as_str(),
         current_a,
         want_running,
+        machine.off_current_a,
         machine.filter_aktif_ms,
         machine.filter_diam_ms,
     );
@@ -292,19 +324,24 @@ pub async fn evaluate_pzem(
     Ok(())
 }
 
-/// Arus ≈ 0 → mati; di bawah thr → idle; ≥ thr → running (dengan filter aktif/diam).
+/// Arus < off_thr → mati; di bawah run_thr → idle; ≥ run_thr → running (dengan filter aktif/diam).
 fn pzem_next_status(
     rt: &SensorRuntime,
     current: &str,
     current_a: f64,
     want_running: bool,
+    off_current_a: f64,
     filter_aktif_ms: i32,
     filter_diam_ms: i32,
 ) -> String {
-    const OFF_A: f64 = PZEM_OFF_CURRENT_A;
+    let off_a = if off_current_a > 0.0 {
+        off_current_a
+    } else {
+        PZEM_OFF_CURRENT_A
+    };
     let now = Utc::now();
     let effective = if current == "offline" { "off" } else { current };
-    let want_off = current_a < OFF_A;
+    let want_off = current_a < off_a;
 
     if want_running {
         match rt.active_since {
@@ -577,8 +614,7 @@ pub async fn pzem_daily_totals(state: &AppState, machine_id: Uuid) -> anyhow::Re
     pzem_daily_totals_from_db(state, machine_id).await
 }
 
-/// Timpa counter harian dari ESP — ditolak setelah day-cut/reset sampai ESP kirim 0
-/// (tanpa flash: counter ESP lama tidak boleh menimpa KPI backend).
+/// Timpa counter harian dari ESP — dipakai saat kpi_source = "esp" (selaras LCD).
 pub async fn set_pzem_totals_from_esp(
     state: &AppState,
     machine_id: Uuid,
@@ -587,12 +623,29 @@ pub async fn set_pzem_totals_from_esp(
     off_sec: i32,
 ) -> anyhow::Result<()> {
     let now = Utc::now();
+    let incoming = run_sec.saturating_add(loss_sec).saturating_add(off_sec);
+    let (er, ei, eo) = pzem_daily_totals_from_db(state, machine_id).await?;
+    let db_total = er.saturating_add(ei).saturating_add(eo);
+    let ignore = state
+        .runtime
+        .get(&machine_id)
+        .and_then(|rt| rt.pzem_ignore_esp_until);
+    let (action, clear_ignore) = esp_kpi_accept(ignore, incoming, db_total, now);
+    if action == EspKpiAction::Skip {
+        if incoming == 0 && db_total > 0 && ignore.is_none() {
+            tracing::warn!(
+                "skip ESP zero totals for {} (DB already has R={} I={} O={})",
+                machine_id,
+                er,
+                ei,
+                eo
+            );
+        }
+        return Ok(());
+    }
+
     if let Some(mut rt) = state.runtime.get_mut(&machine_id) {
-        if rt.pzem_ignore_esp_until.is_some() {
-            let esp_zero = run_sec + loss_sec + off_sec == 0;
-            if !esp_zero {
-                return Ok(());
-            }
+        if clear_ignore {
             rt.pzem_ignore_esp_until = None;
         }
         rt.last_pzem_totals = Some((run_sec, loss_sec, off_sec));
@@ -614,7 +667,7 @@ pub async fn set_pzem_totals_from_esp(
     .bind(loss_sec)
     .bind(off_sec)
     .execute(&state.pool)
-    .await;
+    .await?;
     Ok(())
 }
 
@@ -627,12 +680,19 @@ pub async fn set_adxl_totals_from_esp(
     off_sec: i32,
 ) -> anyhow::Result<()> {
     let now = Utc::now();
+    let incoming = run_sec.saturating_add(loss_sec).saturating_add(off_sec);
+    let (er, ei, eo) = adxl_daily_totals(state, machine_id).await?;
+    let db_total = er.saturating_add(ei).saturating_add(eo);
+    let ignore = state
+        .runtime
+        .get(&machine_id)
+        .and_then(|rt| rt.adxl_ignore_esp_until);
+    let (action, clear_ignore) = esp_kpi_accept(ignore, incoming, db_total, now);
+    if action == EspKpiAction::Skip {
+        return Ok(());
+    }
     if let Some(mut rt) = state.runtime.get_mut(&machine_id) {
-        if rt.adxl_ignore_esp_until.is_some() {
-            let esp_zero = run_sec + loss_sec + off_sec == 0;
-            if !esp_zero {
-                return Ok(());
-            }
+        if clear_ignore {
             rt.adxl_ignore_esp_until = None;
         }
         rt.last_adxl_totals = Some((run_sec, loss_sec, off_sec));
@@ -675,6 +735,113 @@ pub async fn pzem_daily_totals_from_db(
     Ok(row.unwrap_or((0, 0, 0)))
 }
 
+/// Hitung ulang running/idle/off dari telemetry — bucket per menit (sama grafik Compare).
+pub async fn pzem_band_totals_from_telemetry(
+    state: &AppState,
+    from: chrono::NaiveDate,
+    to: chrono::NaiveDate,
+) -> anyhow::Result<std::collections::HashMap<(Uuid, chrono::NaiveDate), (i32, i32, i32)>> {
+    let rows = sqlx::query_as::<_, (Uuid, chrono::NaiveDate, i32, i32, i32)>(
+        r#"
+        WITH day_bounds AS (
+          SELECT m.id AS machine_id,
+                 gs::date AS work_date,
+                 COALESCE(NULLIF(m.off_current_a, 0), 0.01) AS off_a,
+                 CASE
+                   WHEN m.current_threshold_a > COALESCE(NULLIF(m.off_current_a, 0), 0.01)
+                     THEN m.current_threshold_a
+                   ELSE COALESCE(NULLIF(m.off_current_a, 0), 0.01) + 0.001
+                 END AS run_a,
+                 COALESCE(m.power_threshold_w, 0) AS power_thr,
+                 ((gs::timestamp) AT TIME ZONE 'Asia/Jakarta') AS t0,
+                 (((gs::timestamp) + interval '1 day') AT TIME ZONE 'Asia/Jakarta') AS t1
+          FROM machines m
+          CROSS JOIN generate_series($1::date, $2::date, interval '1 day') AS gs
+        ),
+        mins AS (
+          SELECT d.machine_id, d.work_date, d.off_a, d.run_a, d.power_thr,
+                 date_trunc('minute', t.ts) AS minute_ts,
+                 AVG(t.current_a)::float8 AS current_a,
+                 AVG(t.power_w)::float8 AS power_w
+          FROM day_bounds d
+          INNER JOIN telemetry_pzem t
+            ON t.machine_id = d.machine_id AND t.ts >= d.t0 AND t.ts < d.t1
+          GROUP BY d.machine_id, d.work_date, d.off_a, d.run_a, d.power_thr, date_trunc('minute', t.ts)
+        ),
+        ordered AS (
+          SELECT machine_id, work_date, off_a, run_a, power_thr, minute_ts, current_a, power_w,
+                 LAG(minute_ts) OVER (PARTITION BY machine_id, work_date ORDER BY minute_ts) AS prev_ts
+          FROM mins
+        ),
+        segs AS (
+          SELECT machine_id, work_date, off_a, run_a, power_thr, current_a, power_w,
+                 LEAST(300, GREATEST(0, EXTRACT(EPOCH FROM (minute_ts - prev_ts))::int)) AS dt
+          FROM ordered
+          WHERE prev_ts IS NOT NULL
+        )
+        SELECT machine_id, work_date,
+          COALESCE(SUM(dt) FILTER (
+            WHERE current_a >= off_a
+              AND (current_a >= run_a OR (power_thr > 0 AND power_w >= power_thr))
+          ), 0)::int AS run_sec,
+          COALESCE(SUM(dt) FILTER (
+            WHERE current_a >= off_a
+              AND NOT (current_a >= run_a OR (power_thr > 0 AND power_w >= power_thr))
+          ), 0)::int AS idle_sec,
+          COALESCE(SUM(dt) FILTER (WHERE current_a < off_a), 0)::int AS off_sec
+        FROM segs
+        GROUP BY machine_id, work_date
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    let today = work_date_wib();
+
+    // kpi_source=esp → counter resmi dari ESP; jangan ditimpa hitungan telemetry
+    let esp_ids: std::collections::HashSet<Uuid> = sqlx::query_as::<_, (Uuid,)>(
+        r#"SELECT id FROM machines WHERE kpi_source = 'esp'"#,
+    )
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|(id,)| id)
+    .collect();
+
+    for (mid, wd, run, idle, off) in rows {
+        map.insert((mid, wd), (run, idle, off));
+        if esp_ids.contains(&mid) {
+            continue;
+        }
+        // Simpan hasil hitungan telemetry agar Resume = Compare (mode telemetry saja)
+        let _ = sqlx::query(
+            r#"INSERT INTO detection_compare_daily
+               (machine_id, work_date, pzem_running_sec, pzem_idle_sec, pzem_off_sec)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (machine_id, work_date) DO UPDATE SET
+                 pzem_running_sec = EXCLUDED.pzem_running_sec,
+                 pzem_idle_sec = EXCLUDED.pzem_idle_sec,
+                 pzem_off_sec = EXCLUDED.pzem_off_sec"#,
+        )
+        .bind(mid)
+        .bind(wd)
+        .bind(run)
+        .bind(idle)
+        .bind(off)
+        .execute(&state.pool)
+        .await;
+        if wd == today {
+            if let Some(mut rt) = state.runtime.get_mut(&mid) {
+                rt.last_pzem_totals = Some((run, idle, off));
+            }
+        }
+    }
+    Ok(map)
+}
+
 pub fn pzem_pcts(running_sec: i32, idle_sec: i32, off_sec: i32) -> (f64, f64, f64) {
     let total = running_sec + idle_sec + off_sec;
     if total == 0 {
@@ -694,7 +861,7 @@ pub async fn reset_pzem_daily(state: &AppState, machine_id: Uuid) -> anyhow::Res
         rt.last_pzem_totals = Some((0, 0, 0));
         // cegah bootstrap DB / ESP lama menimpa nol setelah reset
         rt.last_pzem_tick_at = Some(Utc::now());
-        rt.pzem_ignore_esp_until = Some(Utc::now() + chrono::Duration::days(3650));
+        rt.pzem_ignore_esp_until = Some(Utc::now() + ESP_RESET_GRACE);
     }
 
     // Perintah ESP nolkan Run/Loss (jika firmware dukung); KPI backend tetap jalan tanpa flash
@@ -712,7 +879,7 @@ pub async fn reset_adxl_daily(state: &AppState, machine_id: Uuid) -> anyhow::Res
     if let Some(mut rt) = state.runtime.get_mut(&machine_id) {
         rt.last_adxl_totals = Some((0, 0, 0));
         rt.last_adxl_tick_at = Some(Utc::now());
-        rt.adxl_ignore_esp_until = Some(Utc::now() + chrono::Duration::days(3650));
+        rt.adxl_ignore_esp_until = Some(Utc::now() + ESP_RESET_GRACE);
     }
 
     if let Ok(Some(m)) = crate::services::machine::find_by_id(state, machine_id).await {
@@ -929,4 +1096,47 @@ pub async fn mark_sensor_online(state: &AppState, machine_id: Uuid, sensor: &str
     sqlx::query(&q).bind(machine_id).execute(&state.pool).await?;
     sync_combined(state, machine_id).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod esp_kpi_accept_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn t(sec: i64) -> chrono::DateTime<Utc> {
+        Utc.timestamp_opt(sec, 0).unwrap()
+    }
+
+    #[test]
+    fn grace_blocks_nonzero_then_trusts_esp() {
+        let start = t(1_000);
+        let until = start + ESP_RESET_GRACE;
+        // dalam grace + non-zero → skip
+        assert_eq!(
+            esp_kpi_accept(Some(until), 500, 0, start + ChronoDuration::seconds(10)),
+            (EspKpiAction::Skip, false)
+        );
+        // grace habis + non-zero → apply (selaras LCD)
+        assert_eq!(
+            esp_kpi_accept(Some(until), 500, 100, until + ChronoDuration::seconds(1)),
+            (EspKpiAction::Apply, true)
+        );
+        // ESP konfirmasi 0 → apply meski DB sudah terisi evaluate
+        assert_eq!(
+            esp_kpi_accept(Some(until), 0, 40, start + ChronoDuration::seconds(5)),
+            (EspKpiAction::Apply, true)
+        );
+    }
+
+    #[test]
+    fn mid_day_flash_zero_skipped() {
+        assert_eq!(
+            esp_kpi_accept(None, 0, 9000, t(2_000)),
+            (EspKpiAction::Skip, false)
+        );
+        assert_eq!(
+            esp_kpi_accept(None, 100, 9000, t(2_000)),
+            (EspKpiAction::Apply, false)
+        );
+    }
 }

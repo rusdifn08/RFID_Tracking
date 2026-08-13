@@ -4,8 +4,8 @@
  * Di kode, nilai detik dikalikan 1000 untuk refetchInterval/setInterval (ms).
  */
 
-/** Polling data tracking /wira (QC, PQC, output) — default 1 detik */
-export const POLLING_WIRA_SECONDS = 1;
+/** Polling data tracking /wira (QC, PQC, output) — default 5 detik */
+export const POLLING_WIRA_SECONDS = 5;
 
 /** Saat query /wira error, retry setelah sekian detik */
 export const POLLING_WIRA_ERROR_RETRY_SECONDS = 15;

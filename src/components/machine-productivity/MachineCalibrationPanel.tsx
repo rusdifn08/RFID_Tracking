@@ -9,6 +9,7 @@ type Props = {
         filter_diam_ms: number;
         power_threshold_w: number;
         current_threshold_a: number;
+        off_current_a?: number;
     }) => Promise<void>;
     showPzem?: boolean;
     showAdxl?: boolean;
@@ -21,6 +22,7 @@ export default function MachineCalibrationPanel({ machine, onSave, showPzem, sho
     const [diamMs, setDiamMs] = useState(machine.filter_diam_ms);
     const [powerW, setPowerW] = useState(machine.power_threshold_w);
     const [currentA, setCurrentA] = useState(machine.current_threshold_a);
+    const [offA, setOffA] = useState(machine.off_current_a ?? 0.03);
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
 
@@ -30,6 +32,7 @@ export default function MachineCalibrationPanel({ machine, onSave, showPzem, sho
         setDiamMs(machine.filter_diam_ms);
         setPowerW(machine.power_threshold_w);
         setCurrentA(machine.current_threshold_a);
+        setOffA(machine.off_current_a ?? 0.03);
         setMsg(null);
     }, [
         machine.id,
@@ -38,6 +41,7 @@ export default function MachineCalibrationPanel({ machine, onSave, showPzem, sho
         machine.filter_diam_ms,
         machine.power_threshold_w,
         machine.current_threshold_a,
+        machine.off_current_a,
     ]);
 
     const handleSave = async () => {
@@ -50,6 +54,7 @@ export default function MachineCalibrationPanel({ machine, onSave, showPzem, sho
                 filter_diam_ms: diamMs,
                 power_threshold_w: powerW,
                 current_threshold_a: currentA,
+                off_current_a: offA,
             });
             setMsg('Kalibrasi tersimpan & dikirim ke ESP via MQTT.');
         } catch (e) {
@@ -79,7 +84,20 @@ export default function MachineCalibrationPanel({ machine, onSave, showPzem, sho
                 )}
                 {(showPzem || (!showPzem && !showAdxl)) && (
                     <>
-                        <Field label="Threshold arus (A)" value={currentA} onChange={setCurrentA} step={0.01} compact={compact} />
+                        <Field
+                            label="Running ≥ arus (A)"
+                            value={currentA}
+                            onChange={setCurrentA}
+                            step={0.01}
+                            compact={compact}
+                        />
+                        <Field
+                            label="Mati < arus (A)"
+                            value={offA}
+                            onChange={setOffA}
+                            step={0.01}
+                            compact={compact}
+                        />
                         <Field
                             label="Power fallback (W) — 0 = off"
                             value={powerW}

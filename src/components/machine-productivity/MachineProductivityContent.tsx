@@ -18,13 +18,14 @@ type Props = {
     livePower: number | null;
     onSelect: (id: string) => void;
     onRefresh: () => void;
-    onSaveCalibration: (patch: {
-        g_force_threshold: number;
-        filter_aktif_ms: number;
-        filter_diam_ms: number;
-        power_threshold_w: number;
-        current_threshold_a: number;
-    }) => Promise<void>;
+    onSaveCalibration: (patch:         {
+            g_force_threshold: number;
+            filter_aktif_ms: number;
+            filter_diam_ms: number;
+            power_threshold_w: number;
+            current_threshold_a: number;
+            off_current_a?: number;
+        }) => Promise<void>;
 };
 
 function formatDuration(sec: number) {

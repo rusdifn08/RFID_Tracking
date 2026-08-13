@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { DASHBOARD_CARDS } from './types';
+import { isMachineProductivityCardHidden } from '../../config/hide';
 
 export default function MachineProductivityHub() {
     const navigate = useNavigate();
+    const visibleCards = DASHBOARD_CARDS.filter((card) => !isMachineProductivityCardHidden(card.id));
 
     return (
         <div className="w-full max-w-6xl mx-auto space-y-6">
@@ -19,7 +21,7 @@ export default function MachineProductivityHub() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {DASHBOARD_CARDS.map((card, i) => (
+                {visibleCards.map((card, i) => (
                     <button
                         key={card.id}
                         type="button"

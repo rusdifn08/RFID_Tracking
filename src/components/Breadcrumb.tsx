@@ -466,6 +466,115 @@ export default function Breadcrumb() {
                 label: 'Monitoring Shipment GM 2',
                 isActive: true,
             });
+        } else if (path === '/monitoring-machine' || path === '/monitoring-machine/') {
+            breadcrumbs.push({
+                label: 'Monitoring Machine',
+                isActive: true,
+            });
+        } else if (path.startsWith('/monitoring-machine/template')) {
+            breadcrumbs.push({
+                label: 'Monitoring Machine',
+                path: '/monitoring-machine',
+            });
+            breadcrumbs.push({
+                label: 'Machine Template',
+                isActive: true,
+            });
+        } else if (path.startsWith('/monitoring-machine/bullmer')) {
+            breadcrumbs.push({
+                label: 'Monitoring Machine',
+                path: '/monitoring-machine',
+            });
+            breadcrumbs.push({
+                label: 'Machine AutoCutter',
+                isActive: true,
+            });
+        } else if (path.startsWith('/monitoring-machine/juki')) {
+            breadcrumbs.push({
+                label: 'Monitoring Machine',
+                path: '/monitoring-machine',
+            });
+            breadcrumbs.push({
+                label: 'Machine Template JUKI',
+                isActive: true,
+            });
+        } else if (path === '/machine-productivity' || path === '/machine-productivity/') {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/zigbee')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Monitor Zigbee Nodes',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/control')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Control Machine',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/login')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Login Mesin',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/resume')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Resume Mesin',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/compare')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Compare Data',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/detail')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'Detail Data',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/pzem')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'PZEM-004T Data',
+                isActive: true,
+            });
+        } else if (path.startsWith('/machine-productivity/adxl')) {
+            breadcrumbs.push({
+                label: 'Machine Productivity',
+                path: '/machine-productivity',
+            });
+            breadcrumbs.push({
+                label: 'ADXL345 Data',
+                isActive: true,
+            });
         }
 
         return breadcrumbs;

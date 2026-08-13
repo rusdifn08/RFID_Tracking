@@ -53,6 +53,7 @@ const MonitoringShipment = lazy(() => import('../pages/MonitoringShipment.tsx'))
 const MonitoringShipment2 = lazy(() => import('../pages/MonitoringShipment2.tsx'));
 const MonitoringMachine = lazy(() => import('../pages/MonitoringMachine.tsx'));
 const MachineProductivityPage = lazy(() => import('../pages/MachineProductivityPage.tsx'));
+const MachineLoginPublicPage = lazy(() => import('../pages/MachineLoginPublicPage.tsx'));
 const VibePrendi = lazy(() => import('../pages/VibePrendi.tsx'));
 
 // Loading component untuk Suspense (ringan agar paint cepat)
@@ -90,6 +91,38 @@ const router = createBrowserRouter([
         element: (
             <LazyWrapper>
                 <Register />
+            </LazyWrapper>
+        ),
+    },
+    {
+        path: '/ops/ml/:uid/:slug',
+        element: (
+            <LazyWrapper>
+                <MachineLoginPublicPage />
+            </LazyWrapper>
+        ),
+    },
+    {
+        path: '/ops/ml/:uid',
+        element: (
+            <LazyWrapper>
+                <MachineLoginPublicPage />
+            </LazyWrapper>
+        ),
+    },
+    {
+        path: '/m/:barcode',
+        element: (
+            <LazyWrapper>
+                <MachineLoginPublicPage />
+            </LazyWrapper>
+        ),
+    },
+    {
+        path: '/login-mesin/:barcode',
+        element: (
+            <LazyWrapper>
+                <MachineLoginPublicPage />
             </LazyWrapper>
         ),
     },
@@ -699,6 +732,36 @@ const router = createBrowserRouter([
     },
     {
         path: '/machine-productivity/detail/:machineId/adxl',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/control',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/zigbee',
+        element: (
+            <ProtectedRoute>
+                <LazyWrapper>
+                    <MachineProductivityPage />
+                </LazyWrapper>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/machine-productivity/login',
         element: (
             <ProtectedRoute>
                 <LazyWrapper>

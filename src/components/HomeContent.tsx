@@ -17,9 +17,12 @@ import {
     isHomeCardHidden,
     type HomeCardId,
 } from '../config/hide';
+import { useAuth } from '../hooks/useAuth';
+import { canAccessMachineProductivity } from '../utils/machineProductivityAccess';
 
 export default function HomeContent() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [hoveredCard, setHoveredCard] = useState<HomeCardId | null>(null);
 
     const allModules: Array<{
@@ -97,8 +100,14 @@ export default function HomeContent() {
     ];
 
     const modules = useMemo(
-        () => allModules.filter((m) => !isHomeCardHidden(m.id)),
+        () =>
+            allModules.filter((m) => {
+                if (isHomeCardHidden(m.id)) return false;
+                if (m.id === 'machine-productivity' && !canAccessMachineProductivity(user)) return false;
+                return true;
+            }),
         [
+            user,
             HIDE_HOME_CARD_RFID_TRACKING,
             HIDE_HOME_CARD_NEEDLE_MANAGER,
             HIDE_HOME_CARD_RFID_SEWING_PROSES,

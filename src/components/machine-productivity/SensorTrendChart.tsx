@@ -14,21 +14,6 @@ import { Download, RefreshCw } from 'lucide-react';
 
 export type TrendHours = 1 | 3 | 6 | 'today';
 
-type Point = {
-    ts: string;
-    label: string;
-    value: number;
-    current_a?: number;
-    power_w?: number;
-    voltage_v?: number;
-    magnitude_g?: number;
-    ax?: number;
-    ay?: number;
-    az?: number;
-};
-
-type MetricKey = string;
-
 type Props = {
     machineId: string;
     apiBase: string;
@@ -48,7 +33,76 @@ type Props = {
     /** Interval refresh data grafik (ms). Default 12 dtk. */
     refreshMs?: number;
     className?: string;
+    /** Warna garis arus per status (off/idle/running) */
+    colorByStatus?: boolean;
+    currentThresholdA?: number;
+    offCurrentA?: number;
+    /** Callback titik arus (untuk KPI dari grafik) */
+    onPointsChange?: (points: Array<{ ts: string; current_a?: number; value?: number }>) => void;
+    /** Override titik (simulasi) — skip fetch API */
+    pointsOverride?: Array<{
+        ts: string;
+        label: string;
+        value: number;
+        current_a?: number;
+        power_w?: number;
+        voltage_v?: number;
+        current_off?: number | null;
+        current_idle?: number | null;
+        current_run?: number | null;
+    }>;
 };
+
+type Point = {
+    ts: string;
+    label: string;
+    value: number;
+    current_a?: number;
+    power_w?: number;
+    voltage_v?: number;
+    magnitude_g?: number;
+    ax?: number;
+    ay?: number;
+    az?: number;
+    current_off?: number | null;
+    current_idle?: number | null;
+    current_run?: number | null;
+};
+
+function pzemBand(a: number, offA: number, runA: number): 'off' | 'idle' | 'run' {
+    if (a < offA) return 'off';
+    if (a >= runA) return 'run';
+    return 'idle';
+}
+
+/** Pecah arus jadi 3 series berwarna; bridge di batas status agar garis nyambung. */
+function colorizeCurrent(
+    rows: Point[],
+    offA: number,
+    runA: number,
+): Point[] {
+    const bands = rows.map((p) => pzemBand(Number(p.current_a ?? p.value ?? 0), offA, runA));
+    return rows.map((p, i) => {
+        const a = Number(p.current_a ?? p.value ?? 0);
+        const st = bands[i];
+        const out: Point = {
+            ...p,
+            current_off: null,
+            current_idle: null,
+            current_run: null,
+        };
+        const put = (b: 'off' | 'idle' | 'run', v: number) => {
+            if (b === 'off') out.current_off = v;
+            else if (b === 'idle') out.current_idle = v;
+            else out.current_run = v;
+        };
+        put(st, a);
+        if (i > 0 && bands[i - 1] !== st) put(bands[i - 1], a);
+        return out;
+    });
+}
+
+type MetricKey = string;
 
 function pad2(n: number) {
     return String(n).padStart(2, '0');
@@ -145,8 +199,13 @@ export default function SensorTrendChart({
     onRangeChange,
     hideFilters = false,
     compact = false,
-    refreshMs = 12_000,
+    refreshMs = 30_000,
     className = '',
+    colorByStatus = false,
+    currentThresholdA = 0.6,
+    offCurrentA = 0.03,
+    onPointsChange,
+    pointsOverride,
 }: Props) {
     const isPzem = sensor === 'pzem';
     const metrics = isPzem ? PZEM_METRICS : ADXL_METRICS;
@@ -177,6 +236,21 @@ export default function SensorTrendChart({
     useEffect(() => {
         if (toProp != null) setToLocal(toProp);
     }, [toProp]);
+
+    // Simulasi: pakai pointsOverride hanya jika ada titik; kosong → fetch telemetry real
+    useEffect(() => {
+        if (!pointsOverride || pointsOverride.length === 0) return;
+        setPoints(
+            pointsOverride.map((p) => ({
+                ...p,
+                ts: String(p.ts),
+                label: p.label || fmtAxis(String(p.ts)),
+                value: Number(p.current_a ?? p.value ?? 0),
+            })),
+        );
+        setLoading(false);
+        setErr(null);
+    }, [pointsOverride]);
 
     const emitRange = useCallback(
         (nextHours: TrendHours | 'custom', nextFrom: string, nextTo: string) => {
@@ -252,12 +326,26 @@ export default function SensorTrendChart({
     }, [apiBase, machineId, sensor, hours, fromLocal, toLocal]);
 
     useEffect(() => {
+        onPointsChange?.(points);
+    }, [points, onPointsChange]);
+
+    useEffect(() => {
+        if (pointsOverride && pointsOverride.length > 0) return;
         void load();
         const t = setInterval(() => void load(), refreshMs);
         return () => clearInterval(t);
-    }, [load, refreshMs]);
+    }, [load, refreshMs, pointsOverride]);
 
     const activeMetrics = useMemo(() => metrics.filter((m) => enabled[m.key]), [metrics, enabled]);
+
+    const chartPoints = useMemo(() => {
+        if (!isPzem || !colorByStatus || !enabled.current_a) return points;
+        const offA = offCurrentA > 0 ? offCurrentA : 0.03;
+        const runA = currentThresholdA > offA ? currentThresholdA : offA + 0.001;
+        return colorizeCurrent(points, offA, runA);
+    }, [points, isPzem, colorByStatus, enabled.current_a, offCurrentA, currentThresholdA]);
+
+    const showStatusLines = isPzem && colorByStatus && !!enabled.current_a;
 
     const title = isPzem ? 'Fluktuasi arus (PZEM)' : 'Fluktuasi VIB (ADXL)';
     const accentBorder = isPzem ? 'border-sky-200' : 'border-teal-200';
@@ -434,7 +522,7 @@ export default function SensorTrendChart({
                     </p>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={points} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                        <LineChart data={chartPoints} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                             <XAxis
                                 dataKey="label"
@@ -454,7 +542,43 @@ export default function SensorTrendChart({
                                 }}
                             />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
-                            {activeMetrics.map((m) => (
+                            {showStatusLines && (
+                                <>
+                                    <Line
+                                        type="monotone"
+                                        dataKey="current_off"
+                                        name="Mati (A)"
+                                        stroke="#dc2626"
+                                        strokeWidth={2.25}
+                                        dot={false}
+                                        isAnimationActive={false}
+                                        connectNulls={false}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="current_idle"
+                                        name="Idle (A)"
+                                        stroke="#2563eb"
+                                        strokeWidth={2.25}
+                                        dot={false}
+                                        isAnimationActive={false}
+                                        connectNulls={false}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="current_run"
+                                        name="Running (A)"
+                                        stroke="#16a34a"
+                                        strokeWidth={2.25}
+                                        dot={false}
+                                        isAnimationActive={false}
+                                        connectNulls={false}
+                                    />
+                                </>
+                            )}
+                            {activeMetrics
+                                .filter((m) => !(showStatusLines && m.key === 'current_a'))
+                                .map((m) => (
                                 <Line
                                     key={m.key}
                                     type="monotone"
@@ -481,7 +605,7 @@ export default function SensorTrendChart({
     );
 }
 
-/** Shared filter bar untuk Compare (satu kontrol, dua chart) */
+/** Shared filter bar untuk Compare (satu kontrol, chart PZEM) */
 export function TrendRangeBar({
     hours,
     fromLocal,
@@ -489,14 +613,17 @@ export function TrendRangeBar({
     onChange,
     onResetBoth,
     resetting = false,
+    resetLabel = 'Reset PZEM',
+    resetConfirm = 'Reset waktu PZEM hari ini?\nRekap disimpan ke database. Counter dashboard & ESP di-nolkan via MQTT.',
 }: {
     hours: TrendHours | 'custom';
     fromLocal: string;
     toLocal: string;
     onChange: (next: { hours: TrendHours | 'custom'; fromLocal: string; toLocal: string }) => void;
-    /** Reset PZEM + ADXL (dashboard + MQTT ke ESP) */
     onResetBoth?: () => void | Promise<void>;
     resetting?: boolean;
+    resetLabel?: string;
+    resetConfirm?: string;
 }) {
     return (
         <div className="rounded-2xl border border-violet-200 bg-white p-3 md:p-4 shadow-sm space-y-2">
@@ -507,11 +634,7 @@ export function TrendRangeBar({
                         type="button"
                         disabled={resetting}
                         onClick={() => {
-                            if (
-                                !confirm(
-                                    'Reset waktu PZEM + ADXL hari ini?\nRekap disimpan ke database. Counter dashboard & ESP di-nolkan via MQTT.'
-                                )
-                            ) {
+                            if (!confirm(resetConfirm)) {
                                 return;
                             }
                             void onResetBoth();
@@ -531,7 +654,7 @@ export function TrendRangeBar({
                             <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
                             <path d="M3 21v-5h5" />
                         </svg>
-                        {resetting ? 'Reset…' : 'Reset PZEM + ADXL'}
+                        {resetting ? 'Reset…' : resetLabel}
                     </button>
                 )}
             </div>

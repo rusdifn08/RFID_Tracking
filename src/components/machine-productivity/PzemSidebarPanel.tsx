@@ -13,6 +13,7 @@ type Props = {
         filter_diam_ms: number;
         power_threshold_w: number;
         current_threshold_a: number;
+        off_current_a?: number;
     }) => Promise<void>;
 };
 
@@ -25,7 +26,7 @@ export default function PzemSidebarPanel({ machine, live, onSaveCalibration }: P
     const powerFallbackOn = machine.power_threshold_w > 0;
     const overPower =
         powerFallbackOn && p != null && p.power_w >= machine.power_threshold_w;
-    const isOff = p != null && p.current_a < 0.03;
+    const isOff = p != null && p.current_a < (machine.off_current_a ?? 0.03);
     const isIdle = p != null && !overCurrent && !overPower && !isOff;
 
     return (
@@ -77,7 +78,8 @@ export default function PzemSidebarPanel({ machine, live, onSaveCalibration }: P
                         ok={isOff}
                         text={
                             <>
-                                <strong className="text-sky-900">Mati</strong> jika arus &lt; 0.03 A
+                                <strong className="text-sky-900">Mati</strong> jika arus &lt;{' '}
+                                {machine.off_current_a ?? 0.03} A
                                 (mesin dianggap mati / standby sangat rendah)
                             </>
                         }

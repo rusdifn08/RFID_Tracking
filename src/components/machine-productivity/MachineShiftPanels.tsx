@@ -31,7 +31,8 @@ type DayUsage = {
 };
 
 export default function MachineShiftPanels({ machine, apiBase, onMachineUpdated }: Props) {
-    const [name, setName] = useState(machine.name);
+    const [brand, setBrand] = useState(machine.brand || 'JUKI');
+    const [processName, setProcessName] = useState(machine.process_name || 'Zigzag Plaket');
     const [location, setLocation] = useState(machine.location_note ?? '');
     const [nik, setNik] = useState('');
     const [opName, setOpName] = useState('');
@@ -39,11 +40,18 @@ export default function MachineShiftPanels({ machine, apiBase, onMachineUpdated 
     const [saving, setSaving] = useState(false);
     const [days, setDays] = useState<DayUsage[]>([]);
 
+    const displayName = `${brand.trim()} ${processName.trim()}`.trim();
+
     useEffect(() => {
-        setName(machine.name);
+        setBrand(machine.brand || machine.name.split(/\s+/)[0] || 'JUKI');
+        setProcessName(
+            machine.process_name ||
+                machine.name.split(/\s+/).slice(1).join(' ') ||
+                'Zigzag Plaket',
+        );
         setLocation(machine.location_note ?? '');
         setMsg(null);
-    }, [machine.id, machine.name, machine.location_note]);
+    }, [machine.id, machine.name, machine.brand, machine.process_name, machine.location_note]);
 
     useEffect(() => {
         let cancelled = false;
@@ -80,7 +88,11 @@ export default function MachineShiftPanels({ machine, apiBase, onMachineUpdated 
             const res = await fetch(`${apiBase}/api/machines/${machine.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), location_note: location.trim() || null }),
+                body: JSON.stringify({
+                    brand: brand.trim(),
+                    process_name: processName.trim(),
+                    location_note: location.trim() || null,
+                }),
             });
             if (!res.ok) throw new Error(`Gagal simpan mesin (${res.status})`);
             const updated: MachineRow = await res.json();
@@ -132,13 +144,35 @@ export default function MachineShiftPanels({ machine, apiBase, onMachineUpdated 
                     <h3 className="text-sm font-bold text-sky-950">Data mesin</h3>
                 </div>
                 <label className="block text-xs font-medium text-sky-600">
-                    Nama mesin
+                    No. Mesin
                     <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        value={machine.code}
+                        readOnly
+                        disabled
+                        className="mt-1 w-full rounded-lg border border-sky-100 bg-sky-50 px-2 py-1.5 text-sm text-sky-800 cursor-not-allowed"
+                    />
+                </label>
+                <label className="block text-xs font-medium text-sky-600">
+                    Brand
+                    <input
+                        value={brand}
+                        onChange={(e) => setBrand(e.target.value)}
+                        placeholder="JUKI"
                         className="mt-1 w-full rounded-lg border border-sky-200 px-2 py-1.5 text-sm text-sky-950"
                     />
                 </label>
+                <label className="block text-xs font-medium text-sky-600">
+                    Nama proses
+                    <input
+                        value={processName}
+                        onChange={(e) => setProcessName(e.target.value)}
+                        placeholder="Zigzag Plaket"
+                        className="mt-1 w-full rounded-lg border border-sky-200 px-2 py-1.5 text-sm text-sky-950"
+                    />
+                </label>
+                <p className="text-[11px] text-sky-700 font-semibold">
+                    Nama tampilan: <span className="text-sky-950">{displayName || '—'}</span>
+                </p>
                 <label className="block text-xs font-medium text-sky-600">
                     Lokasi / Line
                     <input
@@ -148,7 +182,6 @@ export default function MachineShiftPanels({ machine, apiBase, onMachineUpdated 
                         className="mt-1 w-full rounded-lg border border-sky-200 px-2 py-1.5 text-sm text-sky-950"
                     />
                 </label>
-                <p className="text-[10px] text-sky-500">Kode mesin: {machine.code} (tetap)</p>
                 <button
                     type="button"
                     disabled={saving}

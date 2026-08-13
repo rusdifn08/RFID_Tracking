@@ -123,18 +123,31 @@ pub async fn pzem_daily_stats(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let today = crate::services::detection::work_date_wib();
-    let row = sqlx::query_as::<_, (i32, i32, i32)>(
-        r#"SELECT COALESCE(pzem_running_sec, 0), COALESCE(pzem_idle_sec, 0), COALESCE(pzem_off_sec, 0)
-           FROM detection_compare_daily
-           WHERE machine_id = $1 AND work_date = $2"#,
+    let machine = sqlx::query_as::<_, crate::models::Machine>(
+        r#"SELECT * FROM machines WHERE id = $1"#,
     )
     .bind(id)
-    .bind(today)
     .fetch_optional(&state.pool)
     .await
-    .map_err(internal)?;
+    .map_err(internal)?
+    .ok_or((StatusCode::NOT_FOUND, "machine not found".into()))?;
 
-    let (running_sec, idle_sec, off_sec) = row.unwrap_or((0, 0, 0));
+    let (running_sec, idle_sec, off_sec) = if machine.kpi_source == "esp" {
+        crate::services::detection::pzem_daily_totals(&state, id)
+            .await
+            .map_err(|e| {
+                tracing::error!("{e:#}");
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
+    } else {
+        let map = crate::services::detection::pzem_band_totals_from_telemetry(&state, today, today)
+            .await
+            .map_err(|e| {
+                tracing::error!("{e:#}");
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?;
+        map.get(&(id, today)).copied().unwrap_or((0, 0, 0))
+    };
     let (running_pct, idle_pct, off_pct) =
         crate::services::detection::pzem_pcts(running_sec, idle_sec, off_sec);
 
@@ -146,6 +159,7 @@ pub async fn pzem_daily_stats(
         "running_pct": running_pct,
         "idle_pct": idle_pct,
         "off_pct": off_pct,
+        "kpi_source": machine.kpi_source,
     })))
 }
 
@@ -509,6 +523,42 @@ pub struct TransitionsQuery {
     pub limit: Option<i64>,
     pub from_ts: Option<chrono::DateTime<chrono::Utc>>,
     pub to_ts: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Deserialize)]
+pub struct DeepSleepQuery {
+    pub date: Option<NaiveDate>,
+}
+
+/// Periode deep sleep hari itu (OFF dari jam X sampai Y).
+pub async fn list_deep_sleep(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<DeepSleepQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let day = q.date.unwrap_or_else(crate::services::detection::work_date_wib);
+    let rows = sqlx::query_as::<_, (DateTime<Utc>, Option<DateTime<Utc>>, Option<i32>, Option<String>)>(
+        r#"SELECT sleep_from, sleep_to, duration_sec, reason
+           FROM device_deep_sleep
+           WHERE machine_id = $1
+             AND sleep_from >= ($2::date)::timestamptz
+             AND sleep_from < (($2::date) + 1)::timestamptz
+           ORDER BY sleep_from"#,
+    )
+    .bind(id)
+    .bind(day)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(internal)?;
+    Ok(Json(json!({
+        "work_date": day,
+        "periods": rows.into_iter().map(|(from, to, dur, reason)| json!({
+            "sleep_from": from,
+            "sleep_to": to,
+            "duration_sec": dur,
+            "reason": reason,
+        })).collect::<Vec<_>>(),
+    })))
 }
 
 fn internal(e: sqlx::Error) -> (StatusCode, String) {

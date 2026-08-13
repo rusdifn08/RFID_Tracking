@@ -6,6 +6,18 @@
 - **Dashboard → WebSocket** (`/ws`) untuk live status
 - **Axum** subscribe MQTT, simpan Neon PostgreSQL, broadcast ke WebSocket
 
+## Auto-provision mesin (MQTT)
+
+ESP baru dengan `machine_code` + `device_uid` valid **otomatis** masuk DB:
+
+1. Topic `iot/gistex/JUKI003/telemetry/pzem` + payload `device_uid=003`
+2. Backend `find_or_provision` → insert `machines` + tautkan `devices`
+3. Telemetry/status diproses seperti mesin yang sudah ada
+
+Aturan kode: huruf+angka, 3–32 karakter (contoh `JUKI001`…`JUKI010`, `SEW-001`).  
+Seed awal: **tidak ada**. Mesin hanya muncul setelah ESP kirim MQTT (auto-provision + baris di `devices`).
+Dummy `JUKI001`–`JUKI010` tanpa device dihapus di migrasi `015`.
+
 ## Setup Mosquitto (Windows)
 
 1. Install dari https://mosquitto.org/download/ (atau `winget install EclipseFoundation.Mosquitto`)

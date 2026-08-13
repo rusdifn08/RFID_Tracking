@@ -1,0 +1,7 @@
+-- Health link WiFi/MQTT per device (pantau sinyal/sinyal di Control)
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS rssi INT;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS wifi_ok BOOLEAN;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_ok BOOLEAN;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ip_addr TEXT;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS wifi_ssid TEXT;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_health_at TIMESTAMPTZ;

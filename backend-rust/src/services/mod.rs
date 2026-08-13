@@ -1,6 +1,7 @@
 pub mod compare;
 pub mod detection;
 pub mod machine;
+pub mod sim;
 
 /// Getaran delta antar sampel (sama firmware HTML lama): |dx|+|dy|+|dz| dalam m/s².
 pub fn vibration_delta(ax: f64, ay: f64, az: f64, prev: Option<(f64, f64, f64)>) -> f64 {

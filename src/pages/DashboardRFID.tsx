@@ -250,6 +250,10 @@ export default function DashboardRFID() {
     const [, setDetailFilterApplied] = useState<Record<string, string> | null>(null);
     const [outputChartType, setOutputChartType] = useState<'bar' | 'area' | 'line'>('area');
     const [searchQuery, setSearchQuery] = useState('');
+    // ponytail: filter detail dari nilai unik di data yang sudah dimuat, tanpa API baru
+    const [filterDetailWo, setFilterDetailWo] = useState('');
+    const [filterDetailSize, setFilterDetailSize] = useState('');
+    const [filterDetailStyle, setFilterDetailStyle] = useState('');
 
     // State untuk tracking perubahan rework dan popup notifikasi
     const previousReworkRef = useRef<number>(0);
@@ -779,14 +783,41 @@ export default function DashboardRFID() {
         return max > 0 ? Math.ceil(max * 1.05) || 40 : 40;
     }, [outputPerJamChartData]);
 
-    // Tabel Detail Output Sewing: seluruh raw_data dari API (tanpa filter jam; rentang multi-hari tidak boleh memotong baris)
-    const filteredDetailData = useMemo(() => {
-        if (!searchQuery.trim()) {
-            return detailData;
+    // Opsi dropdown dari nilai unik di detailData
+    const detailFilterOptions = useMemo(() => {
+        const wos = new Set<string>();
+        const sizes = new Set<string>();
+        const styles = new Set<string>();
+        for (const item of detailData) {
+            if (item.wo) wos.add(String(item.wo));
+            if (item.size) sizes.add(String(item.size));
+            if (item.style) styles.add(String(item.style));
         }
+        return {
+            wos: Array.from(wos).sort(),
+            sizes: Array.from(sizes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+            styles: Array.from(styles).sort(),
+        };
+    }, [detailData]);
 
+    const hasDetailFilter = !!(searchQuery.trim() || filterDetailWo || filterDetailSize || filterDetailStyle);
+
+    const resetDetailFilters = useCallback(() => {
+        setSearchQuery('');
+        setFilterDetailWo('');
+        setFilterDetailSize('');
+        setFilterDetailStyle('');
+    }, []);
+
+    // Tabel Detail: search + dropdown WO/Size/Style (tanpa filter jam; rentang multi-hari tidak boleh memotong baris)
+    const filteredDetailData = useMemo(() => {
         const query = searchQuery.toLowerCase().trim();
         return detailData.filter((item) => {
+            if (filterDetailWo && String(item.wo || '') !== filterDetailWo) return false;
+            if (filterDetailSize && String(item.size || '') !== filterDetailSize) return false;
+            if (filterDetailStyle && String(item.style || '') !== filterDetailStyle) return false;
+            if (!query) return true;
+
             const rfid = (item.rfid_garment || '').toLowerCase();
             const wo = (item.wo || '').toLowerCase();
             const style = (item.style || '').toLowerCase();
@@ -807,7 +838,7 @@ export default function DashboardRFID() {
                 line.includes(query) ||
                 lineDisplay.includes(query);
         });
-    }, [detailData, searchQuery, lineNumberForDisplay]);
+    }, [detailData, searchQuery, filterDetailWo, filterDetailSize, filterDetailStyle, lineNumberForDisplay]);
 
     // Fungsi untuk fetch data per hari
     const fetchDailyData = async (): Promise<any[]> => {
@@ -1574,7 +1605,7 @@ export default function DashboardRFID() {
             {showDetailModal && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => {
                     setShowDetailModal(false);
-                    setSearchQuery('');
+                    resetDetailFilters();
                 }}>
                     <div className="bg-white rounded-2xl shadow-2xl w-[92vw] sm:w-[90vw] max-w-[1600px] max-h-[95vh] h-[88vh] sm:h-[92vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
                         {/* Header - compact agar sama di 720p/1080p */}
@@ -1595,7 +1626,7 @@ export default function DashboardRFID() {
                                 <button
                                     onClick={() => {
                                         setShowDetailModal(false);
-                                        setSearchQuery('');
+                                        resetDetailFilters();
                                     }}
                                     className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white hover:bg-white/30"
                                 >
@@ -1603,9 +1634,9 @@ export default function DashboardRFID() {
                                 </button>
                             </div>
                             <div className="flex items-center justify-between gap-4">
-                                {/* Search Form - Sebelah Kiri */}
-                                <div className="flex-1 max-w-md">
-                                    <div className="relative">
+                                {/* Search + filter WO / Size / Style */}
+                                <div className="flex flex-1 items-center gap-2 min-w-0 max-w-3xl">
+                                    <div className="relative flex-1 min-w-[140px] max-w-md">
                                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70" size={18} />
                                         <input
                                             type="text"
@@ -1616,6 +1647,42 @@ export default function DashboardRFID() {
                                             style={{ fontFamily: 'Poppins, sans-serif' }}
                                         />
                                     </div>
+                                    <select
+                                        value={filterDetailWo}
+                                        onChange={(e) => setFilterDetailWo(e.target.value)}
+                                        className="shrink-0 max-w-[140px] py-2.5 px-2 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all [&>option]:text-slate-800"
+                                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                                        aria-label="Filter WO"
+                                    >
+                                        <option value="">Semua WO</option>
+                                        {detailFilterOptions.wos.map((wo) => (
+                                            <option key={wo} value={wo}>{wo}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={filterDetailSize}
+                                        onChange={(e) => setFilterDetailSize(e.target.value)}
+                                        className="shrink-0 max-w-[110px] py-2.5 px-2 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all [&>option]:text-slate-800"
+                                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                                        aria-label="Filter Size"
+                                    >
+                                        <option value="">Semua Size</option>
+                                        {detailFilterOptions.sizes.map((size) => (
+                                            <option key={size} value={size}>{size}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={filterDetailStyle}
+                                        onChange={(e) => setFilterDetailStyle(e.target.value)}
+                                        className="shrink-0 max-w-[140px] py-2.5 px-2 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all [&>option]:text-slate-800"
+                                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                                        aria-label="Filter Style"
+                                    >
+                                        <option value="">Semua Style</option>
+                                        {detailFilterOptions.styles.map((style) => (
+                                            <option key={style} value={style}>{style}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 {/* Total Data dan Tanggal - Sebelah Kanan */}
                                 <div className="flex items-center gap-4">
@@ -1631,13 +1698,13 @@ export default function DashboardRFID() {
                                     <div className="bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl px-4 py-2.5 shadow-lg">
                                         <div className="text-xs font-semibold text-white/90 mb-0.5">Total Data</div>
                                         <div className="text-2xl font-bold text-white">
-                                            {searchQuery.trim()
+                                            {hasDetailFilter
                                                 ? filteredDetailData.length
                                                 : detailData.length}
                                         </div>
                                     </div>
                                     {detailType === 'OUTPUT' && targetOutput !== undefined && targetOutput > 0 && (() => {
-                                        const totalCount = searchQuery.trim() ? filteredDetailData.length : detailData.length;
+                                        const totalCount = hasDetailFilter ? filteredDetailData.length : detailData.length;
                                         const targetMet = totalCount >= targetOutput;
                                         return (
                                             <div className={`backdrop-blur-sm border-2 rounded-xl px-4 py-2.5 shadow-lg ${targetMet ? 'bg-green-500/30 border-green-400' : 'bg-white/20 border-white/30'}`}>
@@ -1668,13 +1735,16 @@ export default function DashboardRFID() {
                                     <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada data</p>
                                     <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data {detailTitle}</p>
                                 </div>
-                            ) : filteredDetailData.length === 0 && searchQuery.trim() ? (
+                            ) : filteredDetailData.length === 0 && hasDetailFilter ? (
                                 <div className="flex flex-col items-center justify-center text-slate-400 h-full min-h-[400px]">
                                     <div className="p-4 bg-blue-100 rounded-full mb-4">
                                         <Search size={48} className="text-blue-500 opacity-50" />
                                     </div>
                                     <p className="text-lg font-bold text-slate-600 mb-1" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}>Tidak ada hasil pencarian</p>
-                                    <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>Tidak ada data yang cocok dengan "{searchQuery}"</p>
+                                    <p className="text-sm" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                        Tidak ada data yang cocok dengan filter
+                                        {searchQuery.trim() ? ` "${searchQuery}"` : ''}
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-2 sm:gap-3 h-full min-h-0 overflow-hidden">
