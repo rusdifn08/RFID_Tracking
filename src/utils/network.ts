@@ -46,7 +46,7 @@ export const getLocalIP = (): string => {
  * @param port - Port number (default: 7000 untuk proxy server)
  */
 /** Host proxy server.js untuk MJL2 dev (port frontend 5174 → proxy :8001). */
-const MJL2_DEV_PROXY = 'http://10.6.0.99:8001';
+const MJL2_DEV_PROXY = 'http://10.6.0.2:8001';
 
 export const getApiBaseUrl = (port: number = 7000): string => {
     const fromEnv = import.meta.env.VITE_NODE_PROXY_URL as string | undefined;

@@ -62,7 +62,7 @@ if (args.includes('cln')) {
     BACKEND_IP = '10.5.0.107';
     CURRENT_ENV = 'MJL';
 } else if (args.includes('mjl2')) {
-    BACKEND_IP = '10.6.0.99';
+    BACKEND_IP = '10.6.0.2';
     CURRENT_ENV = 'MJL2';
 } else if (args.includes('gcc')) {
     // Route /gcc/* (daily-output, dll.) di lab: host lama MJL; override dengan BACKEND_IP jika backend GCC terpisah.
@@ -703,7 +703,7 @@ function loadActiveSessionsFromFile() {
             // Cek environment dari log.environment atau log.backendIP
             const logEnvironment = log.environment || (log.backendIP === '10.8.0.104' ? 'CLN' :
                 (log.backendIP === '10.5.0.107' || log.backendIP === '10.5.0.106') ? 'MJL' :
-                    log.backendIP === '10.6.0.99' ? 'MJL2' :
+                    log.backendIP === '10.6.0.2' || log.backendIP === '10.6.0.99' ? 'MJL2' :
                         log.backendIP === '10.5.0.201' ? 'GCC' : null);
             const isSameEnvironment = logEnvironment === CURRENT_ENV;
 
@@ -6432,7 +6432,7 @@ app.listen(PORT, HOST, () => {
                         const log = userLogs[i];
                         const logEnvironment = log.environment || (log.backendIP === '10.8.0.104' ? 'CLN' :
                             (log.backendIP === '10.5.0.107' || log.backendIP === '10.5.0.106') ? 'MJL' :
-                                log.backendIP === '10.6.0.99' ? 'MJL2' : null);
+                                log.backendIP === '10.6.0.2' || log.backendIP === '10.6.0.99' ? 'MJL2' : null);
 
                         if (log.nik === user.nik &&
                             !log.logoutTime &&

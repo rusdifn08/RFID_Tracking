@@ -55,7 +55,7 @@ export const getNodeProxyBaseUrl = (): string => {
 
 // Base URL untuk API Server (Proxy Server)
 // Dev MJL/CLN: http://hostname:8000 (proxy server.js di mesin yang sama).
-// Dev MJL2 (5174): http://10.6.0.99:8001 (proxy server.js di host backend MJL2).
+// Dev MJL2 (5174): http://10.6.0.2:8001 (proxy server.js di host backend MJL2).
 // Dev HTTPS: same-origin → Vite proxy. Prod: hostname:port → backend :7000.
 export const API_BASE_URL = isDevelopment
     ? (() => {
@@ -79,7 +79,7 @@ const getBackendIP = (): string => {
         if (storedEnv === 'MJL') {
             return '10.5.0.107';
         } else if (storedEnv === 'MJL2') {
-            return '10.6.0.99';
+            return '10.6.0.2';
         } else if (storedEnv === 'GCC') {
             return '10.5.0.106';
         }
