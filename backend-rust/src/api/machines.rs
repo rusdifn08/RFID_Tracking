@@ -65,6 +65,7 @@ pub async fn list_control_machines(
         mqtt_ok: Option<bool>,
         ip_addr: Option<String>,
         wifi_ssid: Option<String>,
+        mac_addr: Option<String>,
         last_health_at: Option<chrono::DateTime<chrono::Utc>>,
     }
 
@@ -87,11 +88,11 @@ pub async fn list_control_machines(
               d.device_uid, d.last_seen_at,
               COALESCE(d.is_online, FALSE) AS is_online,
               (d.device_uid IS NOT NULL) AS has_device,
-              d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.last_health_at
+              d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.mac_addr, d.last_health_at
            FROM machines m
            LEFT JOIN LATERAL (
              SELECT device_uid, last_seen_at, is_online,
-                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, last_health_at
+                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at
              FROM devices
              WHERE machine_id = m.id
              ORDER BY last_seen_at DESC NULLS LAST
@@ -159,6 +160,7 @@ pub async fn list_control_machines(
                 "mqtt_ok": online && r.mqtt_ok.unwrap_or(false),
                 "ip_addr": r.ip_addr,
                 "wifi_ssid": r.wifi_ssid,
+                "mac_addr": r.mac_addr,
                 "last_health_at": r.last_health_at,
                 "link_age_sec": age_sec,
                 "signal_quality": signal,

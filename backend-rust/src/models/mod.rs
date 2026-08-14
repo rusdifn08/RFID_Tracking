@@ -215,6 +215,9 @@ pub struct DeviceStatusPayload {
     pub rssi: Option<i32>,
     #[serde(default)]
     pub ip: Option<String>,
+    /// WiFi STA MAC — ESP kirim `mac` (alias mac_addr / wifi_mac)
+    #[serde(default, alias = "mac_addr", alias = "wifi_mac")]
+    pub mac: Option<String>,
     #[serde(default)]
     pub wifi_ssid: Option<String>,
     #[serde(default)]

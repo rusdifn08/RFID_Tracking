@@ -14,6 +14,27 @@ fn is_zigbee_uid(uid: &str) -> bool {
     u.len() >= 4 && u.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// AA:BB:CC:DD:EE:FF dari payload ESP (abaikan pemisah).
+fn normalize_mac(raw: &str) -> Option<String> {
+    let hex: String = raw
+        .bytes()
+        .filter(|b| b.is_ascii_hexdigit())
+        .map(|b| (b as char).to_ascii_uppercase())
+        .collect();
+    if hex.len() != 12 {
+        return None;
+    }
+    Some(format!(
+        "{}:{}:{}:{}:{}:{}",
+        &hex[0..2],
+        &hex[2..4],
+        &hex[4..6],
+        &hex[6..8],
+        &hex[8..10],
+        &hex[10..12]
+    ))
+}
+
 async fn ingest_coordinator_mesh(state: &AppState, payload: &str) -> anyhow::Result<()> {
     let v: serde_json::Value = serde_json::from_str(payload)?;
     let wifi_ok = v.get("wifi_ok").and_then(|x| x.as_bool()).unwrap_or(false);
@@ -472,8 +493,9 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
              mqtt_ok = COALESCE($5, mqtt_ok),
              ip_addr = COALESCE(NULLIF($6, ''), ip_addr),
              wifi_ssid = COALESCE(NULLIF($7, ''), wifi_ssid),
+             mac_addr = COALESCE(NULLIF($8, ''), mac_addr),
              last_health_at = NOW(),
-             link_type = CASE WHEN $8 THEN 'zigbee' ELSE link_type END
+             link_type = CASE WHEN $9 THEN 'zigbee' ELSE link_type END
            WHERE device_uid = $1"#,
     )
     .bind(&msg.device_uid)
@@ -483,6 +505,12 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
     .bind(if online { Some(mqtt_ok) } else { Some(false) })
     .bind(msg.ip.as_deref().unwrap_or(""))
     .bind(msg.wifi_ssid.as_deref().unwrap_or(""))
+    .bind(
+        msg.mac
+            .as_deref()
+            .and_then(normalize_mac)
+            .unwrap_or_default(),
+    )
     .bind(link_zigbee)
     .execute(&state.pool)
     .await;
@@ -891,4 +919,22 @@ pub fn publish_device_command(state: &AppState, device_uid: &str, body: &str) {
         topic,
         payload: body.to_string(),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_mac;
+
+    #[test]
+    fn normalize_mac_colon_and_bare() {
+        assert_eq!(
+            normalize_mac("aa:bb:cc:dd:ee:ff").as_deref(),
+            Some("AA:BB:CC:DD:EE:FF")
+        );
+        assert_eq!(
+            normalize_mac("AABBCCDDEEFF").as_deref(),
+            Some("AA:BB:CC:DD:EE:FF")
+        );
+        assert_eq!(normalize_mac("aa-bb"), None);
+    }
 }

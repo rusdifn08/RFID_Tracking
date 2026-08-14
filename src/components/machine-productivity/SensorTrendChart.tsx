@@ -57,6 +57,8 @@ type Point = {
     ts: string;
     label: string;
     value: number;
+    /** epoch ms — sumbu X numerik (status diskrit) */
+    t?: number;
     current_a?: number;
     power_w?: number;
     voltage_v?: number;
@@ -67,6 +69,7 @@ type Point = {
     current_off?: number | null;
     current_idle?: number | null;
     current_run?: number | null;
+    status_level?: number;
 };
 
 function pzemBand(a: number, offA: number, runA: number): 'off' | 'idle' | 'run' {
@@ -75,31 +78,73 @@ function pzemBand(a: number, offA: number, runA: number): 'off' | 'idle' | 'run'
     return 'idle';
 }
 
-/** Pecah arus jadi 3 series berwarna; bridge di batas status agar garis nyambung. */
-function colorizeCurrent(
-    rows: Point[],
-    offA: number,
-    runA: number,
-): Point[] {
-    const bands = rows.map((p) => pzemBand(Number(p.current_a ?? p.value ?? 0), offA, runA));
-    return rows.map((p, i) => {
-        const a = Number(p.current_a ?? p.value ?? 0);
-        const st = bands[i];
-        const out: Point = {
-            ...p,
-            current_off: null,
-            current_idle: null,
-            current_run: null,
+const MINUTE_MS = 60_000;
+
+function floorMinute(ms: number) {
+    return Math.floor(ms / MINUTE_MS) * MINUTE_MS;
+}
+
+/**
+ * Isi setiap menit (forward-fill) lalu gambar horizontal sampai menit berikutnya.
+ * Tidak ada celah waktu; 1 status per menit; transisi di batas menit (bukan overlap durasi).
+ */
+function colorizeCurrent(rows: Point[], offA: number, runA: number, rangeEndMs: number): Point[] {
+    const level = { off: 0, idle: 1, run: 2 } as const;
+    if (!rows.length) return [];
+
+    const sorted = [...rows].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    const start = floorMinute(new Date(sorted[0].ts).getTime());
+    const lastSample = floorMinute(new Date(sorted[sorted.length - 1].ts).getTime());
+    const now = Date.now();
+    // Jangan pad ke 23:59/00:00. Hari ini: sampai sekarang. Hari lalu: sampai sampel terakhir.
+    const cap = Math.min(rangeEndMs, now);
+    const end = floorMinute(cap < now - MINUTE_MS ? lastSample : cap);
+    const endSafe = Math.max(start, end);
+
+    const byMin = new Map<number, Point>();
+    for (const p of sorted) {
+        const m = floorMinute(new Date(p.ts).getTime());
+        if (Number.isFinite(m)) byMin.set(m, p);
+    }
+
+    const pack = (src: Point, st: 'off' | 'idle' | 'run', t: number): Point => {
+        const ts = new Date(t).toISOString();
+        const lv = level[st];
+        return {
+            ...src,
+            t,
+            ts,
+            label: fmtAxis(ts),
+            status_level: lv,
+            current_off: st === 'off' ? level.off : null,
+            current_idle: st === 'idle' ? level.idle : null,
+            current_run: st === 'run' ? level.run : null,
         };
-        const put = (b: 'off' | 'idle' | 'run', v: number) => {
-            if (b === 'off') out.current_off = v;
-            else if (b === 'idle') out.current_idle = v;
-            else out.current_run = v;
-        };
-        put(st, a);
-        if (i > 0 && bands[i - 1] !== st) put(bands[i - 1], a);
-        return out;
-    });
+    };
+
+    const minutes: Point[] = [];
+    let last = sorted[0];
+    for (let m = start; m <= endSafe; m += MINUTE_MS) {
+        const sample = byMin.get(m);
+        if (sample) last = sample;
+        const a = Number(last.current_a ?? last.value ?? 0);
+        const st = pzemBand(a, offA, runA);
+        minutes.push(pack(last, st, m));
+    }
+
+    const out: Point[] = [];
+    for (let i = 0; i < minutes.length; i++) {
+        const p = minutes[i];
+        const st = pzemBand(Number(p.current_a ?? p.value ?? 0), offA, runA);
+        const t = p.t ?? start;
+        out.push(pack(p, st, t));
+        const nextT =
+            i + 1 < minutes.length
+                ? (minutes[i + 1].t ?? t + MINUTE_MS)
+                : Math.min(t + MINUTE_MS, Date.now());
+        if (nextT > t) out.push(pack(p, st, nextT));
+    }
+    return out;
 }
 
 type MetricKey = string;
@@ -342,12 +387,21 @@ export default function SensorTrendChart({
         if (!isPzem || !colorByStatus || !enabled.current_a) return points;
         const offA = offCurrentA > 0 ? offCurrentA : 0.03;
         const runA = currentThresholdA > offA ? currentThresholdA : offA + 0.001;
-        return colorizeCurrent(points, offA, runA);
-    }, [points, isPzem, colorByStatus, enabled.current_a, offCurrentA, currentThresholdA]);
+        let endMs = Date.now();
+        if (hours === 'custom' && toLocal) {
+            const t = new Date(toLocal).getTime();
+            if (Number.isFinite(t)) endMs = Math.min(t, Date.now());
+        }
+        return colorizeCurrent(points, offA, runA, endMs);
+    }, [points, isPzem, colorByStatus, enabled.current_a, offCurrentA, currentThresholdA, hours, toLocal]);
 
     const showStatusLines = isPzem && colorByStatus && !!enabled.current_a;
 
-    const title = isPzem ? 'Fluktuasi arus (PZEM)' : 'Fluktuasi VIB (ADXL)';
+    const title = showStatusLines
+        ? 'Status mesin (diskrit)'
+        : isPzem
+          ? 'Fluktuasi arus (PZEM)'
+          : 'Fluktuasi VIB (ADXL)';
     const accentBorder = isPzem ? 'border-sky-200' : 'border-teal-200';
     const accentBtn = isPzem
         ? 'bg-sky-600 text-white border-sky-600'
@@ -369,7 +423,8 @@ export default function SensorTrendChart({
                 <div>
                     <h3 className="text-sm font-bold text-slate-800">{title}</h3>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                        Rata-rata per menit + titik saat ini · drag brush untuk zoom · {points.length} titik
+                        Rata-rata per menit · drag brush untuk zoom · {points.length} titik
+                        {showStatusLines ? ' · Mati / Idle / Running (penuh sepanjang waktu)' : ''}
                         {loading ? ' · memuat…' : ''}
                     </p>
                 </div>
@@ -459,7 +514,7 @@ export default function SensorTrendChart({
                         </div>
                     )}
                     <div className="flex flex-wrap gap-2 pt-0.5">
-                        {metrics.map((m) => (
+                        {!showStatusLines && metrics.map((m) => (
                             <label
                                 key={m.key}
                                 className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer select-none"
@@ -486,7 +541,7 @@ export default function SensorTrendChart({
                 </div>
             )}
 
-            {hideFilters && (
+            {hideFilters && !showStatusLines && (
                 <div className="px-3 md:px-4 py-2 border-b border-slate-50 flex flex-wrap gap-2">
                     {metrics.map((m) => (
                         <label
@@ -525,15 +580,43 @@ export default function SensorTrendChart({
                         <LineChart data={chartPoints} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                             <XAxis
-                                dataKey="label"
+                                type={showStatusLines ? 'number' : 'category'}
+                                dataKey={showStatusLines ? 't' : 'label'}
+                                domain={showStatusLines ? ['dataMin', 'dataMax'] : undefined}
                                 tick={{ fontSize: 10, fill: '#64748b' }}
                                 minTickGap={28}
+                                tickFormatter={
+                                    showStatusLines
+                                        ? (v: number) => fmtAxis(new Date(v).toISOString())
+                                        : undefined
+                                }
                             />
-                            <YAxis tick={{ fontSize: 10, fill: '#64748b' }} width={44} />
+                            <YAxis
+                                tick={{ fontSize: 10, fill: '#64748b' }}
+                                width={showStatusLines ? 72 : 44}
+                                domain={showStatusLines ? [-0.2, 2.2] : undefined}
+                                ticks={showStatusLines ? [0, 1, 2] : undefined}
+                                tickFormatter={
+                                    showStatusLines
+                                        ? (v: number) =>
+                                              v === 0 ? 'Mati' : v === 1 ? 'Idle' : v === 2 ? 'Running' : ''
+                                        : undefined
+                                }
+                                allowDecimals={!showStatusLines}
+                            />
                             <Tooltip
                                 labelFormatter={(_, payload) => {
                                     const ts = payload?.[0]?.payload?.ts;
                                     return ts ? fmtTip(ts) : '';
+                                }}
+                                formatter={(value: number | string, name: string) => {
+                                    if (showStatusLines) {
+                                        if (value == null || value === '') return [null, null];
+                                        const names = ['Mati', 'Idle', 'Running'];
+                                        if (names.includes(String(name))) return ['aktif', name];
+                                        return [null, null];
+                                    }
+                                    return [value, name];
                                 }}
                                 contentStyle={{
                                     fontSize: 12,
@@ -541,38 +624,55 @@ export default function SensorTrendChart({
                                     border: '1px solid #e2e8f0',
                                 }}
                             />
-                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            <Legend
+                                wrapperStyle={{ fontSize: 11 }}
+                                payload={
+                                    showStatusLines
+                                        ? [
+                                              { value: 'Mati', type: 'line', color: '#dc2626', id: 'off' },
+                                              { value: 'Idle', type: 'line', color: '#2563eb', id: 'idle' },
+                                              { value: 'Running', type: 'line', color: '#16a34a', id: 'run' },
+                                          ]
+                                        : undefined
+                                }
+                            />
                             {showStatusLines && (
                                 <>
                                     <Line
-                                        type="monotone"
+                                        type="linear"
                                         dataKey="current_off"
-                                        name="Mati (A)"
+                                        name="Mati"
                                         stroke="#dc2626"
-                                        strokeWidth={2.25}
-                                        dot={false}
+                                        strokeWidth={3}
                                         isAnimationActive={false}
                                         connectNulls={false}
+                                        legendType="none"
+                                        dot={false}
+                                        activeDot={{ r: 4, fill: '#dc2626' }}
                                     />
                                     <Line
-                                        type="monotone"
+                                        type="linear"
                                         dataKey="current_idle"
-                                        name="Idle (A)"
+                                        name="Idle"
                                         stroke="#2563eb"
-                                        strokeWidth={2.25}
-                                        dot={false}
+                                        strokeWidth={3}
                                         isAnimationActive={false}
                                         connectNulls={false}
+                                        legendType="none"
+                                        dot={false}
+                                        activeDot={{ r: 4, fill: '#2563eb' }}
                                     />
                                     <Line
-                                        type="monotone"
+                                        type="linear"
                                         dataKey="current_run"
-                                        name="Running (A)"
+                                        name="Running"
                                         stroke="#16a34a"
-                                        strokeWidth={2.25}
-                                        dot={false}
+                                        strokeWidth={3}
                                         isAnimationActive={false}
                                         connectNulls={false}
+                                        legendType="none"
+                                        dot={false}
+                                        activeDot={{ r: 4, fill: '#16a34a' }}
                                     />
                                 </>
                             )}
@@ -592,10 +692,15 @@ export default function SensorTrendChart({
                                 />
                             ))}
                             <Brush
-                                dataKey="label"
+                                dataKey={showStatusLines ? 't' : 'label'}
                                 height={22}
                                 stroke={isPzem ? '#0284c7' : '#0d9488'}
                                 travellerWidth={8}
+                                tickFormatter={
+                                    showStatusLines
+                                        ? (v: number) => fmtAxis(new Date(Number(v)).toISOString())
+                                        : undefined
+                                }
                             />
                         </LineChart>
                     </ResponsiveContainer>

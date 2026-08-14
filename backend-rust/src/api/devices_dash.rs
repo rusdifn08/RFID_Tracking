@@ -124,7 +124,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
   <table>
     <thead>
       <tr>
-        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>SSID</th>
+        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>MAC</th><th>SSID</th>
         <th>RSSI</th><th>Sinyal</th><th>WiFi</th><th>MQTT</th><th>Last ping</th>
       </tr>
     </thead>
@@ -200,6 +200,7 @@ function render(list) {
       '<td class="mono">' + (r.current_a != null ? Number(r.current_a).toFixed(3) + ' A' : '—') + '</td>' +
       '<td><span class="pill ' + (r.is_online?'on':'off') + '">' + (r.is_online?'ONLINE':'OFFLINE') + '</span></td>' +
       '<td class="mono">' + esc(r.ip_addr||'—') + '</td>' +
+      '<td class="mono">' + esc(r.mac_addr||'—') + '</td>' +
       '<td>' + esc(r.wifi_ssid||'—') + '</td>' +
       '<td class="mono">' + rssi + '</td>' +
       '<td class="' + cls(q) + '">' + (SIG[q]||q) + '</td>' +
