@@ -167,28 +167,37 @@ const SewingBatchDashboardPage = memo(() => {
       filteredData.forEach((d: any) => {
         if (d.batch && Array.isArray(d.batch)) {
           d.batch.forEach((b: SewingBatchData) => {
-            // Normalisasi agresif: NBSP/spasi ganda/karakter tak terlihat antar-WO
-            // membuat nama batch sama dianggap beda → card dobel saat filter.
-            const batchName = String(b.nama_batch || '')
-              .normalize('NFKC')
-              .replace(/\s+/g, ' ')
-              .trim()
-              .toUpperCase();
-            const key = batchName || String(b.no_batch);
-            
+            // Gabung per no_batch (BODY DEPAN / BADAN DEPAN = 1 card).
+            // Nama: pakai yang pertama; metrik dijumlah.
+            const no = Number(b.no_batch);
+            const key =
+              Number.isFinite(no) && String(b.no_batch).trim() !== ''
+                ? String(no)
+                : String(b.nama_batch || '')
+                    .normalize('NFKC')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toUpperCase();
+            if (!key) return;
+
             if (aggregatedBatches.has(key)) {
               const existing = aggregatedBatches.get(key)!;
               existing.in += Number(b.in) || 0;
               existing.out += Number(b.out) || 0;
               existing.output_pcs += Number(b.output_pcs) || 0;
-              existing.no_batch = Math.min(Number(existing.no_batch), Number(b.no_batch));
+              // nama_batch tetap milik entry pertama
             } else {
-              aggregatedBatches.set(key, { 
-                ...b, 
-                no_batch: Number(b.no_batch),
-                in: Number(b.in) || 0, 
-                out: Number(b.out) || 0, 
-                output_pcs: Number(b.output_pcs) || 0 
+              aggregatedBatches.set(key, {
+                ...b,
+                no_batch: Number.isFinite(no) ? no : b.no_batch,
+                nama_batch:
+                  String(b.nama_batch || '')
+                    .normalize('NFKC')
+                    .replace(/\s+/g, ' ')
+                    .trim() || b.nama_batch,
+                in: Number(b.in) || 0,
+                out: Number(b.out) || 0,
+                output_pcs: Number(b.output_pcs) || 0,
               });
             }
           });
