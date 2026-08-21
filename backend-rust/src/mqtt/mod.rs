@@ -75,9 +75,15 @@ async fn subscribe_all(client: &AsyncClient, prefix: &str) -> anyhow::Result<()>
         .subscribe(format!("{prefix}/+/ack"), QoS::AtLeastOnce)
         .await?;
     client
+        .subscribe(format!("{prefix}/+/history/+"), QoS::AtLeastOnce)
+        .await?;
+    client
+        .subscribe(format!("{prefix}/+/history"), QoS::AtLeastOnce)
+        .await?;
+    client
         .subscribe(format!("{prefix}/coordinator/mesh"), QoS::AtLeastOnce)
         .await?;
-    logbuf::info(format!("MQTT subscribed {prefix}/+/telemetry/+ and …/coordinator/mesh"));
+    logbuf::info(format!("MQTT subscribed {prefix}/+/telemetry/+ , …/history , and …/coordinator/mesh"));
     Ok(())
 }
 
@@ -388,6 +394,20 @@ async fn handle_message(
         return Ok(());
     }
 
+    if parts.last() == Some(&"history") {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
+            let _ = ingest_esp_daily_history_batch(state, broker_host, &v).await;
+        }
+        return Ok(());
+    }
+
+    if parts.len() >= 4 && parts[parts.len() - 2] == "history" && parts.last() == Some(&"daily") {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
+            let _ = ingest_esp_daily_history_single(state, broker_host, &v).await;
+        }
+        return Ok(());
+    }
+
     if parts.len() < 5 {
         return Ok(());
     }
@@ -425,6 +445,189 @@ async fn handle_message(
         },
         _ => {}
     }
+    Ok(())
+}
+
+async fn ingest_esp_daily_history_single(
+    state: &AppState,
+    broker_host: &str,
+    val: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let machine_code = val.get("machine_code").and_then(|x| x.as_str()).unwrap_or("");
+    let device_uid = val.get("device_uid").and_then(|x| x.as_str()).unwrap_or("");
+    if machine_code.is_empty() && device_uid.is_empty() {
+        return Ok(());
+    }
+
+    let machine = machine_svc::find_or_provision(state, Some(machine_code), device_uid).await?;
+    let ymd = val.get("ymd").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let date_str = val.get("date").and_then(|x| x.as_str());
+
+    let work_date = if let Some(ds) = date_str {
+        chrono::NaiveDate::parse_from_str(ds, "%Y-%m-%d").unwrap_or_else(|_| {
+            if ymd >= 10000000 {
+                let y = ymd / 10000;
+                let m = (ymd % 10000) / 100;
+                let d = ymd % 100;
+                chrono::NaiveDate::from_ymd_opt(y, m as u32, d as u32).unwrap_or(detection::work_date_wib())
+            } else {
+                detection::work_date_wib()
+            }
+        })
+    } else if ymd >= 10000000 {
+        let y = ymd / 10000;
+        let m = (ymd % 10000) / 100;
+        let d = ymd % 100;
+        chrono::NaiveDate::from_ymd_opt(y, m as u32, d as u32).unwrap_or(detection::work_date_wib())
+    } else {
+        detection::work_date_wib()
+    };
+
+    let run_sec = val.get("run_sec").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let loss_sec = val.get("loss_sec").or_else(|| val.get("idle_sec")).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let off_sec = val.get("off_sec").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let power_on_sec = val.get("power_on_sec").and_then(|x| x.as_i64()).unwrap_or((run_sec + loss_sec) as i64) as i32;
+    let prod_pct = val.get("productivity_pct").and_then(|x| x.as_f64()).unwrap_or_else(|| {
+        if power_on_sec > 0 {
+            (run_sec as f64 / power_on_sec as f64) * 100.0
+        } else {
+            0.0
+        }
+    });
+    let mqtt_service = val.get("mqtt_service").and_then(|x| x.as_str()).unwrap_or(broker_host);
+
+    sqlx::query(
+        r#"INSERT INTO esp_daily_history (
+             machine_id, device_uid, work_date, ymd,
+             run_sec, loss_sec, off_sec, power_on_sec,
+             productivity_pct, mqtt_service, saved_at, updated_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+           ON CONFLICT (machine_id, work_date) DO UPDATE SET
+             device_uid = EXCLUDED.device_uid,
+             ymd = EXCLUDED.ymd,
+             run_sec = EXCLUDED.run_sec,
+             loss_sec = EXCLUDED.loss_sec,
+             off_sec = EXCLUDED.off_sec,
+             power_on_sec = EXCLUDED.power_on_sec,
+             productivity_pct = EXCLUDED.productivity_pct,
+             mqtt_service = EXCLUDED.mqtt_service,
+             saved_at = EXCLUDED.saved_at,
+             updated_at = NOW()"#,
+    )
+    .bind(machine.id)
+    .bind(if device_uid.is_empty() { "unknown" } else { device_uid })
+    .bind(work_date)
+    .bind(ymd)
+    .bind(run_sec)
+    .bind(loss_sec)
+    .bind(off_sec)
+    .bind(power_on_sec)
+    .bind(prod_pct)
+    .bind(mqtt_service)
+    .execute(&state.pool)
+    .await?;
+
+    logbuf::info(format!(
+        "esp_daily_history saved: machine={} date={} run={}s loss={}s off={}s prod={:.1}%",
+        machine.code, work_date, run_sec, loss_sec, off_sec, prod_pct
+    ));
+    Ok(())
+}
+
+async fn ingest_esp_daily_history_batch(
+    state: &AppState,
+    broker_host: &str,
+    val: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let machine_code = val.get("machine_code").and_then(|x| x.as_str()).unwrap_or("");
+    let device_uid = val.get("device_uid").and_then(|x| x.as_str()).unwrap_or("");
+    let mqtt_service = val.get("mqtt_service").and_then(|x| x.as_str()).unwrap_or(broker_host);
+
+    let history_arr = match val.get("history").and_then(|x| x.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(()),
+    };
+
+    if machine_code.is_empty() && device_uid.is_empty() {
+        return Ok(());
+    }
+
+    let machine = machine_svc::find_or_provision(state, Some(machine_code), device_uid).await?;
+
+    for item in history_arr {
+        let ymd = item.get("ymd").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let date_str = item.get("date").and_then(|x| x.as_str());
+        let work_date = if let Some(ds) = date_str {
+            chrono::NaiveDate::parse_from_str(ds, "%Y-%m-%d").unwrap_or_else(|_| {
+                if ymd >= 10000000 {
+                    let y = ymd / 10000;
+                    let m = (ymd % 10000) / 100;
+                    let d = ymd % 100;
+                    chrono::NaiveDate::from_ymd_opt(y, m as u32, d as u32).unwrap_or(detection::work_date_wib())
+                } else {
+                    detection::work_date_wib()
+                }
+            })
+        } else if ymd >= 10000000 {
+            let y = ymd / 10000;
+            let m = (ymd % 10000) / 100;
+            let d = ymd % 100;
+            chrono::NaiveDate::from_ymd_opt(y, m as u32, d as u32).unwrap_or(detection::work_date_wib())
+        } else {
+            continue;
+        };
+
+        let run_sec = item.get("run_sec").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let loss_sec = item.get("loss_sec").or_else(|| item.get("idle_sec")).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let off_sec = item.get("off_sec").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let power_on_sec = item.get("power_on_sec").and_then(|x| x.as_i64()).unwrap_or((run_sec + loss_sec) as i64) as i32;
+        let prod_pct = item.get("productivity_pct").and_then(|x| x.as_f64()).unwrap_or_else(|| {
+            if power_on_sec > 0 {
+                (run_sec as f64 / power_on_sec as f64) * 100.0
+            } else {
+                0.0
+            }
+        });
+
+        let _ = sqlx::query(
+            r#"INSERT INTO esp_daily_history (
+                 machine_id, device_uid, work_date, ymd,
+                 run_sec, loss_sec, off_sec, power_on_sec,
+                 productivity_pct, mqtt_service, saved_at, updated_at
+               )
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+               ON CONFLICT (machine_id, work_date) DO UPDATE SET
+                 device_uid = EXCLUDED.device_uid,
+                 ymd = EXCLUDED.ymd,
+                 run_sec = EXCLUDED.run_sec,
+                 loss_sec = EXCLUDED.loss_sec,
+                 off_sec = EXCLUDED.off_sec,
+                 power_on_sec = EXCLUDED.power_on_sec,
+                 productivity_pct = EXCLUDED.productivity_pct,
+                 mqtt_service = EXCLUDED.mqtt_service,
+                 saved_at = EXCLUDED.saved_at,
+                 updated_at = NOW()"#,
+        )
+        .bind(machine.id)
+        .bind(if device_uid.is_empty() { "unknown" } else { device_uid })
+        .bind(work_date)
+        .bind(ymd)
+        .bind(run_sec)
+        .bind(loss_sec)
+        .bind(off_sec)
+        .bind(power_on_sec)
+        .bind(prod_pct)
+        .bind(mqtt_service)
+        .execute(&state.pool)
+        .await;
+    }
+
+    logbuf::info(format!(
+        "esp_daily_history batch synced: machine={} items={}",
+        machine.code,
+        history_arr.len()
+    ));
     Ok(())
 }
 

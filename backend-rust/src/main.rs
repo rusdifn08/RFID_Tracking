@@ -62,6 +62,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/devices/{id}/wifi-config",
             post(api::devices_dash::set_wifi_config),
         )
+        .route(
+            "/api/devices/{id}/history",
+            get(api::devices_dash::get_device_history),
+        )
+        .route(
+            "/api/devices/{id}/history/sync",
+            post(api::devices_dash::request_history_sync),
+        )
         .route("/api/machines", get(api::machines::list_machines).post(api::machines::create_machine))
         .route(
             "/api/machines/by-barcode/{barcode}",

@@ -15,10 +15,10 @@ async fn main() -> anyhow::Result<()> {
         .connect_with(opts)
         .await?;
 
-    println!("Applying migration 040_gm3_operators_process.sql ...");
-    let sql = include_str!("../../migrations/040_gm3_operators_process.sql");
+    println!("Applying migration 041_esp_daily_history.sql ...");
+    let sql = include_str!("../../migrations/041_esp_daily_history.sql");
     sqlx::raw_sql(sql).execute(&pool).await?;
 
-    println!("✅ Migration 040_gm3_operators_process applied successfully!");
+    println!("✅ Migration 041_esp_daily_history applied successfully!");
     Ok(())
 }

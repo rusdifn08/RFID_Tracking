@@ -72,6 +72,11 @@ const PAGE: &str = r#"<!DOCTYPE html>
   .legend .dot { opacity: 1; }
   tr.pick { cursor: pointer; }
   tr.pick.active td { background: rgba(61,214,140,.08); }
+  .btn-hist {
+    background: #1e293b; color: #38bdf8; border: 1px solid #334155;
+    border-radius: 5px; padding: .25rem .55rem; font-size: .75rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-hist:hover { background: #0284c7; color: #fff; }
   #wifi-box {
     margin-top: .8rem; border: 1px solid var(--line); border-radius: 8px;
     background: #111a25; padding: .65rem .75rem;
@@ -108,6 +113,34 @@ const PAGE: &str = r#"<!DOCTYPE html>
   #logs .L-WARN { color: var(--warn); }
   #logs .L-ERROR { color: var(--bad); }
   #logs .ts { color: var(--muted); }
+
+  /* Modal Riwayat 7 Hari */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 999;
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .modal-card {
+    background: #131b26; border: 1px solid var(--line); border-radius: 12px;
+    width: 100%; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,.5); overflow: hidden;
+  }
+  .modal-header {
+    padding: .85rem 1.25rem; border-bottom: 1px solid var(--line); display: flex;
+    align-items: center; justify-content: space-between; background: #0d131c;
+  }
+  .modal-header h3 { margin: 0; font-size: 1rem; color: #60a5fa; }
+  .modal-close {
+    background: transparent; border: none; color: var(--muted); font-size: 1.2rem;
+    cursor: pointer; padding: .2rem .5rem; line-height: 1;
+  }
+  .modal-close:hover { color: #fff; }
+  .modal-body { padding: 1rem 1.25rem; overflow: auto; flex: 1 1 auto; }
+  .btn-act {
+    background: #0284c7; color: #fff; border: none; border-radius: 6px;
+    padding: .35rem .75rem; font-size: .8rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-act:hover { background: #0369a1; }
+  .hist-tbl th { background: #1e293b; color: #94a3b8; }
 </style>
 </head>
 <body>
@@ -127,7 +160,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
     <thead>
       <tr>
         <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>MAC</th><th>SSID</th><th>MQTT Service</th>
-        <th>RSSI</th><th>Sinyal</th><th>WiFi</th><th>MQTT</th><th>Last ping</th>
+        <th>RSSI</th><th>Sinyal</th><th>WiFi</th><th>MQTT</th><th>Last ping</th><th>Memori 7 Hari (ESP)</th>
       </tr>
     </thead>
     <tbody id="rows"></tbody>
@@ -147,6 +180,41 @@ const PAGE: &str = r#"<!DOCTYPE html>
     <div id="wifi-msg"></div>
   </div>
 </div>
+
+<!-- Modal 7-Day History Popup -->
+<div id="hist-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="hist-title">Memori 7 Hari ESP (Snapshot 00:00)</h3>
+      <button type="button" class="modal-close" onclick="closeHistoryModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem; flex-wrap:wrap; gap:.5rem;">
+        <span class="meta">Data real snapshot jam 00:00 WIB yang tersimpan di memori NVS ESP32:</span>
+        <button id="btn-sync-hist" type="button" class="btn-act">🔄 Minta Sinkronisasi dari ESP</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="hist-tbl" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>RUNNING</th>
+              <th>LOSS / IDLE</th>
+              <th>OFF</th>
+              <th>POWER ON</th>
+              <th>Produktivitas</th>
+              <th>Waktu Snapshot</th>
+              <th>MQTT Service</th>
+            </tr>
+          </thead>
+          <tbody id="hist-rows"></tbody>
+        </table>
+      </div>
+      <div id="hist-msg" class="meta" style="margin-top:.6rem; color:#38bdf8;"></div>
+    </div>
+  </div>
+</div>
+
 <div id="log-panel">
   <div class="bar">Backend log (MQTT / health)</div>
   <pre id="logs"></pre>
@@ -155,6 +223,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
 const SIG = { excellent:'Sangat bagus', good:'Bagus', fair:'Cukup', weak:'Lemah', poor:'Buruk', unknown:'—' };
 let devicesCache = [];
 let selectedMachineId = '';
+let currentHistMachineId = '';
 let stickBottom = true;
 const logEl = document.getElementById('logs');
 logEl.addEventListener('scroll', () => {
@@ -165,6 +234,13 @@ function ageLabel(s) {
   if (s < 60) return s + 's';
   if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
   return Math.floor(s/3600) + 'h';
+}
+function fmtSec(sec) {
+  if (sec == null) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + ' (' + sec + 's)';
 }
 function boolPill(v) {
   if (v === true) return '<span class="pill on">OK</span>';
@@ -213,6 +289,7 @@ function render(list) {
       '<td>' + boolPill(r.wifi_ok) + '</td>' +
       '<td>' + boolPill(r.mqtt_ok) + '</td>' +
       '<td class="mono">' + ageLabel(r.link_age_sec) + '</td>' +
+      '<td><button type="button" class="btn-hist" onclick="event.stopPropagation(); openHistoryModal(\'' + esc(r.id) + '\', \'' + esc(r.code) + '\')">📊 Memori 7 Hari</button></td>' +
       '</tr>';
   }).join('');
   tb.querySelectorAll('tr.pick').forEach(tr => {
@@ -301,6 +378,66 @@ async function applyWifi() {
   if (!r.ok) throw new Error('gagal kirim set_network');
   setWifiMsg('Terkirim. ESP akan reconnect ke WiFi baru.');
 }
+
+async function openHistoryModal(mid, code) {
+  currentHistMachineId = mid;
+  const m = devicesCache.find(x => x.id === mid) || { id: mid, code: code };
+  document.getElementById('hist-title').textContent = 'Memori 7 Hari ESP — ' + (m.code || '') + ' (UID: ' + (m.device_uid || '—') + ')';
+  document.getElementById('hist-modal').style.display = 'flex';
+  loadHistory(mid);
+}
+
+function closeHistoryModal() {
+  document.getElementById('hist-modal').style.display = 'none';
+}
+
+async function loadHistory(mid) {
+  const tbody = document.getElementById('hist-rows');
+  const msgEl = document.getElementById('hist-msg');
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:1.2rem; color:var(--muted);">Memuat riwayat memori dari database...</td></tr>';
+  msgEl.textContent = '';
+  try {
+    const r = await fetch('/api/devices/' + mid + '/history');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const arr = Array.isArray(d.history) ? d.history : [];
+    if (!arr.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:1.5rem; color:var(--muted);">Belum ada snapshot tersimpan. Klik tombol <strong>🔄 Minta Sinkronisasi dari ESP</strong> untuk menarik memori real sekarang.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = arr.map(h => {
+      const prod = Number(h.productivity_pct || 0).toFixed(2);
+      const prodColor = prod >= 90 ? '#4ade80' : (prod >= 80 ? '#38bdf8' : '#fb7185');
+      return '<tr>' +
+        '<td class="mono font-bold" style="color:#60a5fa">' + esc(h.work_date) + '</td>' +
+        '<td class="mono" style="color:#4ade80">' + fmtSec(h.run_sec) + '</td>' +
+        '<td class="mono" style="color:#fbbf24">' + fmtSec(h.loss_sec) + '</td>' +
+        '<td class="mono" style="color:#fb7185">' + fmtSec(h.off_sec) + '</td>' +
+        '<td class="mono">' + fmtSec(h.power_on_sec) + '</td>' +
+        '<td class="mono font-bold" style="color:' + prodColor + '">' + prod + '%</td>' +
+        '<td class="mono meta" style="font-size:.72rem;">' + (h.saved_at ? new Date(h.saved_at).toLocaleString('id-ID') : '—') + '</td>' +
+        '<td class="mono"><span class="pill ' + ((h.mqtt_service||'').includes('10.5.2.223') ? 'robotic' : 'local') + '">' + esc(h.mqtt_service||'—') + '</span></td>' +
+        '</tr>';
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--bad); padding:1rem;">Gagal memuat: ' + esc(e.message) + '</td></tr>';
+  }
+}
+
+document.getElementById('btn-sync-hist').addEventListener('click', async () => {
+  if (!currentHistMachineId) return;
+  const msgEl = document.getElementById('hist-msg');
+  msgEl.textContent = 'Mengirim perintah get_history ke ESP32...';
+  try {
+    const r = await fetch('/api/devices/' + currentHistMachineId + '/history/sync', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    msgEl.textContent = 'Perintah terkirim ke ESP. Menunggu balasan memori MQTT...';
+    setTimeout(() => loadHistory(currentHistMachineId), 1500);
+  } catch (e) {
+    msgEl.textContent = 'Gagal: ' + e.message;
+  }
+});
+
 async function tick() {
   try {
     const [devRes, logRes] = await Promise.all([
@@ -443,6 +580,71 @@ pub async fn set_wifi_config(
         }
     }
     Ok(Json(json!({ "ok": true })))
+}
+
+pub async fn get_device_history(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct HistRow {
+        work_date: chrono::NaiveDate,
+        ymd: i32,
+        run_sec: i32,
+        loss_sec: i32,
+        off_sec: i32,
+        power_on_sec: i32,
+        productivity_pct: f64,
+        mqtt_service: Option<String>,
+        saved_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let list = sqlx::query_as::<_, HistRow>(
+        r#"SELECT work_date, ymd, run_sec, loss_sec, off_sec, power_on_sec, productivity_pct, mqtt_service, saved_at
+           FROM esp_daily_history
+           WHERE machine_id = $1
+           ORDER BY work_date DESC
+           LIMIT 7"#,
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(internal)?;
+
+    Ok(Json(json!({ "machine_id": id, "history": list })))
+}
+
+pub async fn request_history_sync(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        code: String,
+        device_uid: Option<String>,
+    }
+    let row = sqlx::query_as::<_, Row>(
+        r#"SELECT m.code,
+                  (SELECT d.device_uid FROM devices d
+                   WHERE d.machine_id = m.id
+                   ORDER BY d.last_seen_at DESC NULLS LAST
+                   LIMIT 1) AS device_uid
+           FROM machines m WHERE m.id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(internal)?
+    .ok_or((axum::http::StatusCode::NOT_FOUND, "machine not found".into()))?;
+
+    let payload = serde_json::json!({ "command": "get_history" }).to_string();
+    mqtt::publish_command(&state, &row.code, &payload);
+    if let Some(uid) = row.device_uid.as_deref() {
+        if !uid.is_empty() {
+            mqtt::publish_device_command(&state, uid, &payload);
+        }
+    }
+    Ok(Json(json!({ "ok": true, "message": "History sync requested from ESP" })))
 }
 
 fn internal(e: sqlx::Error) -> (axum::http::StatusCode, String) {

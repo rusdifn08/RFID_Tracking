@@ -165,7 +165,24 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
  char topicCmd[96];
  char topicDevCmd[96];  // iot/gistex/dev/{UID}/cmd
  char topicAck[96];
+ char topicHistory[96];       // iot/gistex/{CODE}/history
+ char topicHistoryDaily[96];  // iot/gistex/{CODE}/history/daily
  char willPayload[220];
+
+// ===== 7-Day (1 Minggu) History Memory di NVS =====
+struct DailyHistoryEntry {
+  int ymd;             // YYYYMMDD (contoh: 20260821)
+  uint32_t runSec;     // RUNNING detik
+  uint32_t lossSec;    // LOSS / IDLE detik
+  uint32_t offSec;     // OFF detik
+  uint32_t powerOnSec; // runSec + lossSec
+  float prodPct;       // (runSec / powerOnSec) * 100%
+  uint32_t savedAt;    // Unix timestamp snapshot 00:00
+};
+
+static const uint8_t MAX_HISTORY_DAYS = 7;
+DailyHistoryEntry dailyHistory[MAX_HISTORY_DAYS];
+uint8_t dailyHistoryCount = 0;
  
  enum OpStatus : uint8_t { ST_OFF = 0, ST_IDLE = 1, ST_RUNNING = 2 };
  enum LcdPage : uint8_t {
@@ -351,6 +368,8 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
    snprintf(topicCmd, sizeof(topicCmd), "%s/%s/cmd", TOPIC_PREFIX, machineCode);
    snprintf(topicDevCmd, sizeof(topicDevCmd), "%s/dev/%s/cmd", TOPIC_PREFIX, deviceUid);
    snprintf(topicAck, sizeof(topicAck), "%s/%s/ack", TOPIC_PREFIX, machineCode);
+   snprintf(topicHistory, sizeof(topicHistory), "%s/%s/history", TOPIC_PREFIX, machineCode);
+   snprintf(topicHistoryDaily, sizeof(topicHistoryDaily), "%s/%s/history/daily", TOPIC_PREFIX, machineCode);
    snprintf(willPayload, sizeof(willPayload),
             "{\"device_uid\":\"%s\",\"machine_code\":\"%s\",\"sensor\":\"%s\",\"state\":\"mqtt_lost\",\"online\":false,\"detail\":\"MQTT LWT\"}",
             deviceUid, machineCode, SENSOR_NAME);
@@ -575,6 +594,130 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
    lastTickMs = millis();
    saveCounters(true);
    clearOperatorLogin(reason);  // hari baru → wajib login lagi
+ }
+ 
+ // ===== 7-DAY NVS MEMORY IMPLEMENTATION =====
+ void loadDailyHistory() {
+   dailyHistoryCount = 0;
+   memset(dailyHistory, 0, sizeof(dailyHistory));
+   prefs.begin("pzemhist", true);
+   uint8_t cnt = prefs.getUChar("cnt", 0);
+   if (cnt > MAX_HISTORY_DAYS) cnt = MAX_HISTORY_DAYS;
+   size_t readBytes = prefs.getBytes("data", dailyHistory, sizeof(dailyHistory));
+   prefs.end();
+   if (readBytes > 0) {
+     dailyHistoryCount = cnt;
+   }
+ }
+ 
+ void saveDailyHistory() {
+   prefs.begin("pzemhist", false);
+   prefs.putUChar("cnt", dailyHistoryCount);
+   prefs.putBytes("data", dailyHistory, sizeof(dailyHistory));
+   prefs.end();
+ }
+ 
+ void formatYmdDateStr(int ymd, char *out, size_t n) {
+   if (ymd < 10000000) {
+     snprintf(out, n, "1970-01-01");
+     return;
+   }
+   int y = ymd / 10000;
+   int m = (ymd % 10000) / 100;
+   int d = ymd % 100;
+   snprintf(out, n, "%04d-%02d-%02d", y, m, d);
+ }
+ 
+ void publishDailyHistorySnapshot(const DailyHistoryEntry &e) {
+   if (!mqtt.connected()) return;
+   char dateStr[16];
+   formatYmdDateStr(e.ymd, dateStr, sizeof(dateStr));
+ 
+   StaticJsonDocument<512> doc;
+   doc["device_uid"] = deviceUid;
+   doc["machine_code"] = machineCode;
+   doc["ymd"] = e.ymd;
+   doc["date"] = dateStr;
+   doc["run_sec"] = e.runSec;
+   doc["loss_sec"] = e.lossSec;
+   doc["idle_sec"] = e.lossSec;
+   doc["off_sec"] = e.offSec;
+   doc["power_on_sec"] = e.powerOnSec;
+   doc["productivity_pct"] = e.prodPct;
+   doc["saved_at"] = e.savedAt;
+   doc["mqtt_service"] = mqttHost;
+ 
+   char buf[512];
+   size_t len = serializeJson(doc, buf);
+   mqtt.publish(topicHistoryDaily, (const uint8_t *)buf, len, true);
+ }
+ 
+ void publishAllDailyHistory() {
+   if (!mqtt.connected()) return;
+   StaticJsonDocument<2048> doc;
+   doc["device_uid"] = deviceUid;
+   doc["machine_code"] = machineCode;
+   doc["command"] = "get_history";
+   doc["count"] = dailyHistoryCount;
+   doc["max_days"] = MAX_HISTORY_DAYS;
+   doc["mqtt_service"] = mqttHost;
+   JsonArray arr = doc.createNestedArray("history");
+   for (uint8_t i = 0; i < dailyHistoryCount; i++) {
+     char dateStr[16];
+     formatYmdDateStr(dailyHistory[i].ymd, dateStr, sizeof(dateStr));
+     JsonObject o = arr.createNestedObject();
+     o["ymd"] = dailyHistory[i].ymd;
+     o["date"] = dateStr;
+     o["run_sec"] = dailyHistory[i].runSec;
+     o["loss_sec"] = dailyHistory[i].lossSec;
+     o["idle_sec"] = dailyHistory[i].lossSec;
+     o["off_sec"] = dailyHistory[i].offSec;
+     o["power_on_sec"] = dailyHistory[i].powerOnSec;
+     o["productivity_pct"] = dailyHistory[i].prodPct;
+     o["saved_at"] = dailyHistory[i].savedAt;
+   }
+ 
+   char buf[2048];
+   size_t len = serializeJson(doc, buf);
+   mqtt.publish(topicHistory, (const uint8_t *)buf, len, false);
+ }
+ 
+ void recordDailySnapshot(int ymd, uint32_t rSec, uint32_t lSec, uint32_t oSec) {
+   if (ymd <= 0) return;
+   int existingIdx = -1;
+   for (uint8_t i = 0; i < dailyHistoryCount; i++) {
+     if (dailyHistory[i].ymd == ymd) {
+       existingIdx = i;
+       break;
+     }
+   }
+ 
+   DailyHistoryEntry entry;
+   entry.ymd = ymd;
+   entry.runSec = rSec;
+   entry.lossSec = lSec;
+   entry.offSec = oSec;
+   entry.powerOnSec = rSec + lSec;
+   entry.prodPct = (entry.powerOnSec > 0) ? ((100.0f * rSec) / (float)entry.powerOnSec) : 0.0f;
+   time_t nowSec = 0;
+   time(&nowSec);
+   entry.savedAt = (uint32_t)nowSec;
+ 
+   if (existingIdx >= 0) {
+     dailyHistory[existingIdx] = entry;
+   } else {
+     if (dailyHistoryCount < MAX_HISTORY_DAYS) {
+       dailyHistory[dailyHistoryCount++] = entry;
+     } else {
+       // Hapus yang tertua (> 7 hari), geser array ke kiri
+       for (uint8_t i = 0; i < MAX_HISTORY_DAYS - 1; i++) {
+         dailyHistory[i] = dailyHistory[i + 1];
+       }
+       dailyHistory[MAX_HISTORY_DAYS - 1] = entry;
+     }
+   }
+   saveDailyHistory();
+   publishDailyHistorySnapshot(entry);
  }
  
  // ---------- LCD ----------
@@ -1380,6 +1523,13 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
      publishAck(cmd, true);
    } else if (strcmp(cmd, "get_config") == 0) {
      publishConfigAck(cmd);
+   } else if (strcmp(cmd, "get_history") == 0 || strcmp(cmd, "sync_history") == 0) {
+     publishAllDailyHistory();
+   } else if (strcmp(cmd, "clear_history") == 0) {
+     dailyHistoryCount = 0;
+     memset(dailyHistory, 0, sizeof(dailyHistory));
+     saveDailyHistory();
+     publishAck(cmd, true);
    } else if (strcmp(cmd, "login_success") == 0) {
      setOperatorLoggedIn(true, true);
      const char *msg = doc["lcd_message"] | "Login Sukses";
@@ -1713,6 +1863,7 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
      publishAck("boot", true);
      publishTelemetry();
      publishStatus("resync", "MQTT connected — sync Run/Loss dari ESP", pzemOk);
+     publishAllDailyHistory();
      tryPublishDeepSleepExit();
      return true;
    }
@@ -1788,12 +1939,20 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
      }
      return;
    }
-   if (ymd != lastWibYmd) {
-     publishStatus("day_cut", "WIB midnight / hari baru - reset counter", pzemOk);
-     lastWibYmd = ymd;
-     resetDayCounters("wib_midnight");
-     if (mqtt.connected()) publishTelemetry();
-   }
+    if (ymd != lastWibYmd) {
+      // ===== JAM 00:00 WIB PERGANTIAN HARI =====
+      // 1. Simpan snapshot data hari yang berakhir (lastWibYmd) ke memori 7 hari
+      recordDailySnapshot(lastWibYmd, runSec, lossSec, offSec);
+ 
+      // 2. Publish status & telemetry
+      publishStatus("day_cut", "WIB midnight / hari baru - snapshot 7 hari tersimpan & reset counter", pzemOk);
+      lastWibYmd = ymd;
+      resetDayCounters("wib_midnight");
+      if (mqtt.connected()) {
+        publishTelemetry();
+        publishAllDailyHistory();
+      }
+    }
  }
  
  void readPzem() {
@@ -1886,21 +2045,23 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
    btnResetPrev = resetUp;
  }
  
+
  void setup() {
    delay(300);
    pinMode(BTN_PAGE, INPUT_PULLUP);
    pinMode(BTN_RESET, INPUT_PULLUP);
- 
+
    loadIdentity();
    buildTopics();
    loadCounters();  // lanjutkan Run/Loss setelah restart
+   loadDailyHistory(); // load memori riwayat 7 hari (1 minggu)
    loadCalibration();
    loadLoginState();
- 
+
    Wire.begin(I2C_SDA, I2C_SCL);
    lcd.init();
    lcd.backlight();
- 
+
    bool fromDeepSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
  
    if (!fromDeepSleep) {
