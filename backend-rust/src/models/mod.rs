@@ -160,6 +160,8 @@ pub struct AdxlPayload {
     pub loss_sec: Option<u32>,
     #[serde(default)]
     pub off_sec: Option<u32>,
+    #[serde(default, alias = "mqtt_server", alias = "mqtt_host")]
+    pub mqtt_service: Option<String>,
     #[serde(default)]
     pub ts: Option<DateTime<Utc>>,
 }
@@ -189,6 +191,8 @@ pub struct PzemPayload {
     /// "zigbee" = lewat Coordinator bridge; kosong = ESP Wi‑Fi langsung
     #[serde(default)]
     pub transport: Option<String>,
+    #[serde(default, alias = "mqtt_server", alias = "mqtt_host")]
+    pub mqtt_service: Option<String>,
     #[serde(default)]
     pub ts: Option<DateTime<Utc>>,
 }
@@ -220,6 +224,8 @@ pub struct DeviceStatusPayload {
     pub mac: Option<String>,
     #[serde(default)]
     pub wifi_ssid: Option<String>,
+    #[serde(default, alias = "mqtt_server", alias = "mqtt_host")]
+    pub mqtt_service: Option<String>,
     #[serde(default)]
     pub ip_once: Option<bool>,
     #[serde(default)]
@@ -316,6 +322,20 @@ pub enum WsEvent {
         magnitude_g: Option<f64>,
         current_a: Option<f64>,
         ts: DateTime<Utc>,
+    },
+    /// Operator / line / location — dashboard langsung, LCD via MQTT retained.
+    MachineMeta {
+        machine_id: Uuid,
+        work_date: chrono::NaiveDate,
+        operator_nik: Option<String>,
+        operator_name: Option<String>,
+        garment_style: Option<String>,
+        branch: String,
+        line_name: String,
+        location_note: Option<String>,
+        /// Waktu login terakhir (RFC3339 UTC); null jika default operator tanpa scan
+        #[serde(skip_serializing_if = "Option::is_none")]
+        logged_at: Option<DateTime<Utc>>,
     },
 }
 

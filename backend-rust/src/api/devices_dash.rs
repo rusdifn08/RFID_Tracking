@@ -53,6 +53,8 @@ const PAGE: &str = r#"<!DOCTYPE html>
   .exc, .good { color: var(--ok); }
   .fair, .weak { color: var(--warn); }
   .poor { color: var(--bad); } .unk { color: var(--unk); }
+  .pill.robotic { background: rgba(56,189,248,.18); color: #38bdf8; }
+  .pill.local { background: rgba(168,85,247,.18); color: #c084fc; }
   .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace; }
   .empty { color: var(--muted); padding: 1.5rem; text-align: center; }
   .err { color: var(--bad); padding: .5rem 0; }
@@ -111,7 +113,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
 <body>
 <header>
   <h1>Device Health Monitor</h1>
-  <span class="meta">Poll <strong>2s</strong> · <span id="clock">—</span> · online <strong id="n-on">0</strong>/<span id="n-tot">0</span>
+  <span class="meta">Poll <strong>2s</strong> · <span id="clock">—</span> · online <strong id="n-on">0</strong>/<span id="n-tot">0</span> · Broker: <strong style="color:#c084fc">10.5.0.106</strong> (Lokal) & <strong style="color:#38bdf8">10.5.2.223</strong> (Robotic)
     <span class="legend">
       <span><i class="dot on-run"></i>Running</span>
       <span><i class="dot on-idle"></i>Idle</span>
@@ -124,7 +126,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
   <table>
     <thead>
       <tr>
-        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>MAC</th><th>SSID</th>
+        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>MAC</th><th>SSID</th><th>MQTT Service</th>
         <th>RSSI</th><th>Sinyal</th><th>WiFi</th><th>MQTT</th><th>Last ping</th>
       </tr>
     </thead>
@@ -193,6 +195,9 @@ function render(list) {
   tb.innerHTML = devices.map(r => {
     const q = r.signal_quality || 'unknown';
     const rssi = r.rssi != null ? r.rssi + ' dBm' : '—';
+    const mqttBadge = r.mqtt_service
+      ? '<span class="pill ' + (r.mqtt_service.includes('10.5.2.223') ? 'robotic' : 'local') + '">' + esc(r.mqtt_service) + '</span>'
+      : '—';
     return '<tr class="pick' + (selectedMachineId===r.id?' active':'') + '" data-mid="' + esc(r.id) + '">' +
       '<td><strong>' + esc(r.code) + '</strong><div class="meta">' + esc(r.display_name||r.name||'') + '</div></td>' +
       '<td class="mono">' + esc(r.device_uid||'—') + '</td>' +
@@ -202,6 +207,7 @@ function render(list) {
       '<td class="mono">' + esc(r.ip_addr||'—') + '</td>' +
       '<td class="mono">' + esc(r.mac_addr||'—') + '</td>' +
       '<td>' + esc(r.wifi_ssid||'—') + '</td>' +
+      '<td class="mono">' + mqttBadge + '</td>' +
       '<td class="mono">' + rssi + '</td>' +
       '<td class="' + cls(q) + '">' + (SIG[q]||q) + '</td>' +
       '<td>' + boolPill(r.wifi_ok) + '</td>' +

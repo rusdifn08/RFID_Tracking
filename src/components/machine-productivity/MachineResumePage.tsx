@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Calendar, Download, Search, X } from 'lucide-react';
-import { iotApiBase } from './iotApi';
+import { iotApiBase, iotWsUrl } from './iotApi';
 import { formatMachineCodeLabel } from './machineLoginUrl';
 import OperationKpiStrip from './OperationKpiStrip';
 import SensorTrendChart from './SensorTrendChart';
@@ -38,6 +38,8 @@ type ResumeRow = {
     operator_name: string | null;
     operator_note: string | null;
     shift_status: string;
+    /** ISO waktu login (updated_at daily_shifts); null = default / belum scan */
+    logged_at?: string | null;
     garment_style: string | null;
     wo: string | null;
     size_label: string | null;
@@ -117,6 +119,7 @@ function normalizeResumeRow(raw: Record<string, unknown>): ResumeRow {
         operator_name: (raw.operator_name as string | null) ?? null,
         operator_note: (raw.operator_note as string | null) ?? (raw.notes as string | null) ?? null,
         shift_status: String(raw.shift_status ?? 'work'),
+        logged_at: (raw.logged_at as string | null) ?? null,
         garment_style: (raw.garment_style as string | null) ?? null,
         wo: (raw.wo as string | null) ?? null,
         size_label: (raw.size_label as string | null) ?? null,
@@ -153,6 +156,19 @@ function formatWorkDate(wd: string) {
     const [y, m, d] = s.split('-');
     if (!y || !m || !d) return s;
     return `${d}/${m}/${y}`;
+}
+
+/** Jam login WIB dari ISO, contoh 08:32 */
+function formatLoginTime(iso: string | null | undefined) {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(new Date(t));
 }
 
 function rexyOf(t: SensorTimes) {
@@ -261,7 +277,13 @@ function toSheetRows(list: Enriched[]) {
         BRANCH: m.branch || '',
         LINE: m.line_name || '',
         LOCATION: [m.branch, m.line_name].filter(Boolean).join(' · ') || m.location_note || '',
-        OPERATOR: m.operator_name ? `${m.operator_nik ?? ''} - ${m.operator_name}` : 'Not logged in',
+        OPERATOR: (() => {
+            if (!m.operator_name) return 'Not logged in';
+            const jam = formatLoginTime(m.logged_at);
+            return jam
+                ? `${m.operator_nik ?? ''} - ${m.operator_name} (${jam})`
+                : `${m.operator_nik ?? ''} - ${m.operator_name}`;
+        })(),
         STATUS_SHIFT: m.shift_status,
         'OPERATOR NOTE': m.operator_note || '-',
         'POWER ON DURATION': formatDuration(m.powerOn),
@@ -408,6 +430,66 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
     }, [apiBase, startDate, endDate, enableSim]);
 
     useEffect(() => {
+        let ws: WebSocket | null = null;
+        let closed = false;
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        const connect = () => {
+            if (closed) return;
+            ws = new WebSocket(iotWsUrl());
+            ws.onmessage = (ev) => {
+                try {
+                    const msg = JSON.parse(ev.data as string) as {
+                        type?: string;
+                        machine_id?: string;
+                        work_date?: string;
+                        operator_nik?: string | null;
+                        operator_name?: string | null;
+                        garment_style?: string | null;
+                        branch?: string;
+                        line_name?: string;
+                        location_note?: string | null;
+                        logged_at?: string | null;
+                    };
+                    if (msg.type !== 'machine_meta' || !msg.machine_id) return;
+                    const day = String(msg.work_date ?? '').slice(0, 10);
+                    setRows((prev) =>
+                        prev.map((r) => {
+                            if (r.id !== msg.machine_id) return r;
+                            const loc = {
+                                ...r,
+                                branch: msg.branch ?? r.branch,
+                                line_name: msg.line_name ?? r.line_name,
+                                location_note:
+                                    msg.location_note !== undefined ? msg.location_note : r.location_note,
+                            };
+                            if (day && workDateOnly(r.work_date) !== day) return loc;
+                            return {
+                                ...loc,
+                                operator_nik: msg.operator_nik ?? null,
+                                operator_name: msg.operator_name ?? null,
+                                garment_style: msg.garment_style ?? null,
+                                logged_at:
+                                    msg.logged_at !== undefined ? msg.logged_at : r.logged_at,
+                            };
+                        }),
+                    );
+                } catch {
+                    /* ignore */
+                }
+            };
+            ws.onclose = () => {
+                if (!closed) retry = setTimeout(connect, 2000);
+            };
+        };
+        connect();
+        return () => {
+            closed = true;
+            if (retry) clearTimeout(retry);
+            ws?.close();
+        };
+    }, []);
+
+    useEffect(() => {
         if (enableSim) {
             setThr({ run: 0.6, off: 0.03 });
             return;
@@ -460,19 +542,29 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
     const filtered = useMemo(() => filterRows(enrichRows(rows), q, area), [rows, q, area]);
     const sum = useMemo(() => summarize(filtered), [filtered]);
 
+    // Rank/KPI hari ini vs filter Start/End: rankDate di luar rentang fetch → list kosong
+    useEffect(() => {
+        let from = startDate || todayIso();
+        let to = endDate || todayIso();
+        if (from > to) {
+            const tmp = from;
+            from = to;
+            to = tmp;
+        }
+        if (rankDate < from || rankDate > to) setRankDate(from === to ? from : to);
+    }, [startDate, endDate, rankDate]);
+
     const rankList = useMemo(() => {
         const day = rankDate || todayIso();
-        return enrichRows(rows)
+        return filtered
             .filter((m) => workDateOnly(m.work_date) === day)
             .sort((a, b) => b.prod - a.prod);
-    }, [rows, rankDate]);
+    }, [filtered, rankDate]);
 
     const attentionList = useMemo(
         () => rankList.filter((m) => m.cat === 'BAD').slice(0, 12),
         [rankList],
     );
-
-    const rankSum = useMemo(() => summarize(rankList), [rankList]);
 
     const exportExcel = () => {
         const wb = XLSX.utils.book_new();
@@ -511,12 +603,14 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 <div className="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-[#2563eb] mb-2">
-                        Kesimpulan Hari Ini
+                        {startDate === endDate && startDate === today
+                            ? 'Kesimpulan Hari Ini'
+                            : 'Kesimpulan Filter'}
                     </p>
                     <h2 className="text-lg font-bold text-slate-800">Ringkasan performa produksi mesin</h2>
                     <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                        {rankSum.good} mesin GOOD, {rankSum.normal} NORMAL, dan {rankSum.bad} BAD dari
-                        total {rankSum.n} mesin. Rata-rata produktivitas {rankSum.avg.toFixed(2)}%.
+                        {sum.good} mesin GOOD, {sum.normal} NORMAL, dan {sum.bad} BAD dari total {sum.n}{' '}
+                        mesin. Rata-rata produktivitas {sum.avg.toFixed(2)}%.
                     </p>
                 </div>
                 <div className="lg:col-span-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -524,10 +618,10 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                         Mesin Terbaik
                     </p>
                     <p className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[2.5rem]">
-                        {rankSum.best?.display_name ?? '—'}
+                        {sum.best?.display_name ?? '—'}
                     </p>
                     <p className="text-3xl font-extrabold text-[#2563eb] mt-2 tabular-nums">
-                        {rankSum.best ? `${rankSum.best.prod.toFixed(2)}%` : '—'}
+                        {sum.best ? `${sum.best.prod.toFixed(2)}%` : '—'}
                     </p>
                 </div>
                 <div className="lg:col-span-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -535,29 +629,33 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                         Terendah
                     </p>
                     <p className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[2.5rem]">
-                        {rankSum.worst?.display_name ?? '—'}
+                        {sum.worst?.display_name ?? '—'}
                     </p>
                     <p className="text-3xl font-extrabold text-rose-600 mt-2 tabular-nums">
-                        {rankSum.worst ? `${rankSum.worst.prod.toFixed(2)}%` : '—'}
+                        {sum.worst ? `${sum.worst.prod.toFixed(2)}%` : '—'}
                     </p>
                 </div>
             </div>
 
             {/* 6 metric cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                <MetricCard label="Total Mesin" value={String(rankSum.n)} sub="Mesin terdaftar" />
+                <MetricCard label="Total Mesin" value={String(sum.n)} sub="Mesin terdaftar" />
                 <MetricCard
                     label="Avg Produktivitas"
-                    value={`${rankSum.avg.toFixed(2)}%`}
+                    value={`${sum.avg.toFixed(2)}%`}
                     sub="Rata-rata seluruh mesin"
                 />
-                <MetricCard label="Good" value={String(rankSum.good)} sub="≥ 90%" />
-                <MetricCard label="Normal" value={String(rankSum.normal)} sub="80% sampai < 90%" />
-                <MetricCard label="Bad" value={String(rankSum.bad)} sub="< 80%" />
+                <MetricCard label="Good" value={String(sum.good)} sub="≥ 90%" />
+                <MetricCard label="Normal" value={String(sum.normal)} sub="80% sampai < 90%" />
+                <MetricCard label="Bad" value={String(sum.bad)} sub="< 80%" />
                 <MetricCard
                     label="Power On"
-                    value={formatDuration(rankList.reduce((a, m) => a + m.powerOn, 0))}
-                    sub="Total Power On hari ini"
+                    value={formatDuration(filtered.reduce((a, m) => a + m.powerOn, 0))}
+                    sub={
+                        startDate === endDate && startDate === today
+                            ? 'Total Power On hari ini'
+                            : 'Total Power On pada filter'
+                    }
                 />
             </div>
 
@@ -847,8 +945,12 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                                                         {m.operator_nik} - {m.operator_name}
                                                     </p>
                                                     <p className="text-[11px] text-[#2563eb]">
-                                                        {shiftStatusLabel(m.shift_status)} ·{' '}
-                                                        {formatWorkDate(m.work_date)}
+                                                        {(() => {
+                                                            const jam = formatLoginTime(m.logged_at);
+                                                            return jam
+                                                                ? `${shiftStatusLabel(m.shift_status)} · ${formatWorkDate(m.work_date)} · ${jam}`
+                                                                : `${shiftStatusLabel(m.shift_status)} · ${formatWorkDate(m.work_date)}`;
+                                                        })()}
                                                     </p>
                                                 </>
                                             ) : (

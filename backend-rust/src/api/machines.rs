@@ -67,6 +67,7 @@ pub async fn list_control_machines(
         wifi_ssid: Option<String>,
         mac_addr: Option<String>,
         last_health_at: Option<chrono::DateTime<chrono::Utc>>,
+        mqtt_service: Option<String>,
     }
 
     let rows = sqlx::query_as::<_, Row>(
@@ -88,11 +89,12 @@ pub async fn list_control_machines(
               d.device_uid, d.last_seen_at,
               COALESCE(d.is_online, FALSE) AS is_online,
               (d.device_uid IS NOT NULL) AS has_device,
-              d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.mac_addr, d.last_health_at
+              d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.mac_addr, d.last_health_at,
+              d.mqtt_service
            FROM machines m
            LEFT JOIN LATERAL (
              SELECT device_uid, last_seen_at, is_online,
-                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at
+                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at, mqtt_service
              FROM devices
              WHERE machine_id = m.id
              ORDER BY last_seen_at DESC NULLS LAST
@@ -161,6 +163,7 @@ pub async fn list_control_machines(
                 "ip_addr": r.ip_addr,
                 "wifi_ssid": r.wifi_ssid,
                 "mac_addr": r.mac_addr,
+                "mqtt_service": r.mqtt_service,
                 "last_health_at": r.last_health_at,
                 "link_age_sec": age_sec,
                 "signal_quality": signal,
@@ -669,6 +672,7 @@ pub async fn update_calibration(
 
     let device_uid = effective_uid.as_str();
     crate::services::machine::cache_machine(&state, &row, device_uid);
+    mqtt::push_operator_snapshot(&state, &row).await;
 
     Ok(Json(row))
 }
@@ -758,61 +762,8 @@ fn push_display(state: &AppState, row: &Machine) {
     mqtt::publish_command(state, &row.code, &payload.to_string());
 }
 
-async fn push_login_status(state: &AppState, row: &Machine, uid: &str) -> anyhow::Result<()> {
-    let today = crate::services::detection::work_date_wib();
-    let shift = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-        r#"SELECT operator_nik, operator_name, garment_style, shift_status
-           FROM daily_shifts
-           WHERE machine_id = $1 AND work_date = $2"#,
-    )
-    .bind(row.id)
-    .bind(today)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let payload = if !row.login_required {
-        if let Some((nik, name, style, st)) = shift {
-            json!({
-                "command": "login_status",
-                "logged_in": true,
-                "login_required": false,
-                "operator_nik": nik,
-                "operator_name": name,
-                "garment_style": style,
-                "shift_status": st.unwrap_or_else(|| "work".into()),
-            })
-        } else {
-            json!({
-                "command": "login_status",
-                "logged_in": true,
-                "login_required": false,
-                "operator_nik": row.default_operator_nik,
-                "operator_name": row.default_operator_name,
-            })
-        }
-    } else if let Some((nik, name, style, st)) = shift {
-        json!({
-            "command": "login_status",
-            "logged_in": true,
-            "login_required": true,
-            "operator_nik": nik,
-            "operator_name": name,
-            "garment_style": style,
-            "shift_status": st.unwrap_or_else(|| "work".into()),
-        })
-    } else {
-        json!({
-            "command": "login_status",
-            "logged_in": false,
-            "login_required": true,
-        })
-    };
-
-    let s = payload.to_string();
-    mqtt::publish_command(state, &row.code, &s);
-    if !uid.is_empty() {
-        mqtt::publish_device_command(state, uid, &s);
-    }
+async fn push_login_status(state: &AppState, row: &Machine, _uid: &str) -> anyhow::Result<()> {
+    mqtt::push_operator_snapshot(state, row).await;
     Ok(())
 }
 
@@ -938,6 +889,64 @@ pub async fn send_command(
     Ok(Json(json!({ "ok": true, "command_id": cmd_id })))
 }
 
+#[derive(Deserialize)]
+pub struct OtaBody {
+    pub url: String,
+    pub sha256: String,
+    pub version: Option<String>,
+    pub size: Option<u64>,
+}
+
+fn valid_sha256_hex(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// OTA HTTPS: backend hanya meneruskan URL+SHA-256 ke ESP. Binary tidak disimpan di repo.
+pub async fn start_ota(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<OtaBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let url = body.url.trim();
+    if !url.starts_with("https://") {
+        return Err((StatusCode::BAD_REQUEST, "url harus HTTPS".into()));
+    }
+    let sha = body.sha256.trim();
+    if !valid_sha256_hex(sha) {
+        return Err((StatusCode::BAD_REQUEST, "sha256 harus 64 hex".into()));
+    }
+    let machine = sqlx::query_as::<_, Machine>(r#"SELECT * FROM machines WHERE id = $1"#)
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?
+        .ok_or((StatusCode::NOT_FOUND, "machine not found".into()))?;
+    let uid = device_uid_for_machine(&state, machine.id)
+        .await
+        .unwrap_or_default();
+    let cmd_id = Uuid::new_v4();
+    let payload = json!({
+        "command": "ota_update",
+        "confirm": true,
+        "command_id": cmd_id,
+        "url": url,
+        "sha256": sha.to_ascii_lowercase(),
+        "version": body.version,
+        "size": body.size,
+        "target_uid": uid,
+    });
+    let s = payload.to_string();
+    mqtt::publish_command(&state, &machine.code, &s);
+    if !uid.is_empty() {
+        mqtt::publish_device_command(&state, &uid, &s);
+    }
+    Ok(Json(json!({
+        "ok": true,
+        "command_id": cmd_id,
+        "machine_code": machine.code,
+    })))
+}
+
 fn internal(e: sqlx::Error) -> (StatusCode, String) {
     tracing::error!("{e:#}");
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
@@ -962,7 +971,7 @@ fn signal_quality(rssi: Option<i32>) -> &'static str {
 mod tests {
     use super::{
         code_from_gate_slug, link_live, machine_code_slug, machine_name_slug, normalize_machine_barcode,
-        signal_quality,
+        signal_quality, valid_sha256_hex,
     };
 
     #[test]
@@ -999,5 +1008,16 @@ mod tests {
         assert_eq!(machine_code_slug("JUKI-002"), "juki-002");
         assert_eq!(code_from_gate_slug("juki-002").as_deref(), Some("JUKI002"));
         assert_eq!(code_from_gate_slug("juki002").as_deref(), Some("JUKI002"));
+    }
+
+    #[test]
+    fn ota_sha256_hex() {
+        assert!(valid_sha256_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
+        assert!(!valid_sha256_hex("abc"));
+        assert!(!valid_sha256_hex(
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+        ));
     }
 }

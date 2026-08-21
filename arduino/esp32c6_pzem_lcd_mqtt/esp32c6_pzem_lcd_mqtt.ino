@@ -1,84 +1,110 @@
 /**
  * ESP32-C6 SuperMini + PZEM-004T v4 + LCD I2C 16x2
- * MQTT broker: 10.5.0.106:1883
+ * Firmware final: metadata (operator/NIK/style/line/location/kalibrasi) dari backend
+ * via retained desired_state. WiFi/MQTT auth dari NVS / Setup AP — tanpa password di source.
  *
- * Continuity KPI (selaras LCD <-> backend <-> dashboard):
- *   - kpi_source=esp: counter ESP = sumber → dashboard & LCD sama
- *   - kpi_source=telemetry: dashboard dari DB → MQTT sync_kpi ke LCD
- *   - set_calibration / set_display dari backend (NVS di ESP)
- *   - Reset dashboard -> MQTT reset_day -> ESP nol -> LCD & dashboard 0
- *   - Deep sleep: OFF ≥ 1 jam → sleep, wake tiap 30 mnt cek arus;
- *     MQTT status deep_sleep_enter / deep_sleep_exit (from→to)
- *   - WiFi failover: SSID1→2→3 (1 mnt/ssid) × 5 putaran → scan 5 terbaik
- *     (pass Factory@Maja, 1 mnt) → LCD GAGAL KONEKSI / SEMUA WIFI
- *   - Counter Run/Loss/Off tetap jalan + NVS saat WiFi putus; MQTT sync saat nyambung
- *   - LCD saat reconnect: 2 slide (Reconnect Wifi · Runn/Loss)
+ * Arduino IDE: ESP32C6 Dev Module, flash 4MB, partition scheme = Custom
+ *   (Tools → Partition Scheme → pilih csv di folder sketch: partitions.csv)
  *
- * Topics (sama protokol backend-rust):
- *   iot/gistex/{CODE}/telemetry/pzem
- *   iot/gistex/{CODE}/status/pzem
- *   iot/gistex/{CODE}/cmd | ack
- *   iot/gistex/dev/{UID}/cmd          — channel stabil (code bisa berubah dinamis)
- *   cmd: set_identity | set_network | set_calibration | set_display | sync_kpi
- *        | set_login_system | data_saved
- * System Login ON → wajib login harian; OFF → KPI langsung jalan
- * LCD: boot → UID besar 2 digit (00) → MAC ADDRESS → baru WiFi
- * LCD: jika belum login → 2 slide: (1) OPERATOR BELUM/MELAKUKAN LOGIN (2) nama mesin + UID
- * LCD slides setelah login (auto 4 dtk):
- *   1 Loss/Runn · 2 Brand+Proses + kode · 3 OFF/IDLE · 4 Voltage/Current
- *
- * Wiring:
- *   PZEM UART1  ESP RX=GPIO17 <- PZEM TX
- *               ESP TX=GPIO16 -> PZEM RX
- *               GND bersama, PZEM L/N ke AC
- *   LCD I2C     SDA=GPIO20  SCL=GPIO19  VCC=3V3/5V  addr 0x27
- *   BTN page    GPIO9 -> GND (INPUT_PULLUP), tap = ganti halaman LCD
- *   BTN reset   GPIO10 -> GND, tahan 2 dtk = reset counter hari ini
- *
- * Board Arduino IDE: "ESP32C6 Dev Module" / SuperMini C6
- * Library: PubSubClient, ArduinoJson, PZEM004Tv30, LiquidCrystal_I2C
- *          Preferences (built-in ESP32) untuk NVS
+ * Topics:
+ *   iot/gistex/{CODE}/telemetry/pzem | status/pzem | cmd | ack | desired
+ *   iot/gistex/dev/{UID}/cmd | desired | lcd_state
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <PZEM004Tv30.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Preferences.h>
+#include <Update.h>
 #include <time.h>
 #include <esp_wifi.h>
-#include <esp_sleep.h>
+#include <esp_system.h>
+#include <esp_task_wdt.h>
+#include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
 
-// ===================== CONFIG (default flash; bisa diubah dashboard → NVS) =====================
-static const char *DEFAULT_WIFI_SSID = "GM3_DuckDown";
-static const char *DEFAULT_WIFI_PASS = "Factory@Maja";
-static const char *DEFAULT_WIFI_SSID2 = "GM3_Dry Room";
-static const char *DEFAULT_WIFI_PASS2 = "Factory@Maja";
-static const char *DEFAULT_WIFI_SSID3 = "GM3_RFID";
-static const char *DEFAULT_WIFI_PASS3 = "Factory@RFID";
-static const char *WIFI_SCAN_PASS = "Factory@Maja";
-static const char *DEFAULT_MQTT_HOST = "10.5.0.106";
-static const uint16_t MQTT_PORT = 1883;
-static const char *DEFAULT_MACHINE_CODE = "JUKI006";
-static const char *DEFAULT_DEVICE_UID = "006";
-/** true = wajib login operator; false = KPI jalan tanpa login (default firmware) */
+#ifndef ENABLE_LOCAL_BUTTONS
+#define ENABLE_LOCAL_BUTTONS 1
+#endif
+#ifndef ENABLE_SETUP_AP
+#define ENABLE_SETUP_AP 1
+#endif
+#ifndef FACTORY_WIFI_SSID
+#define FACTORY_WIFI_SSID ""
+#endif
+#ifndef FACTORY_WIFI_PASSWORD
+#define FACTORY_WIFI_PASSWORD ""
+#endif
+#ifndef FACTORY_MQTT_USER
+#define FACTORY_MQTT_USER ""
+#endif
+#ifndef FACTORY_MQTT_PASSWORD
+#define FACTORY_MQTT_PASSWORD ""
+#endif
+#ifndef FACTORY_MQTT_HOST
+#define FACTORY_MQTT_HOST "10.5.0.106"
+#endif
+#ifndef FACTORY_MQTT_PORT
+#define FACTORY_MQTT_PORT 1883
+#endif
+#ifndef FACTORY_MACHINE_CODE
+#define FACTORY_MACHINE_CODE "JUKI006"
+#endif
+#ifndef FACTORY_DEVICE_UID
+#define FACTORY_DEVICE_UID "006"
+#endif
+#ifndef DEVICE_CAPABILITIES
+#define DEVICE_CAPABILITIES "desired,ota,setup_ap,lcd_pages,wdt"
+#endif
+
+static const char *FW_VERSION = "2.0.0";
+static const uint8_t PROTOCOL_VERSION = 1;
+static const char *CAPABILITIES = DEVICE_CAPABILITIES;
+
+// ===================== CONFIG (identitas default; kredensial hanya NVS / Setup AP) =====================
+static const char *DEFAULT_MQTT_HOST = FACTORY_MQTT_HOST;
+static const uint16_t DEFAULT_MQTT_PORT = FACTORY_MQTT_PORT;
+static const char *DEFAULT_MACHINE_CODE = FACTORY_MACHINE_CODE;
+static const char *DEFAULT_DEVICE_UID = FACTORY_DEVICE_UID;
 static const bool DEFAULT_LOGIN_REQUIRED = false;
-/** Bump saat ganti DEFAULT_LOGIN_REQUIRED agar NVS sysOn ikut reset */
 static const uint8_t LOGIN_DEFAULT_REV = 2;
 static const char *TOPIC_PREFIX = "iot/gistex";
 static const char *SENSOR_NAME = "pzem";
+static const uint32_t MQTT_BUF_SIZE = 4096;
 
-// Runtime identity (dinamis dari MQTT / NVS)
+// Runtime identity (NVS / Setup AP / MQTT)
 char wifiSsid[48];
-char wifiPass[48];
+char wifiPass[64];
 char mqttHost[48];
+char mqttUser[32];
+char mqttPass[64];
+uint16_t mqttPort = DEFAULT_MQTT_PORT;
 char machineCode[24];
 char deviceUid[24];
 char mqttClientId[40];
-bool wifiCredsDirty = false;  // reconnect WiFi setelah set_network
+char bootId[12];
+char lastCmdId[40];
+uint32_t lastDesiredRev = 0;
+bool wifiCredsDirty = false;
 bool mqttNeedsReconnect = false;
+bool setupApMode = false;
+bool wifiScanPending = false;
+
+#define LCD_DYN_MAX 6
+char lcdDynL1[LCD_DYN_MAX][17];
+char lcdDynL2[LCD_DYN_MAX][17];
+uint8_t lcdDynN = 0;
+
+WebServer setupHttp(80);
+DNSServer setupDns;
+uint32_t setupApSinceMs = 0;
 
 // Pin ESP32-C6 SuperMini (sesuai wiring board)
 #define SDA_PIN     20
@@ -99,22 +125,17 @@ static const uint32_t LCD_MS = 250;
 static const uint32_t LCD_PAGE_AUTO_MS = 4000;  // 4 dtk per slide
 static const uint32_t LCD_SCROLL_MS = 350;
 static const uint32_t WIFI_RETRY_MS = 8000;
-static const uint32_t WIFI_TRY_MS = 60UL * 1000UL;  // 1 menit per SSID
-static const uint8_t WIFI_KNOWN_ROUNDS = 5;
-static const uint8_t WIFI_SCAN_TOP = 5;
 static const uint32_t MQTT_RETRY_MS = 3000;
 static const uint32_t MQTT_RETRY_MAX_MS = 60000;
 static const uint16_t MQTT_KEEPALIVE_SEC = 60;
 static const uint16_t MQTT_SOCKET_TIMEOUT_SEC = 10;
 static const uint32_t BTN_DEBOUNCE_MS = 40;
 static const uint32_t BTN_LONG_MS = 2000;
-static const uint32_t NVS_SAVE_MS = 10000;  // simpan flash max tiap 10 dtk (hemat wear)
-static const uint32_t RECOVERY_REBOOT_MS = 10 * 60 * 1000UL; // 10 menit gagal konek total -> reboot self-heal
-/** Mesin OFF terus selama ini → deep sleep (hemat daya, tidak spam MQTT) */
-static const uint32_t OFF_BEFORE_SLEEP_MS = 60UL * 60UL * 1000UL;  // 1 jam
-/** Timer wake cek mesin sudah nyala lagi? */
-static const uint64_t DEEP_SLEEP_US = 30ULL * 60ULL * 1000000ULL;  // 30 menit
-static const uint32_t SLEEP_CHUNK_SEC = 30UL * 60UL;
+static const uint32_t NVS_SAVE_MS = 60000UL;  // counter flash max tiap 60 dtk
+static const uint32_t RECOVERY_REBOOT_MS = 10 * 60 * 1000UL;
+static const uint32_t SETUP_AP_TIMEOUT_MS = 10UL * 60UL * 1000UL;
+static const uint32_t FACTORY_HOLD_MS = 5000;
+static const uint32_t WDT_TIMEOUT_MS = 15000;
 
 uint32_t mqttBackoffMs = MQTT_RETRY_MS;
 
@@ -154,23 +175,20 @@ Preferences prefs;
 char topicTelemetry[96];
 char topicStatus[96];
 char topicCmd[96];
-char topicDevCmd[96];  // iot/gistex/dev/{UID}/cmd
+char topicDevCmd[96];
+char topicLcdState[96];
+char topicDevLcd[96];
+char topicDesired[96];
+char topicDevDesired[96];
 char topicAck[96];
 char willPayload[220];
 
 enum OpStatus : uint8_t { ST_OFF = 0, ST_IDLE = 1, ST_RUNNING = 2 };
-enum LcdPage : uint8_t {
-  PAGE_RUNLOSS = 0,   // Slide 1: Loss / Runn
-  PAGE_IDENTITY = 1,  // Slide 2: Brand+Proses (scroll) / kode mesin tengah
-  PAGE_OFFIDLE = 2,   // Slide 3: OFF / IDLE
-  PAGE_VI = 3,        // Slide 4: Voltage / Current
-  PAGE_COUNT = 4
-};
 
 OpStatus opStatus = ST_OFF;
 OpStatus pendStatus = ST_OFF;
 uint32_t pendSinceMs = 0;
-LcdPage lcdPage = PAGE_RUNLOSS;
+uint8_t lcdPage = 0;
 bool lcdManualHold = false;
 uint32_t loginFlashUntilMs = 0;  // LCD flash sampai millis ini
 char lcdLoginLine1[17];
@@ -204,19 +222,9 @@ uint32_t lastStatusMs = 0;
 uint32_t lastLcdMs = 0;
 uint32_t lastPageAutoMs = 0;
 uint32_t lastWifiAttemptMs = 0;
-enum WifiPhase : uint8_t { WP_KNOWN = 0, WP_SCAN = 1, WP_FAIL = 2 };
-WifiPhase wifiPhase = WP_KNOWN;
-uint8_t wifiKnownIdx = 0;
-uint8_t wifiKnownRound = 0;
-uint8_t wifiScanIdx = 0;
-uint8_t wifiScanN = 0;
-char wifiScanSsid[WIFI_SCAN_TOP][33];
-uint32_t wifiTryStartMs = 0;
-bool wifiAllFailed = false;
 uint32_t lastMqttAttemptMs = 0;
 uint32_t offlineSinceMs = 0;
-uint32_t offSinceMs = 0;  // millis saat mulai OFF terus (untuk deep sleep)
-bool dsPendingExit = false;  // bangun sleep + mesin ON → publish exit setelah MQTT
+uint32_t factoryHoldMs = 0;
 
 bool btnPagePrev = true;
 bool btnResetPrev = true;
@@ -225,15 +233,10 @@ uint32_t btnResetDownMs = 0;
 
 void publishTelemetry();
 void saveCounters(bool force);
-void wifiResetCycle();
 void wifiBeginCurrent();
 void loadCalibration();
 void saveCalibration();
 void loadLoginState();
-void enterDeepSleep(const char *reason, bool firstEnter);
-void handleDeepSleepWake();
-void publishDeepSleepEvent(const char *state, uint32_t fromEpoch, uint32_t toEpoch);
-void tryPublishDeepSleepExit();
 OpStatus classify(float v, float a, float w, bool ok);
 static const char *statusStr(OpStatus s);
 void saveLoginState();
@@ -247,6 +250,18 @@ void resubscribeMqtt();
 void applyStatusFilter(OpStatus raw);
 void publishConfigAck(const char *cmd);
 void publishWifiScanAck();
+void publishAck(const char *command, bool ok);
+void publishAckErr(const char *command, const char *err);
+void startSetupAp(const char *why);
+void stopSetupAp();
+void handleSetupAp();
+bool wifiProvisioned();
+void applyDesiredState(JsonObject doc);
+void runOtaUpdate(const char *url, const char *shaHex, const char *ver);
+void factoryReset();
+void wdtFeed();
+void confirmOtaIfPending();
+const char *resetReasonStr();
 
 int wibYmdNow() {
   struct tm ti;
@@ -261,19 +276,23 @@ void buildMqttClientId() {
 }
 
 void loadIdentity() {
-  strncpy(wifiSsid, DEFAULT_WIFI_SSID, sizeof(wifiSsid) - 1);
-  strncpy(wifiPass, DEFAULT_WIFI_PASS, sizeof(wifiPass) - 1);
-  strncpy(mqttHost, DEFAULT_MQTT_HOST, sizeof(mqttHost) - 1);
-  strncpy(machineCode, DEFAULT_MACHINE_CODE, sizeof(machineCode) - 1);
-  strncpy(deviceUid, DEFAULT_DEVICE_UID, sizeof(deviceUid) - 1);
+  strncpy(wifiSsid, FACTORY_WIFI_SSID, sizeof(wifiSsid) - 1);
+  strncpy(wifiPass, FACTORY_WIFI_PASSWORD, sizeof(wifiPass) - 1);
+  strncpy(mqttUser, FACTORY_MQTT_USER, sizeof(mqttUser) - 1);
+  strncpy(mqttPass, FACTORY_MQTT_PASSWORD, sizeof(mqttPass) - 1);
   wifiSsid[sizeof(wifiSsid) - 1] = 0;
   wifiPass[sizeof(wifiPass) - 1] = 0;
+  mqttUser[sizeof(mqttUser) - 1] = 0;
+  mqttPass[sizeof(mqttPass) - 1] = 0;
+  strncpy(mqttHost, DEFAULT_MQTT_HOST, sizeof(mqttHost) - 1);
   mqttHost[sizeof(mqttHost) - 1] = 0;
+  mqttPort = DEFAULT_MQTT_PORT;
+  strncpy(machineCode, DEFAULT_MACHINE_CODE, sizeof(machineCode) - 1);
+  strncpy(deviceUid, DEFAULT_DEVICE_UID, sizeof(deviceUid) - 1);
   machineCode[sizeof(machineCode) - 1] = 0;
   deviceUid[sizeof(deviceUid) - 1] = 0;
 
-  // NVS override (dari set_identity / set_network dashboard)
-  char tmp[48];
+  char tmp[64];
   prefs.begin("pzemid", true);
   if (prefs.getString("ssid", tmp, sizeof(tmp)) > 0) {
     strncpy(wifiSsid, tmp, sizeof(wifiSsid) - 1);
@@ -287,6 +306,16 @@ void loadIdentity() {
     strncpy(mqttHost, tmp, sizeof(mqttHost) - 1);
     mqttHost[sizeof(mqttHost) - 1] = 0;
   }
+  mqttPort = (uint16_t)prefs.getUShort("mport", DEFAULT_MQTT_PORT);
+  if (mqttPort == 0) mqttPort = DEFAULT_MQTT_PORT;
+  if (prefs.getString("muser", tmp, sizeof(tmp)) > 0) {
+    strncpy(mqttUser, tmp, sizeof(mqttUser) - 1);
+    mqttUser[sizeof(mqttUser) - 1] = 0;
+  }
+  if (prefs.getString("mpass", tmp, sizeof(tmp)) > 0) {
+    strncpy(mqttPass, tmp, sizeof(mqttPass) - 1);
+    mqttPass[sizeof(mqttPass) - 1] = 0;
+  }
   if (prefs.getString("code", tmp, sizeof(tmp)) > 0) {
     strncpy(machineCode, tmp, sizeof(machineCode) - 1);
     machineCode[sizeof(machineCode) - 1] = 0;
@@ -295,8 +324,8 @@ void loadIdentity() {
     strncpy(deviceUid, tmp, sizeof(deviceUid) - 1);
     deviceUid[sizeof(deviceUid) - 1] = 0;
   }
+  lastDesiredRev = prefs.getUInt("drev", 0);
   prefs.end();
-
   buildMqttClientId();
 }
 
@@ -305,9 +334,17 @@ void saveIdentity() {
   prefs.putString("ssid", wifiSsid);
   prefs.putString("pass", wifiPass);
   prefs.putString("mhost", mqttHost);
+  prefs.putUShort("mport", mqttPort);
+  prefs.putString("muser", mqttUser);
+  prefs.putString("mpass", mqttPass);
   prefs.putString("code", machineCode);
   prefs.putString("uid", deviceUid);
+  prefs.putUInt("drev", lastDesiredRev);
   prefs.end();
+}
+
+bool wifiProvisioned() {
+  return wifiSsid[0] && wifiPass[0];
 }
 
 void buildTopics() {
@@ -315,6 +352,10 @@ void buildTopics() {
   snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status/%s", TOPIC_PREFIX, machineCode, SENSOR_NAME);
   snprintf(topicCmd, sizeof(topicCmd), "%s/%s/cmd", TOPIC_PREFIX, machineCode);
   snprintf(topicDevCmd, sizeof(topicDevCmd), "%s/dev/%s/cmd", TOPIC_PREFIX, deviceUid);
+  snprintf(topicLcdState, sizeof(topicLcdState), "%s/%s/lcd_state", TOPIC_PREFIX, machineCode);
+  snprintf(topicDevLcd, sizeof(topicDevLcd), "%s/dev/%s/lcd_state", TOPIC_PREFIX, deviceUid);
+  snprintf(topicDesired, sizeof(topicDesired), "%s/%s/desired", TOPIC_PREFIX, machineCode);
+  snprintf(topicDevDesired, sizeof(topicDevDesired), "%s/dev/%s/desired", TOPIC_PREFIX, deviceUid);
   snprintf(topicAck, sizeof(topicAck), "%s/%s/ack", TOPIC_PREFIX, machineCode);
   snprintf(willPayload, sizeof(willPayload),
            "{\"device_uid\":\"%s\",\"machine_code\":\"%s\",\"sensor\":\"%s\",\"state\":\"mqtt_lost\",\"online\":false,\"detail\":\"MQTT LWT\"}",
@@ -325,6 +366,10 @@ void resubscribeMqtt() {
   if (!mqtt.connected()) return;
   mqtt.subscribe(topicCmd);
   mqtt.subscribe(topicDevCmd);
+  mqtt.subscribe(topicLcdState);
+  mqtt.subscribe(topicDevLcd);
+  mqtt.subscribe(topicDesired);
+  mqtt.subscribe(topicDevDesired);
 }
 
 void applyIdentity(const char *code, const char *uid) {
@@ -345,6 +390,10 @@ void applyIdentity(const char *code, const char *uid) {
   if (mqtt.connected()) {
     mqtt.unsubscribe(topicCmd);
     mqtt.unsubscribe(topicDevCmd);
+    mqtt.unsubscribe(topicLcdState);
+    mqtt.unsubscribe(topicDevLcd);
+    mqtt.unsubscribe(topicDesired);
+    mqtt.unsubscribe(topicDevDesired);
   }
   buildTopics();
   saveIdentity();
@@ -365,6 +414,7 @@ void loadCalibration() {
   kpiFromBackend = prefs.getBool("kpiBe", false);
   prefs.getString("lcdName", lcdName, sizeof(lcdName));
   prefs.getString("lcdProc", lcdProcess, sizeof(lcdProcess));
+  prefs.getString("lcdOp", lcdOperator, sizeof(lcdOperator));
   prefs.end();
   // migrasi default lama 0.03 → 0.01 (Idle/MSN ON mulai di atas 0.01 A)
   bool offMigrated = false;
@@ -387,6 +437,7 @@ void saveCalibration() {
   prefs.putBool("kpiBe", kpiFromBackend);
   prefs.putString("lcdName", lcdName);
   prefs.putString("lcdProc", lcdProcess);
+  prefs.putString("lcdOp", lcdOperator);
   prefs.end();
 }
 
@@ -714,9 +765,12 @@ void scrollWindow16(const char *text, char *out17) {
 }
 
 uint8_t lcdSlideCount() {
+  if (setupApMode) return 1;
   if (WiFi.status() != WL_CONNECTED || !mqtt.connected()) return 2;
-  if (!loginSystemOn || operatorLoggedIn) return (uint8_t)PAGE_COUNT;
-  return 2;
+  if (loginSystemOn && !operatorLoggedIn) return 2;
+  uint8_t n = 3;  // run/loss, off/idle, V/I
+  n += lcdDynN > 0 ? lcdDynN : 1;  // identity atau halaman dari backend
+  return n;
 }
 
 void flashLcdMsg(const char *l1, const char *l2) {
@@ -778,9 +832,8 @@ void renderLcd() {
     lcdLoginLine2[0] = 0;
   }
 
-  // WiFi/MQTT belum siap → 2 slide: reconnect + Run/Loss (counter tetap jalan)
-  if (wifiAllFailed && WiFi.status() != WL_CONNECTED) {
-    lcdPrint2("GAGAL KONEKSI", "SEMUA WIFI");
+  if (setupApMode) {
+    lcdPrint2("SETUP WIFI", WiFi.softAPSSID().c_str());
     return;
   }
   if (WiFi.status() != WL_CONNECTED) {
@@ -825,205 +878,407 @@ void renderLcd() {
     return;
   }
 
-  switch (lcdPage) {
-    case PAGE_RUNLOSS: {
-      // Slide 1: Loss / Runn
-      fmtHms(lossSec, t1, sizeof(t1));
-      fmtHms(runSec, t2, sizeof(t2));
-      snprintf(a, sizeof(a), "Loss : %s", t1);
-      snprintf(b, sizeof(b), "Runn : %s", t2);
-      lcdPrint2(a, b);
-      break;
-    }
-    case PAGE_IDENTITY: {
-      // Slide 2: Atas=Operator, Bawah=Proses (tanpa brand, tanpa machine code)
-      const char *op = lcdOperator[0] ? lcdOperator : "Belum Login";
-      if (strlen(op) > 16) {
-        uint32_t now = millis();
-        if (now - lastScrollMs >= LCD_SCROLL_MS) {
-          lastScrollMs = now;
-          lcdScrollPos++;
-        }
-        scrollWindow16(op, a);
-      } else {
-        centerLcd16(op, a);
-      }
-      buildProcessOnly(brandProc, sizeof(brandProc));
-      if (strlen(brandProc) > 16) {
-        uint32_t now = millis();
-        if (now - lastScrollMs >= LCD_SCROLL_MS) {
-          lastScrollMs = now;
-          lcdScrollPos++;
-        }
-        scrollWindow16(brandProc, b);
-      } else {
-        snprintf(b, sizeof(b), "%s", brandProc);
-      }
-      lcdPrint2(a, b);
-      break;
-    }
-    case PAGE_OFFIDLE: {
-      // Slide 3: mesin mati + mesin ON (idle) — 16 kolom
-      // "MSN OFF:00:00:00" / "MSN ON :00:00:00"
-      fmtHms(offSec, t1, sizeof(t1));
-      fmtHms(lossSec, t2, sizeof(t2));
-      snprintf(a, sizeof(a), "MSN OFF:%s", t1);
-      snprintf(b, sizeof(b), "MSN ON :%s", t2);
-      lcdPrint2(a, b);
-      break;
-    }
-    case PAGE_VI: {
-      // Slide 4: Voltage / Current (16 kolom, spasi seperti contoh)
-      // "Voltage : 220 V" / "Current : 0.01 A"
-      if (!pzemOk) {
-        snprintf(a, sizeof(a), "Voltage :  --- V");
-        snprintf(b, sizeof(b), "Current :  --- A");
-      } else {
-        snprintf(a, sizeof(a), "Voltage : %3.0f V", lastV);
-        if (lastA < 10.0f) {
-          snprintf(b, sizeof(b), "Current : %4.2f A", lastA);
-        } else {
-          snprintf(b, sizeof(b), "Current : %4.1f A", lastA);
-        }
-      }
-      lcdPrint2(a, b);
-      break;
-    }
-    default:
-      break;
+  uint8_t n = lcdSlideCount();
+  uint8_t p = n ? (lcdPage % n) : 0;
+  if (p == 0) {
+    fmtHms(lossSec, t1, sizeof(t1));
+    fmtHms(runSec, t2, sizeof(t2));
+    snprintf(a, sizeof(a), "Loss : %s", t1);
+    snprintf(b, sizeof(b), "Runn : %s", t2);
+    lcdPrint2(a, b);
+    return;
   }
-}
-
-// ---------- Deep sleep (mesin OFF ≥ 1 jam → bangun tiap 30 mnt) ----------
-uint32_t epochNowOr0() {
-  time_t t = time(nullptr);
-  return (t > 100000) ? (uint32_t)t : 0;
-}
-
-void publishDeepSleepEvent(const char *state, uint32_t fromEpoch, uint32_t toEpoch) {
-  if (!mqtt.connected()) return;
-  StaticJsonDocument<480> doc;
-  doc["device_uid"] = deviceUid;
-  doc["machine_code"] = machineCode;
-  doc["sensor"] = SENSOR_NAME;
-  doc["state"] = state;
-  doc["online"] = (strcmp(state, "deep_sleep_exit") == 0);
-  doc["wifi_ok"] = WiFi.status() == WL_CONNECTED;
-  doc["mqtt_ok"] = true;
-  doc["sensor_ok"] = pzemOk;
-  doc["detail"] = (strcmp(state, "deep_sleep_enter") == 0)
-                      ? "OFF 1 jam — deep sleep 30 mnt wake"
-                      : "Bangun — mesin nyala lagi";
-  doc["rssi"] = WiFi.RSSI();
-  doc["uptime_sec"] = millis() / 1000;
-  doc["run_sec"] = runSec;
-  doc["loss_sec"] = lossSec;
-  doc["off_sec"] = offSec;
-  doc["op_status"] = statusStr(opStatus);
-  if (fromEpoch > 0) doc["deep_sleep_from"] = fromEpoch;
-  if (toEpoch > 0) doc["deep_sleep_to"] = toEpoch;
-  if (fromEpoch > 0 && toEpoch > fromEpoch) {
-    doc["duration_sec"] = toEpoch - fromEpoch;
+  if (p == 1) {
+    fmtHms(offSec, t1, sizeof(t1));
+    fmtHms(lossSec, t2, sizeof(t2));
+    snprintf(a, sizeof(a), "MSN OFF:%s", t1);
+    snprintf(b, sizeof(b), "MSN ON :%s", t2);
+    lcdPrint2(a, b);
+    return;
   }
-  char buf[480];
-  size_t n = serializeJson(doc, buf);
-  mqtt.publish(topicStatus, (const uint8_t *)buf, n, false);
-  lastState = state;
-}
-
-void enterDeepSleep(const char *reason, bool firstEnter) {
-  saveCounters(true);
-  uint32_t nowEp = epochNowOr0();
-  if (firstEnter) {
-    prefs.begin("pzemkpi", false);
-    prefs.putBool("dsOn", true);
-    prefs.putULong("dsFrom", nowEp);
-    prefs.putULong("dsLast", nowEp);
-    prefs.end();
-    if (mqtt.connected()) {
-      publishDeepSleepEvent("deep_sleep_enter", nowEp, 0);
-      delay(150);
+  if (p == 2) {
+    if (!pzemOk) {
+      snprintf(a, sizeof(a), "Voltage :  --- V");
+      snprintf(b, sizeof(b), "Current :  --- A");
+    } else {
+      snprintf(a, sizeof(a), "Voltage : %3.0f V", lastV);
+      if (lastA < 10.0f) snprintf(b, sizeof(b), "Current : %4.2f A", lastA);
+      else snprintf(b, sizeof(b), "Current : %4.1f A", lastA);
     }
+    lcdPrint2(a, b);
+    return;
+  }
+  uint8_t di = p - 3;
+  if (lcdDynN > 0 && di < lcdDynN) {
+    snprintf(a, sizeof(a), "%s", lcdDynL1[di]);
+    snprintf(b, sizeof(b), "%s", lcdDynL2[di]);
+    lcdPrint2(a, b);
+    return;
+  }
+  const char *op = lcdOperator[0] ? lcdOperator : "Belum Login";
+  if (strlen(op) > 16) {
+    uint32_t now = millis();
+    if (now - lastScrollMs >= LCD_SCROLL_MS) {
+      lastScrollMs = now;
+      lcdScrollPos++;
+    }
+    scrollWindow16(op, a);
   } else {
-    prefs.begin("pzemkpi", false);
-    prefs.putBool("dsOn", true);
-    prefs.end();
+    centerLcd16(op, a);
   }
-  (void)reason;
-  lcdPrint2("Deep sleep", "wake 30 min");
-  delay(250);
-  if (mqtt.connected()) mqtt.disconnect();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_US);
-  esp_deep_sleep_start();
-}
-
-void handleDeepSleepWake() {
-  prefs.begin("pzemkpi", false);
-  bool dsOn = prefs.getBool("dsOn", false);
-  uint32_t fromEp = prefs.getULong("dsFrom", 0);
-  uint32_t lastEp = prefs.getULong("dsLast", fromEp);
-  prefs.end();
-  if (!dsOn) return;
-
-  // Tambah durasi sleep ke off_sec (estimasi 30 mnt jika NTP belum siap)
-  uint32_t nowEp = epochNowOr0();
-  uint32_t dt = SLEEP_CHUNK_SEC;
-  if (nowEp > 0 && lastEp > 0 && nowEp > lastEp) {
-    dt = nowEp - lastEp;
-    if (dt > 2 * SLEEP_CHUNK_SEC) dt = SLEEP_CHUNK_SEC;  // clamp outlier
-  }
-  offSec += dt;
-  saveCounters(true);
-
-  prefs.begin("pzemkpi", false);
-  if (nowEp > 0) prefs.putULong("dsLast", nowEp);
-  prefs.end();
-
-  readPzem();
-  OpStatus raw = classify(lastV, lastA, lastW, pzemOk);
-  opStatus = raw;
-  pendStatus = raw;
-
-  if (raw != ST_OFF && pzemOk) {
-    // Mesin nyala lagi — lanjut boot normal, publish exit setelah MQTT
-    dsPendingExit = true;
-    prefs.begin("pzemkpi", false);
-    prefs.putBool("dsOn", false);
-    prefs.putBool("dsExit", true);
-    prefs.putULong("dsFrom", fromEp);
-    prefs.end();
-    lcdPrint2("Wake: machine", "ON - connect");
+  buildProcessOnly(brandProc, sizeof(brandProc));
+  if (strlen(brandProc) > 16) {
+    uint32_t now = millis();
+    if (now - lastScrollMs >= LCD_SCROLL_MS) {
+      lastScrollMs = now;
+      lcdScrollPos++;
+    }
+    scrollWindow16(brandProc, b);
   } else {
-    // Masih OFF — tidur lagi tanpa spam MQTT
-    lcdPrint2("Wake: still OFF", "sleep again");
-    delay(400);
-    enterDeepSleep("still_off", false);
+    snprintf(b, sizeof(b), "%s", brandProc);
+  }
+  lcdPrint2(a, b);
+}
+
+void wdtFeed() {
+  esp_task_wdt_reset();
+}
+
+const char *resetReasonStr() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "power";
+    case ESP_RST_SW: return "sw";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT: return "wdt";
+    case ESP_RST_BROWNOUT: return "brownout";
+    default: return "other";
   }
 }
 
-void tryPublishDeepSleepExit() {
-  prefs.begin("pzemkpi", false);
-  bool need = prefs.getBool("dsExit", false) || dsPendingExit;
-  uint32_t fromEp = prefs.getULong("dsFrom", 0);
+void factoryReset() {
+  prefs.begin("pzemid", false); prefs.clear(); prefs.end();
+  prefs.begin("pzemcal", false); prefs.clear(); prefs.end();
+  prefs.begin("pzemlogin", false); prefs.clear(); prefs.end();
+  prefs.begin("pzemkpi", false); prefs.clear(); prefs.end();
+  prefs.begin("pzemota", false); prefs.clear(); prefs.end();
+  lastDesiredRev = 0;
+  wifiSsid[0] = 0;
+  wifiPass[0] = 0;
+  mqttUser[0] = 0;
+  mqttPass[0] = 0;
+  flashLcdMsg("Factory reset", "Setup AP");
+  delay(400);
+  ESP.restart();
+}
+
+static const char SETUP_HTML[] PROGMEM = R"HTML(
+<!DOCTYPE html><html><head><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Gistex Setup</title>
+<style>body{font-family:sans-serif;max-width:420px;margin:12px auto;padding:8px}
+input{width:100%;padding:8px;margin:4px 0 10px;box-sizing:border-box}
+button{width:100%;padding:10px;background:#2563eb;color:#fff;border:0}</style></head>
+<body><h3>Gistex ESP Setup</h3>
+<form method=POST action=/save>
+SSID<input name=ssid required>
+Password<input name=pass type=password required>
+MQTT host<input name=mhost value="10.5.0.106" required>
+MQTT port<input name=mport value="1883">
+MQTT user<input name=muser>
+MQTT password<input name=mpass type=password>
+UID<input name=uid required>
+Machine code<input name=code required>
+<button>Simpan & reboot</button></form></body></html>
+)HTML";
+
+void startSetupAp(const char *why) {
+  (void)why;
+  if (setupApMode) return;
+  setupApMode = true;
+  setupApSinceMs = millis();
+  char ap[24];
+  snprintf(ap, sizeof(ap), "GISTEX-SETUP-%s", deviceUid[0] ? deviceUid : "ESP");
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ap);
+  setupDns.start(53, "*", WiFi.softAPIP());
+  setupHttp.on("/", HTTP_GET, []() {
+    setupHttp.send_P(200, "text/html", SETUP_HTML);
+  });
+  setupHttp.on("/save", HTTP_POST, []() {
+    String ssid = setupHttp.arg("ssid");
+    String pass = setupHttp.arg("pass");
+    String host = setupHttp.arg("mhost");
+    String user = setupHttp.arg("muser");
+    String mp = setupHttp.arg("mpass");
+    String uid = setupHttp.arg("uid");
+    String code = setupHttp.arg("code");
+    uint16_t port = (uint16_t)setupHttp.arg("mport").toInt();
+    if (!ssid.length() || !pass.length() || !host.length() || !uid.length() || !code.length()) {
+      setupHttp.send(400, "text/plain", "field wajib kosong");
+      return;
+    }
+    strncpy(wifiSsid, ssid.c_str(), sizeof(wifiSsid) - 1);
+    strncpy(wifiPass, pass.c_str(), sizeof(wifiPass) - 1);
+    strncpy(mqttHost, host.c_str(), sizeof(mqttHost) - 1);
+    strncpy(mqttUser, user.c_str(), sizeof(mqttUser) - 1);
+    strncpy(mqttPass, mp.c_str(), sizeof(mqttPass) - 1);
+    strncpy(deviceUid, uid.c_str(), sizeof(deviceUid) - 1);
+    strncpy(machineCode, code.c_str(), sizeof(machineCode) - 1);
+    wifiSsid[sizeof(wifiSsid) - 1] = 0;
+    wifiPass[sizeof(wifiPass) - 1] = 0;
+    mqttHost[sizeof(mqttHost) - 1] = 0;
+    mqttUser[sizeof(mqttUser) - 1] = 0;
+    mqttPass[sizeof(mqttPass) - 1] = 0;
+    deviceUid[sizeof(deviceUid) - 1] = 0;
+    machineCode[sizeof(machineCode) - 1] = 0;
+    mqttPort = port > 0 ? port : DEFAULT_MQTT_PORT;
+    saveIdentity();
+    setupHttp.send(200, "text/plain", "Tersimpan. Reboot...");
+    delay(300);
+    ESP.restart();
+  });
+  setupHttp.onNotFound([]() { setupHttp.send_P(200, "text/html", SETUP_HTML); });
+  setupHttp.begin();
+  flashLcdMsg("SETUP WIFI", ap);
+}
+
+void stopSetupAp() {
+  if (!setupApMode) return;
+  setupHttp.stop();
+  setupDns.stop();
+  WiFi.softAPdisconnect(true);
+  setupApMode = false;
+}
+
+void handleSetupAp() {
+  if (!setupApMode) return;
+  setupDns.processNextRequest();
+  setupHttp.handleClient();
+  if (millis() - setupApSinceMs >= SETUP_AP_TIMEOUT_MS && wifiProvisioned()) {
+    stopSetupAp();
+    WiFi.mode(WIFI_STA);
+    wifiBeginCurrent();
+  }
+}
+
+void applyLcdPages(JsonVariant pages) {
+  lcdDynN = 0;
+  if (!pages.is<JsonArray>()) return;
+  JsonArray arr = pages.as<JsonArray>();
+  for (JsonObject o : arr) {
+    if (lcdDynN >= LCD_DYN_MAX) break;
+    const char *l1 = o["l1"] | "";
+    const char *l2 = o["l2"] | "";
+    snprintf(lcdDynL1[lcdDynN], 17, "%.16s", l1);
+    snprintf(lcdDynL2[lcdDynN], 17, "%.16s", l2);
+    lcdDynN++;
+  }
+}
+
+void applyDesiredState(JsonObject doc) {
+  const char *target = doc["target_uid"] | "";
+  if (target[0] && strcmp(target, deviceUid) != 0) return;
+  uint32_t rev = doc["revision"] | 0;
+  if (rev > 0 && rev <= lastDesiredRev) {
+    publishAck("desired_state", true);
+    return;
+  }
+  if (rev == 0 && lastDesiredRev > 0) {
+    return;
+  }
+  const char *wd = doc["work_date"] | "";
+  if (wd[0]) {
+    int wy = 0, wm = 0, wday = 0;
+    int ymd = wibYmdNow();
+    if (ymd > 0 && sscanf(wd, "%d-%d-%d", &wy, &wm, &wday) == 3) {
+      int wymd = wy * 10000 + wm * 100 + wday;
+      if (wymd != ymd && (doc["login_required"] | loginSystemOn)) {
+        setOperatorLoggedIn(false, false);
+      }
+    }
+  }
+  if (doc.containsKey("login_required")) loginSystemOn = doc["login_required"].as<bool>();
+  bool ok = doc["logged_in"] | operatorLoggedIn;
+  if (!loginSystemOn) ok = true;
+  setOperatorLoggedIn(ok, false);
+  if (doc.containsKey("machine_name")) {
+    strncpy(lcdName, doc["machine_name"] | "", sizeof(lcdName) - 1);
+    lcdName[sizeof(lcdName) - 1] = 0;
+  }
+  if (doc.containsKey("process_name")) {
+    strncpy(lcdProcess, doc["process_name"] | "", sizeof(lcdProcess) - 1);
+    lcdProcess[sizeof(lcdProcess) - 1] = 0;
+  }
+  const char *op = doc["operator_name"] | "";
+  if (ok && op[0]) {
+    strncpy(lcdOperator, op, sizeof(lcdOperator) - 1);
+    lcdOperator[sizeof(lcdOperator) - 1] = 0;
+  }
+  if (doc.containsKey("current_threshold_a")) {
+    float v = doc["current_threshold_a"].as<float>();
+    if (v >= 0.005f && v <= 50.0f) currentThresholdA = v;
+  }
+  if (doc.containsKey("power_threshold_w")) {
+    float v = doc["power_threshold_w"].as<float>();
+    if (v >= 0.0f && v <= 5000.0f) powerThresholdW = v;
+  }
+  if (doc.containsKey("off_current_a")) {
+    float v = doc["off_current_a"].as<float>();
+    if (v >= 0.0f && v <= 5.0f) offCurrentA = v;
+  }
+  if (doc.containsKey("lcd_auto_ms")) {
+    uint32_t v = doc["lcd_auto_ms"].as<uint32_t>();
+    if (v >= 4000 && v <= 60000) lcdAutoMs = v;
+  }
+  if (doc.containsKey("kpi_source")) {
+    const char *src = doc["kpi_source"] | "esp";
+    kpiFromBackend = (strcmp(src, "telemetry") == 0 || strcmp(src, "backend") == 0);
+  }
+  if (doc["lcd_pages"].is<JsonArray>()) applyLcdPages(doc["lcd_pages"]);
+  if (rev > 0) lastDesiredRev = rev;
+  saveLoginState();
+  saveCalibration();
+  saveIdentity();
+  renderLcd();
+  publishAck("desired_state", true);
+}
+
+static bool parseSha256Hex(const char *hex, uint8_t out[32]) {
+  if (!hex || strlen(hex) != 64) return false;
+  for (int i = 0; i < 32; i++) {
+    char a = hex[i * 2], b = hex[i * 2 + 1];
+    auto nibble = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    int hi = nibble(a), lo = nibble(b);
+    if (hi < 0 || lo < 0) return false;
+    out[i] = (uint8_t)((hi << 4) | lo);
+  }
+  return true;
+}
+
+static int fwVerCmp(const char *a, const char *b) {
+  int a1 = 0, a2 = 0, a3 = 0, b1 = 0, b2 = 0, b3 = 0;
+  sscanf(a, "%d.%d.%d", &a1, &a2, &a3);
+  sscanf(b, "%d.%d.%d", &b1, &b2, &b3);
+  if (a1 != b1) return a1 - b1;
+  if (a2 != b2) return a2 - b2;
+  return a3 - b3;
+}
+
+void runOtaUpdate(const char *url, const char *shaHex, const char *ver) {
+  if (!url || !url[0] || !shaHex || !shaHex[0]) {
+    publishAckErr("ota_update", "url/sha256 wajib");
+    return;
+  }
+  if (strncmp(url, "https://", 8) != 0) {
+    publishAckErr("ota_update", "https wajib");
+    return;
+  }
+  if (ver && ver[0] && fwVerCmp(ver, FW_VERSION) <= 0) {
+    publishAckErr("ota_update", "same_or_older");
+    return;
+  }
+  uint8_t expect[32];
+  if (!parseSha256Hex(shaHex, expect)) {
+    publishAckErr("ota_update", "sha256 invalid");
+    return;
+  }
+  flashLcdMsg("OTA download", ver && ver[0] ? ver : "fw");
+  saveCounters(true);
+  WiFiClientSecure tls;
+  HTTPClient http;
+  tls.setInsecure();  // integritas = SHA-256 body, bukan CA store
+  if (!http.begin(tls, url)) {
+    publishAckErr("ota_update", "begin https gagal");
+    return;
+  }
+  http.setTimeout(180000);
+  int code = http.GET();
+  if (code != 200) {
+    http.end();
+    publishAckErr("ota_update", "http status");
+    return;
+  }
+  int len = http.getSize();
+  if (len <= 0 || !Update.begin(len > 0 ? (size_t)len : UPDATE_SIZE_UNKNOWN)) {
+    http.end();
+    publishAckErr("ota_update", "update begin");
+    return;
+  }
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  mbedtls_sha256_starts(&ctx, 0);
+  WiFiClient *stream = http.getStreamPtr();
+  uint8_t buf[1024];
+  int written = 0;
+  uint32_t lastDataMs = millis();
+  while (http.connected() && (len < 0 || written < len)) {
+    wdtFeed();
+    size_t avail = stream->available();
+    if (!avail) {
+      if (millis() - lastDataMs > 30000) {
+        Update.abort();
+        http.end();
+        publishAckErr("ota_update", "timeout");
+        return;
+      }
+      delay(10);
+      continue;
+    }
+    lastDataMs = millis();
+    int rd = stream->readBytes(buf, avail > sizeof(buf) ? sizeof(buf) : avail);
+    if (rd <= 0) break;
+    mbedtls_sha256_update(&ctx, buf, rd);
+    if (Update.write(buf, rd) != (size_t)rd) {
+      Update.abort();
+      http.end();
+      publishAckErr("ota_update", "write");
+      return;
+    }
+    written += rd;
+  }
+  uint8_t got[32];
+  mbedtls_sha256_finish(&ctx, got);
+  mbedtls_sha256_free(&ctx);
+  http.end();
+  if (memcmp(got, expect, 32) != 0) {
+    Update.abort();
+    publishAckErr("ota_update", "sha256 mismatch");
+    return;
+  }
+  if (!Update.end(true)) {
+    publishAckErr("ota_update", "end");
+    return;
+  }
+  prefs.begin("pzemota", false);
+  prefs.putBool("pending", true);
   prefs.end();
-  if (!need || !mqtt.connected()) return;
-  uint32_t toEp = epochNowOr0();
-  if (toEp == 0) toEp = fromEp + SLEEP_CHUNK_SEC;
-  publishDeepSleepEvent("deep_sleep_exit", fromEp, toEp);
-  prefs.begin("pzemkpi", false);
-  prefs.putBool("dsExit", false);
-  prefs.remove("dsFrom");
-  prefs.remove("dsLast");
+  publishAck("ota_update", true);
+  delay(400);
+  ESP.restart();
+}
+
+void confirmOtaIfPending() {
+  prefs.begin("pzemota", true);
+  bool pending = prefs.getBool("pending", false);
   prefs.end();
-  dsPendingExit = false;
+  if (!pending) return;
+  const esp_partition_t *run = esp_ota_get_running_partition();
+  if (run) esp_ota_mark_app_valid_cancel_rollback();
+  prefs.begin("pzemota", false);
+  prefs.putBool("pending", false);
+  prefs.end();
 }
 
 // ---------- MQTT status ----------
 void publishStatus(const char *state, const char *detail, bool sensorOk) {
   if (!mqtt.connected()) return;
-  StaticJsonDocument<420> doc;
+  StaticJsonDocument<640> doc;
   doc["device_uid"] = deviceUid;
   doc["machine_code"] = machineCode;
   doc["sensor"] = SENSOR_NAME;
@@ -1034,17 +1289,26 @@ void publishStatus(const char *state, const char *detail, bool sensorOk) {
   doc["sensor_ok"] = sensorOk;
   doc["detail"] = detail;
   doc["rssi"] = WiFi.RSSI();
-  // IP tidak dikirim tiap status — hanya publishNetworkOnce() saat connect
   doc["uptime_sec"] = millis() / 1000;
   doc["fail_count"] = pzemFailCount;
+  doc["wifi_fail"] = wifiFailCount;
+  doc["mqtt_fail"] = mqttFailCount;
   doc["run_sec"] = runSec;
   doc["loss_sec"] = lossSec;
   doc["off_sec"] = offSec;
   doc["op_status"] = statusStr(opStatus);
+  doc["fw"] = FW_VERSION;
+  doc["proto"] = PROTOCOL_VERSION;
+  doc["boot_id"] = bootId;
+  doc["reset_reason"] = resetReasonStr();
+  doc["free_heap"] = ESP.getFreeHeap();
+  doc["revision"] = lastDesiredRev;
+  doc["capabilities"] = CAPABILITIES;
 
-  char buf[420];
+  char buf[640];
   size_t n = serializeJson(doc, buf);
-  if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, false) && lastState != state) {
+  bool retain = (strcmp(state, "online") == 0 || strcmp(state, "resync") == 0);
+  if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, retain) && lastState != state) {
     lastState = state;
   }
 }
@@ -1082,15 +1346,26 @@ void publishNetworkOnce() {
 }
 
 void publishAck(const char *command, bool ok) {
-  StaticJsonDocument<192> doc;
+  publishAckErr(command, ok ? "" : "fail");
+}
+
+void publishAckErr(const char *command, const char *err) {
+  StaticJsonDocument<384> doc;
   doc["device_uid"] = deviceUid;
   doc["command"] = command;
-  doc["ok"] = ok;
+  doc["ok"] = !(err && err[0]);
+  if (err && err[0]) doc["error"] = err;
+  if (lastCmdId[0]) doc["command_id"] = lastCmdId;
+  doc["fw"] = FW_VERSION;
+  doc["proto"] = PROTOCOL_VERSION;
+  doc["boot_id"] = bootId;
+  doc["revision"] = lastDesiredRev;
+  doc["free_heap"] = ESP.getFreeHeap();
+  doc["reset_reason"] = resetReasonStr();
   doc["current_threshold_a"] = currentThresholdA;
-  doc["power_threshold_w"] = powerThresholdW;
   doc["run_sec"] = runSec;
   doc["loss_sec"] = lossSec;
-  char buf[192];
+  char buf[384];
   size_t n = serializeJson(doc, buf);
   mqtt.publish(topicAck, buf, n);
 }
@@ -1109,6 +1384,8 @@ void publishConfigAck(const char *cmd) {
   doc["filter_aktif_ms"] = filterAktifMs;
   doc["filter_diam_ms"] = filterDiamMs;
   doc["lcd_auto_ms"] = lcdAutoMs;
+  doc["fw"] = FW_VERSION;
+  doc["proto"] = PROTOCOL_VERSION;
   doc["machine_name"] = lcdName;
   doc["process_name"] = lcdProcess;
   doc["run_sec"] = runSec;
@@ -1121,31 +1398,35 @@ void publishConfigAck(const char *cmd) {
 
 void publishWifiScanAck() {
   if (WiFi.status() != WL_CONNECTED) {
-    publishAck("wifi_scan", false);
+    publishAckErr("wifi_scan", "wifi down");
     return;
   }
   flashLcdMsg("Scan WiFi ...", " ");
-  int n = WiFi.scanNetworks(false, true);
+  int n = WiFi.scanNetworks(true, false);  // async start
+  uint32_t t0 = millis();
+  while (WiFi.scanComplete() < 0 && millis() - t0 < 8000) {
+    wdtFeed();
+    delay(50);
+  }
+  n = WiFi.scanComplete();
   if (n < 0) {
-    publishAck("wifi_scan", false);
+    publishAckErr("wifi_scan", "scan fail");
     return;
   }
-
-  StaticJsonDocument<3072> doc;
+  StaticJsonDocument<1024> doc;
   doc["device_uid"] = deviceUid;
   doc["machine_code"] = machineCode;
   doc["command"] = "wifi_scan";
   doc["ok"] = true;
   JsonArray arr = doc.createNestedArray("wifi_list");
-  int cap = n > 12 ? 12 : n;
+  int cap = n > 8 ? 8 : n;
   for (int i = 0; i < cap; i++) {
     JsonObject ap = arr.createNestedObject();
     ap["ssid"] = WiFi.SSID(i);
     ap["rssi"] = WiFi.RSSI(i);
     ap["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
-    ap["channel"] = 0;
   }
-  char buf[3072];
+  char buf[1024];
   size_t len = serializeJson(doc, buf);
   mqtt.publish(topicAck, buf, len);
   WiFi.scanDelete();
@@ -1154,12 +1435,39 @@ void publishWifiScanAck() {
 
 void onMqttMessage(char *topic, byte *payload, unsigned int length) {
   (void)topic;
-  StaticJsonDocument<512> doc;
+  if (length > 2500) {
+    publishAckErr("parse", "payload too large");
+    return;
+  }
+  StaticJsonDocument<2048> doc;
   if (deserializeJson(doc, payload, length)) return;
   const char *cmd = doc["command"] | "";
+  const char *cid = doc["command_id"] | doc["id"] | "";
+  if (cid[0]) {
+    if (strcmp(cid, lastCmdId) == 0) {
+      publishAck(cmd[0] ? cmd : "dup", true);
+      return;
+    }
+    strncpy(lastCmdId, cid, sizeof(lastCmdId) - 1);
+    lastCmdId[sizeof(lastCmdId) - 1] = 0;
+  }
+  const char *target = doc["target_uid"] | "";
+  if (target[0] && strcmp(target, deviceUid) != 0) return;
+
+  bool destructive = !strcmp(cmd, "reboot") || !strcmp(cmd, "reset_day") ||
+                     !strcmp(cmd, "factory_reset") || !strcmp(cmd, "ota_update");
+  if (destructive && !(doc["confirm"] | false)) {
+    publishAckErr(cmd, "confirm=true wajib");
+    return;
+  }
+
+  if (strcmp(cmd, "desired_state") == 0 || strcmp(cmd, "login_status") == 0) {
+    applyDesiredState(doc.as<JsonObject>());
+    return;
+  }
 
   if (strcmp(cmd, "wifi_scan") == 0) {
-    publishWifiScanAck();
+    wifiScanPending = true;
   } else if (strcmp(cmd, "set_identity") == 0) {
     const char *code = doc["machine_code"] | "";
     const char *uid = doc["device_uid"] | "";
@@ -1230,9 +1538,30 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
         strncpy(mqttHost, h, sizeof(mqttHost) - 1);
         mqttHost[sizeof(mqttHost) - 1] = 0;
         dirty = true;
-        mqtt.setServer(mqttHost, MQTT_PORT);
+        mqtt.setServer(mqttHost, mqttPort);
         mqttNeedsReconnect = true;
       }
+    }
+    if (doc.containsKey("mqtt_port")) {
+      uint16_t p = (uint16_t)doc["mqtt_port"].as<int>();
+      if (p > 0 && p != mqttPort) {
+        mqttPort = p;
+        dirty = true;
+        mqtt.setServer(mqttHost, mqttPort);
+        mqttNeedsReconnect = true;
+      }
+    }
+    if (doc.containsKey("mqtt_user")) {
+      strncpy(mqttUser, doc["mqtt_user"] | "", sizeof(mqttUser) - 1);
+      mqttUser[sizeof(mqttUser) - 1] = 0;
+      dirty = true;
+      mqttNeedsReconnect = true;
+    }
+    if (doc.containsKey("mqtt_pass")) {
+      strncpy(mqttPass, doc["mqtt_pass"] | "", sizeof(mqttPass) - 1);
+      mqttPass[sizeof(mqttPass) - 1] = 0;
+      dirty = true;
+      mqttNeedsReconnect = true;
     }
     if (dirty) saveIdentity();
     publishConfigAck(cmd);
@@ -1288,12 +1617,13 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
     if (doc.containsKey("lcd_page")) {
       int p = doc["lcd_page"].as<int>();
       if (p >= 0 && p < (int)lcdSlideCount()) {
-        lcdPage = (LcdPage)p;
+        lcdPage = (uint8_t)p;
         lcdScrollPos = 0;
         lcdManualHold = true;
         lastPageAutoMs = millis();
       }
     }
+    if (doc.containsKey("lcd_pages")) applyLcdPages(doc["lcd_pages"]);
     saveCalibration();
     renderLcd();
     publishAck(cmd, true);
@@ -1322,7 +1652,7 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
   } else if (strcmp(cmd, "ping") == 0) {
     publishAck(cmd, true);
   } else if (strcmp(cmd, "lcd_page") == 0) {
-    lcdPage = (LcdPage)((lcdPage + 1) % lcdSlideCount());
+    lcdPage = lcdSlideCount() ? (lcdPage + 1) % lcdSlideCount() : 0;
     lcdScrollPos = 0;
     lcdManualHold = true;
     lastPageAutoMs = millis();
@@ -1380,27 +1710,12 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
     }
     flashLcdScrollMsg(msg, " ");
     publishAck(cmd, true);
-  } else if (strcmp(cmd, "login_status") == 0) {
-    // Sinkron dari backend saat boot/resync
-    if (doc.containsKey("login_required")) {
-      loginSystemOn = doc["login_required"].as<bool>();
-    }
-    bool ok = doc["logged_in"] | false;
-    if (!loginSystemOn) {
-      ok = true;  // OFF → jangan paksa slide "OPERATOR BELUM"
-    }
-    setOperatorLoggedIn(ok, false);
-    saveLoginState();
-    if (ok) {
-      const char *op = doc["operator_name"] | "";
-      if (op[0]) {
-        snprintf(lcdLoginLine2, sizeof(lcdLoginLine2), "%.16s", op);
-        strncpy(lcdOperator, op, sizeof(lcdOperator) - 1);
-        lcdOperator[sizeof(lcdOperator) - 1] = 0;
-      }
-    }
-    renderLcd();
+  } else if (strcmp(cmd, "ota_update") == 0) {
+    runOtaUpdate(doc["url"] | "", doc["sha256"] | "", doc["version"] | "");
+  } else if (strcmp(cmd, "factory_reset") == 0) {
     publishAck(cmd, true);
+    delay(200);
+    factoryReset();
   } else if (strcmp(cmd, "reboot") == 0) {
     publishAck(cmd, true);
     delay(200);
@@ -1425,133 +1740,29 @@ void applyWifiStaOptimizations() {
   esp_wifi_set_max_tx_power(80);
 }
 
-void wifiCopyCreds(const char *ssid, const char *pass) {
-  strncpy(wifiSsid, ssid ? ssid : "", sizeof(wifiSsid) - 1);
-  strncpy(wifiPass, pass ? pass : "", sizeof(wifiPass) - 1);
-  wifiSsid[sizeof(wifiSsid) - 1] = 0;
-  wifiPass[sizeof(wifiPass) - 1] = 0;
-}
-
-void wifiLoadKnown(uint8_t i) {
-  if (i == 1) wifiCopyCreds(DEFAULT_WIFI_SSID2, DEFAULT_WIFI_PASS2);
-  else if (i == 2) wifiCopyCreds(DEFAULT_WIFI_SSID3, DEFAULT_WIFI_PASS3);
-  else wifiCopyCreds(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
-}
-
-bool wifiIsKnownSsid(const char *s) {
-  if (!s || !s[0]) return true;
-  return strcmp(s, DEFAULT_WIFI_SSID) == 0 ||
-         strcmp(s, DEFAULT_WIFI_SSID2) == 0 ||
-         strcmp(s, DEFAULT_WIFI_SSID3) == 0;
-}
-
 void wifiBeginCurrent() {
+  if (!wifiProvisioned() || setupApMode) return;
   saveCounters(true);
   WiFi.disconnect(false);
   delay(40);
   applyWifiStaOptimizations();
   WiFi.setHostname(mqttClientId);
   WiFi.begin(wifiSsid, wifiPass);
-  wifiTryStartMs = millis();
-  lastWifiAttemptMs = wifiTryStartMs;
-}
-
-void wifiFillScan() {
-  wifiScanN = 0;
-  wifiScanIdx = 0;
-  int n = WiFi.scanNetworks(false, false);
-  if (n < 0) n = 0;
-  bool used[48];
-  memset(used, 0, sizeof(used));
-  if (n > (int)sizeof(used)) n = (int)sizeof(used);
-  for (uint8_t k = 0; k < WIFI_SCAN_TOP; k++) {
-    int best = -1;
-    int32_t bestR = -999;
-    for (int i = 0; i < n; i++) {
-      if (used[i]) continue;
-      String ss = WiFi.SSID(i);
-      if (ss.length() == 0 || wifiIsKnownSsid(ss.c_str())) continue;
-      bool dup = false;
-      for (uint8_t j = 0; j < wifiScanN; j++) {
-        if (ss.equals(wifiScanSsid[j])) {
-          dup = true;
-          break;
-        }
-      }
-      if (dup) continue;
-      int32_t r = WiFi.RSSI(i);
-      if (best < 0 || r > bestR) {
-        best = i;
-        bestR = r;
-      }
-    }
-    if (best < 0) break;
-    used[best] = true;
-    strncpy(wifiScanSsid[wifiScanN], WiFi.SSID(best).c_str(), 32);
-    wifiScanSsid[wifiScanN][32] = 0;
-    wifiScanN++;
-  }
-  WiFi.scanDelete();
-}
-
-void wifiAdvance() {
-  wifiFailCount++;
-  if (wifiPhase == WP_KNOWN) {
-    wifiKnownIdx++;
-    if (wifiKnownIdx >= 3) {
-      wifiKnownIdx = 0;
-      wifiKnownRound++;
-      if (wifiKnownRound >= WIFI_KNOWN_ROUNDS) {
-        wifiPhase = WP_SCAN;
-        wifiFillScan();
-        if (wifiScanN == 0) {
-          wifiPhase = WP_FAIL;
-          wifiAllFailed = true;
-          wifiTryStartMs = millis();
-          return;
-        }
-        wifiCopyCreds(wifiScanSsid[0], WIFI_SCAN_PASS);
-        wifiBeginCurrent();
-        return;
-      }
-    }
-    wifiLoadKnown(wifiKnownIdx);
-    wifiBeginCurrent();
-    return;
-  }
-  if (wifiPhase == WP_SCAN) {
-    wifiScanIdx++;
-    if (wifiScanIdx >= wifiScanN) {
-      wifiPhase = WP_FAIL;
-      wifiAllFailed = true;
-      wifiTryStartMs = millis();
-      return;
-    }
-    wifiCopyCreds(wifiScanSsid[wifiScanIdx], WIFI_SCAN_PASS);
-    wifiBeginCurrent();
-  }
-}
-
-void wifiResetCycle() {
-  wifiPhase = WP_KNOWN;
-  wifiKnownIdx = 0;
-  wifiKnownRound = 0;
-  wifiScanIdx = 0;
-  wifiScanN = 0;
-  wifiAllFailed = false;
-  wifiLoadKnown(0);
-  wifiBeginCurrent();
+  lastWifiAttemptMs = millis();
 }
 
 bool ensureWifi() {
+  if (setupApMode) return false;
+  if (!wifiProvisioned()) {
+#if ENABLE_SETUP_AP
+    startSetupAp("nvs kosong");
+#endif
+    return false;
+  }
   if (WiFi.status() == WL_CONNECTED) {
     if (!wifiWasOk) {
       wifiWasOk = true;
-      wifiAllFailed = false;
-      wifiPhase = WP_KNOWN;
-      wifiKnownRound = 0;
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-      saveIdentity();
     }
     return true;
   }
@@ -1562,21 +1773,12 @@ bool ensureWifi() {
     ntpOk = false;
     if (mqtt.connected()) mqtt.disconnect();
     ipReportedOnce = false;
-    wifiResetCycle();
-    return false;
   }
-
-  if (wifiTryStartMs == 0) {
-    wifiResetCycle();
-    return false;
+  uint32_t now = millis();
+  if (now - lastWifiAttemptMs >= WIFI_RETRY_MS) {
+    wifiFailCount++;
+    wifiBeginCurrent();
   }
-
-  if (wifiAllFailed) {
-    if (millis() - wifiTryStartMs >= WIFI_TRY_MS) wifiResetCycle();
-    return false;
-  }
-
-  if (millis() - wifiTryStartMs >= WIFI_TRY_MS) wifiAdvance();
   return false;
 }
 
@@ -1589,8 +1791,7 @@ bool ensureMqtt() {
       saveCounters(true);
       publishNetworkOnce();
       publishTelemetry();
-      publishStatus("resync", "MQTT reconnect — sync Run/Loss dari ESP", pzemOk);
-      tryPublishDeepSleepExit();
+      publishStatus("online", "MQTT connected", pzemOk);
     }
     return true;
   }
@@ -1605,22 +1806,21 @@ bool ensureMqtt() {
   lastMqttAttemptMs = now;
   mqttFailCount++;
 
-  // Clean session + LWT; client id unik (lihat buildMqttClientId)
-  bool ok = mqtt.connect(mqttClientId, nullptr, nullptr, topicStatus, 1, true, willPayload, true);
+  const char *user = mqttUser[0] ? mqttUser : nullptr;
+  const char *pass = mqttUser[0] ? mqttPass : nullptr;
+  bool ok = mqtt.connect(mqttClientId, user, pass, topicStatus, 1, true, willPayload, true);
   if (ok) {
     mqttBackoffMs = MQTT_RETRY_MS;
-    ipReportedOnce = false;  // sesi baru → boleh kirim IP sekali
+    ipReportedOnce = false;
     resubscribeMqtt();
     mqttWasOk = true;
     saveCounters(true);
-    publishNetworkOnce();  // IP + SSID + RSSI sekali
+    publishNetworkOnce();
     publishAck("boot", true);
     publishTelemetry();
-    publishStatus("resync", "MQTT connected — sync Run/Loss dari ESP", pzemOk);
-    tryPublishDeepSleepExit();
+    publishStatus("online", "MQTT connected", pzemOk);
     return true;
   }
-  // Exponential backoff: 3s → 6s → … → 60s
   if (mqttBackoffMs < MQTT_RETRY_MAX_MS) {
     uint32_t next = mqttBackoffMs * 2;
     mqttBackoffMs = next > MQTT_RETRY_MAX_MS ? MQTT_RETRY_MAX_MS : next;
@@ -1754,7 +1954,9 @@ void publishTelemetry() {
   doc["power_on_sec"] = runSec + lossSec;
   doc["productivity_pct"] = productivityPct();
   doc["current_threshold_a"] = currentThresholdA;
-  doc["power_threshold_w"] = powerThresholdW;
+  doc["fw"] = FW_VERSION;
+  doc["proto"] = PROTOCOL_VERSION;
+  doc["boot_id"] = bootId;
   doc["fail_count"] = pzemFailCount;
 
   char buf[480];
@@ -1767,9 +1969,20 @@ void handleButtons() {
   bool pageUp = digitalRead(BTN_PAGE) == HIGH;
   bool resetUp = digitalRead(BTN_RESET) == HIGH;
 
+  if (!pageUp && !resetUp) {
+    if (factoryHoldMs == 0) factoryHoldMs = now;
+    else if (now - factoryHoldMs >= FACTORY_HOLD_MS) {
+      factoryHoldMs = 0;
+      factoryReset();
+    }
+  } else {
+    factoryHoldMs = 0;
+  }
+
   if (!pageUp && btnPagePrev) btnPageDownMs = now;
   if (pageUp && !btnPagePrev && (now - btnPageDownMs) > BTN_DEBOUNCE_MS) {
-    lcdPage = (LcdPage)((lcdPage + 1) % lcdSlideCount());
+    uint8_t n = lcdSlideCount();
+    lcdPage = n ? (lcdPage + 1) % n : 0;
     lcdScrollPos = 0;
     lcdManualHold = true;
     lastPageAutoMs = now;
@@ -1778,11 +1991,11 @@ void handleButtons() {
   btnPagePrev = pageUp;
 
   if (!resetUp && btnResetPrev) btnResetDownMs = now;
-  if (!resetUp && (now - btnResetDownMs) >= BTN_LONG_MS && btnResetDownMs > 0) {
+  if (!resetUp && (now - btnResetDownMs) >= BTN_LONG_MS && btnResetDownMs > 0 && pageUp) {
     resetDayCounters("btn_long");
     publishStatus("ok", "day reset via button", pzemOk);
-    btnResetDownMs = 0;  // cegah spam
-    lcdPage = PAGE_RUNLOSS;
+    btnResetDownMs = 0;
+    lcdPage = 0;
     renderLcd();
   }
   if (resetUp) btnResetDownMs = 0;
@@ -1791,77 +2004,101 @@ void handleButtons() {
 
 void setup() {
   delay(300);
+#if ENABLE_LOCAL_BUTTONS
   pinMode(BTN_PAGE, INPUT_PULLUP);
   pinMode(BTN_RESET, INPUT_PULLUP);
+#endif
+
+  snprintf(bootId, sizeof(bootId), "%08lX", (unsigned long)(ESP.getEfuseMac() ^ millis()));
+  lastCmdId[0] = 0;
 
   loadIdentity();
   buildTopics();
-  loadCounters();  // lanjutkan Run/Loss setelah restart
+  loadCounters();
   loadCalibration();
   loadLoginState();
+
+#ifdef ESP_IDF_VERSION_MAJOR
+  esp_task_wdt_config_t wdt = {
+      .timeout_ms = WDT_TIMEOUT_MS,
+      .idle_core_mask = 0,
+      .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdt);
+  esp_task_wdt_add(NULL);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true);
+  esp_task_wdt_add(NULL);
+#endif
 
   Wire.begin(I2C_SDA, I2C_SCL);
   lcd.init();
   lcd.backlight();
-
-  bool fromDeepSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
-
-  if (!fromDeepSleep) {
-    showUidSplashLcd(2000);   // UID besar sesuai nomor (006)
-    showMacSplashLcd(2500);   // MAC AA:BB:CC / DD:EE:FF tengah
-  }
+  showUidSplashLcd(2000);
+  showMacSplashLcd(2500);
 
   PZEM_UART.begin(9600, SERIAL_8N1, PZEM_RX_PIN, PZEM_TX_PIN);
   delay(400);
 
-  if (fromDeepSleep) {
-    handleDeepSleepWake();  // masih OFF → tidak return (sleep lagi)
-  }
-
-  mqtt.setServer(mqttHost, MQTT_PORT);
+  mqtt.setServer(mqttHost, mqttPort);
   mqtt.setCallback(onMqttMessage);
-  mqtt.setBufferSize(1024);
+  mqtt.setBufferSize(MQTT_BUF_SIZE);
   mqtt.setKeepAlive(MQTT_KEEPALIVE_SEC);
   mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
+  confirmOtaIfPending();
 
-  WiFi.mode(WIFI_STA);
-  wifiResetCycle();
+#if ENABLE_SETUP_AP
+  bool holdBoth = false;
+#if ENABLE_LOCAL_BUTTONS
+  holdBoth = digitalRead(BTN_PAGE) == LOW && digitalRead(BTN_RESET) == LOW;
+#endif
+  if (holdBoth || !wifiProvisioned()) {
+    startSetupAp(holdBoth ? "tombol" : "nvs");
+  } else
+#endif
+  {
+    WiFi.mode(WIFI_STA);
+    wifiBeginCurrent();
+  }
   lastTickMs = millis();
   lastPageAutoMs = millis();
-  offSinceMs = 0;
 }
 
 void loop() {
+  wdtFeed();
   uint32_t now = millis();
+#if ENABLE_SETUP_AP
+  handleSetupAp();
+#endif
+
+  if (wifiScanPending) {
+    wifiScanPending = false;
+    publishWifiScanAck();
+  }
+
   if (wifiCredsDirty) {
     wifiCredsDirty = false;
-    wifiAllFailed = false;
+    stopSetupAp();
+    WiFi.mode(WIFI_STA);
     wifiBeginCurrent();
   }
 
   if (mqttNeedsReconnect) {
     mqttNeedsReconnect = false;
-    if (mqtt.connected()) {
-      mqtt.disconnect();
-    }
+    if (mqtt.connected()) mqtt.disconnect();
   }
 
   ensureWifi();
   if (WiFi.status() == WL_CONNECTED) {
-    if (!mqtt.connected()) {
-      ensureMqtt();
-    } else {
-      // Panggil loop sering — keepalive 60s tetap butuh service rutin
-      mqtt.loop();
-    }
+    if (!mqtt.connected()) ensureMqtt();
+    else mqtt.loop();
     checkWibMidnight();
   }
 
-  // Reboot hanya jika semua WiFi sudah gagal lama (failover masih jalan → jangan restart)
   bool fullyOnline = (WiFi.status() == WL_CONNECTED) && mqtt.connected();
-  if (fullyOnline || !wifiAllFailed) {
+  if (fullyOnline || setupApMode) {
     offlineSinceMs = 0;
-  } else {
+  } else if (wifiProvisioned()) {
     if (offlineSinceMs == 0) offlineSinceMs = now;
     if ((now - offlineSinceMs) >= RECOVERY_REBOOT_MS) {
       saveCounters(true);
@@ -1870,26 +2107,14 @@ void loop() {
     }
   }
 
-  // Service MQTT lagi di akhir cycle (jika masih connected)
   if (mqtt.connected()) mqtt.loop();
 
   if (now - lastPzemMs >= PZEM_MS) {
     lastPzemMs = now;
     readPzem();
     tickTimers();
-
-    // Deep sleep: OFF terus ≥ 1 jam (PZEM gagal = ikut OFF)
-    if (opStatus == ST_OFF) {
-      if (offSinceMs == 0) offSinceMs = now;
-      else if ((now - offSinceMs) >= OFF_BEFORE_SLEEP_MS) {
-        enterDeepSleep("off_1h", true);
-      }
-    } else {
-      offSinceMs = 0;
-    }
   }
 
-  // Simpan berkala (juga saat offline)
   if (countersDirty) saveCounters(false);
 
   if (mqtt.connected() && (now - lastTelemetryMs >= TELEMETRY_MS)) {
@@ -1903,11 +2128,15 @@ void loop() {
     else publishStatus("sensor_fail", "ESP online, PZEM gagal", false);
   }
 
+#if ENABLE_LOCAL_BUTTONS
   handleButtons();
+#endif
 
+  uint8_t nSlide = lcdSlideCount();
+  if (nSlide && lcdPage >= nSlide) lcdPage = 0;
   if (!lcdManualHold && (now - lastPageAutoMs >= lcdAutoMs)) {
     lastPageAutoMs = now;
-    lcdPage = (LcdPage)((lcdPage + 1) % lcdSlideCount());
+    lcdPage = nSlide ? (lcdPage + 1) % nSlide : 0;
     lcdScrollPos = 0;
   }
   if (lcdManualHold && (now - lastPageAutoMs >= 12000)) lcdManualHold = false;

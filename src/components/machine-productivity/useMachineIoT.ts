@@ -216,6 +216,13 @@ export function useMachineIoT() {
                     const id = msg.machine_id;
                     if (!id) return;
 
+                    if (msg.type === 'machine_meta') {
+                        patchMachine(id, {
+                            branch: (msg as { branch?: string }).branch,
+                            line_name: (msg as { line_name?: string }).line_name,
+                            location_note: (msg as { location_note?: string | null }).location_note,
+                        });
+                    }
                     if (msg.type === 'machine_status') {
                         patchMachine(id, {
                             status: msg.status,

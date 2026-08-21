@@ -113,8 +113,11 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${B
 // Backend khusus Needle Manager (dipisah dari backend environment utama agar tidak mengubah flow existing).
 const NEEDLE_BACKEND_BASE_URL = process.env.NEEDLE_BACKEND_BASE_URL || 'http://10.5.0.107:8080';
 
-// MQTT Broker - sama untuk semua environment (MJL, MJL2, CLN)
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883';
+// MQTT Broker - mendukung multi broker (Lokal 10.5.0.106 & Robotic 10.5.2.223)
+const MQTT_BROKER_URLS = (process.env.MQTT_BROKER_URLS || process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883,mqtt://10.5.2.223:1883')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
 const MQTT_OPTIONS = {
     connectTimeout: 10000,
     keepalive: 60,
@@ -6180,7 +6183,7 @@ app.use((err, req, res, next) => {
 // MQTT CLIENT - Konektivitas & Log Pesan
 // ============================================
 
-let mqttClient = null;
+let mqttClients = [];
 /** Event login success terakhir dari MQTT (untuk animasi) */
 let lastMqttLoginEvent = null;
 /** Event login fail/unsuccess terakhir dari MQTT (untuk animasi login gagal) */
@@ -6193,107 +6196,115 @@ let lastStatusOnline = {};
 let lastMqttInfoEvent = null;
 
 function startMqttClient() {
-    if (mqttClient) {
-        try { mqttClient.end(true); } catch (_) { }
-        mqttClient = null;
+    if (mqttClients.length) {
+        mqttClients.forEach(c => {
+            try { c.end(true); } catch (_) { }
+        });
+        mqttClients = [];
     }
 
-    console.log(`\n📡 [MQTT] Connecting to broker: ${MQTT_BROKER_URL} ...`);
+    console.log(`\n📡 [MQTT] Connecting to ${MQTT_BROKER_URLS.length} broker(s): ${MQTT_BROKER_URLS.join(', ')} ...`);
 
-    try {
-        mqttClient = mqtt.connect(MQTT_BROKER_URL, MQTT_OPTIONS);
-    } catch (err) {
-        console.error('❌ [MQTT] Connect error:', err.message);
-        return;
-    }
+    MQTT_BROKER_URLS.forEach((brokerUrl) => {
+        const clientOpts = {
+            ...MQTT_OPTIONS,
+            clientId: `server_${CURRENT_ENV}_${brokerUrl.replace(/[^a-zA-Z0-9]/g, '_')}_${Math.random().toString(36).slice(2, 8)}`
+        };
 
-    mqttClient.on('message', (topic, payload) => {
-        const payloadStr = (payload ? payload.toString() : '').trim();
-        const time = new Date().toISOString();
-        console.log(`📩 [MQTT] Message received | ${time}`);
-        console.log(`   Topic: ${topic}`);
-        console.log(`   Payload: ${payloadStr}`);
-
-        // Topic status: status/line{N}/qc|pqc|output/{env} — payload "online" = alat RFID terhubung
-        const statusMatch = topic.match(/^status\/line(\d+)\/(qc|pqc|output)\/(cln|mjl|mjl2)$/);
-        if (statusMatch && payloadStr.toLowerCase() === 'online') {
-            const line = statusMatch[1];
-            const role = statusMatch[2];
-            const at = Date.now();
-            if (!lastStatusOnline[line]) lastStatusOnline[line] = {};
-            lastStatusOnline[line][role] = { at };
+        let client;
+        try {
+            client = mqtt.connect(brokerUrl, clientOpts);
+            mqttClients.push(client);
+        } catch (err) {
+            console.error(`❌ [MQTT] Connect error for ${brokerUrl}:`, err.message);
             return;
         }
 
-        // Topic info: info/line{N}/qc|pqc/{env} — payload OUTPUT, QC, PQC (alur: OUTPUT → QC → PQC)
-        const infoMatch = topic.match(/^info\/line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
-        if (infoMatch) {
-            const line = infoMatch[1];
-            const role = infoMatch[2];
-            const pl = payloadStr.trim().toUpperCase();
-            const allowed = ['OUTPUT', 'QC', 'PQC'];
-            if (allowed.includes(pl)) {
-                lastMqttInfoEvent = { line, role, payload: pl, at: Date.now() };
+        client.on('message', (topic, payload) => {
+            const payloadStr = (payload ? payload.toString() : '').trim();
+            const time = new Date().toISOString();
+            console.log(`📩 [MQTT][${brokerUrl}] Message received | ${time}`);
+            console.log(`   Topic: ${topic}`);
+            console.log(`   Payload: ${payloadStr}`);
+
+            // Topic status: status/line{N}/qc|pqc|output/{env} — payload "online" = alat RFID terhubung
+            const statusMatch = topic.match(/^status\/line(\d+)\/(qc|pqc|output)\/(cln|mjl|mjl2)$/);
+            if (statusMatch && payloadStr.toLowerCase() === 'online') {
+                const line = statusMatch[1];
+                const role = statusMatch[2];
+                const at = Date.now();
+                if (!lastStatusOnline[line]) lastStatusOnline[line] = {};
+                lastStatusOnline[line][role] = { at };
+                return;
             }
-            return;
-        }
 
-        const match = topic.match(/^line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
-        if (!match) return;
-        const line = match[1];
-        const role = match[2];
-        const pl = payloadStr.toLowerCase();
-        // 3 jenis payload: success, unsuccess, login (alat baru nyala / indikator lampu mati)
-        const status = pl === 'success' ? 'success' : pl === 'login' ? 'login' : 'unsuccess';
-        const isSuccess = status === 'success';
-        const at = Date.now();
+            // Topic info: info/line{N}/qc|pqc/{env} — payload OUTPUT, QC, PQC (alur: OUTPUT → QC → PQC)
+            const infoMatch = topic.match(/^info\/line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
+            if (infoMatch) {
+                const line = infoMatch[1];
+                const role = infoMatch[2];
+                const pl = payloadStr.trim().toUpperCase();
+                const allowed = ['OUTPUT', 'QC', 'PQC'];
+                if (allowed.includes(pl)) {
+                    lastMqttInfoEvent = { line, role, payload: pl, at: Date.now() };
+                }
+                return;
+            }
 
-        if (isSuccess) {
-            lastMqttLoginEvent = { line, role, at };
-        } else if (status === 'unsuccess') {
-            lastMqttLoginFailEvent = { line, role, at };
-        }
-        if (!lastMqttLoginByLineAndRole[line]) lastMqttLoginByLineAndRole[line] = {};
-        lastMqttLoginByLineAndRole[line][role] = { status, at };
-    });
+            const match = topic.match(/^line(\d+)\/(qc|pqc)\/(cln|mjl|mjl2)$/);
+            if (!match) return;
+            const line = match[1];
+            const role = match[2];
+            const pl = payloadStr.toLowerCase();
+            // 3 jenis payload: success, unsuccess, login (alat baru nyala / indikator lampu mati)
+            const status = pl === 'success' ? 'success' : pl === 'login' ? 'login' : 'unsuccess';
+            const isSuccess = status === 'success';
+            const at = Date.now();
 
-    mqttClient.on('connect', () => {
-        console.log('✅ [MQTT] CONNECTED');
-        console.log(`   Broker: ${MQTT_BROKER_URL}`);
-        console.log(`   Client ID: ${MQTT_OPTIONS.clientId}`);
-        // Subscribe ke SEMUA environment (cln, mjl, mjl2): login + status online
-        const envs = ['cln', 'mjl', 'mjl2'];
-        const lineNumbers = Array.from({ length: 16 }, (_, i) => i + 1); // 1-16
-        const topics = [];
-        lineNumbers.forEach((n) => {
-            envs.forEach((env) => {
-                topics.push(`line${n}/qc/${env}`);
-                topics.push(`line${n}/pqc/${env}`);
-                topics.push(`status/line${n}/qc/${env}`);
-                topics.push(`status/line${n}/pqc/${env}`);
-                topics.push(`status/line${n}/output/${env}`);
-                topics.push(`info/line${n}/qc/${env}`);
-                topics.push(`info/line${n}/pqc/${env}`);
+            if (isSuccess) {
+                lastMqttLoginEvent = { line, role, at };
+            } else if (status === 'unsuccess') {
+                lastMqttLoginFailEvent = { line, role, at };
+            }
+            if (!lastMqttLoginByLineAndRole[line]) lastMqttLoginByLineAndRole[line] = {};
+            lastMqttLoginByLineAndRole[line][role] = { status, at };
+        });
+
+        client.on('connect', () => {
+            console.log(`✅ [MQTT] CONNECTED to ${brokerUrl}`);
+            // Subscribe ke SEMUA environment (cln, mjl, mjl2): login + status online
+            const envs = ['cln', 'mjl', 'mjl2'];
+            const lineNumbers = Array.from({ length: 16 }, (_, i) => i + 1); // 1-16
+            const topics = [];
+            lineNumbers.forEach((n) => {
+                envs.forEach((env) => {
+                    topics.push(`line${n}/qc/${env}`);
+                    topics.push(`line${n}/pqc/${env}`);
+                    topics.push(`status/line${n}/qc/${env}`);
+                    topics.push(`status/line${n}/pqc/${env}`);
+                    topics.push(`status/line${n}/output/${env}`);
+                    topics.push(`info/line${n}/qc/${env}`);
+                    topics.push(`info/line${n}/pqc/${env}`);
+                });
+            });
+            topics.forEach((topic) => {
+                client.subscribe(topic, { qos: 0 }, (err) => {
+                    if (err) console.error(`❌ [MQTT] Subscribe error [${topic}] on ${brokerUrl}:`, err.message);
+                });
             });
         });
-        console.log(`   Subscribed ${topics.length} topics (line + status/line + info/line per qc,pqc,output × cln,mjl,mjl2). Siap menerima pesan.\n`);
-        topics.forEach((topic) => {
-            mqttClient.subscribe(topic, { qos: 0 }, (err) => {
-                if (err) console.error(`❌ [MQTT] Subscribe error [${topic}]:`, err.message);
-            });
+
+        client.on('offline', () => {
+            console.log(`⚠️ [MQTT] OFFLINE: ${brokerUrl}`);
         });
-    });
 
-    mqttClient.on('offline', () => {
-        console.log('⚠️ [MQTT] OFFLINE (disconnected)');
-    });
+        client.on('close', () => {
+            console.log(`⚠️ [MQTT] Connection CLOSED: ${brokerUrl}`);
+        });
 
-    mqttClient.on('close', () => {
-        console.log('⚠️ [MQTT] Connection CLOSED');
-    });
-
-    mqttClient.on('error', (err) => {
-        console.error('❌ [MQTT] Error:', err.message);
+        client.on('error', (err) => {
+            console.error(`❌ [MQTT] Error on ${brokerUrl}:`, err.message);
+        });
     });
 }
 

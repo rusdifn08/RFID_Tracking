@@ -52,6 +52,8 @@ pub async fn run_migrations(pool: &PgPool) -> anyhow::Result<()> {
         include_str!("../../migrations/036_remove_uid_0001_0002.sql"),
         include_str!("../../migrations/037_operator_process_001_006_008.sql"),
         include_str!("../../migrations/038_device_mac_addr.sql"),
+        include_str!("../../migrations/039_device_mqtt_service.sql"),
+        include_str!("../../migrations/040_gm3_operators_process.sql"),
     ] {
         sqlx::raw_sql(sql).execute(pool).await?;
     }

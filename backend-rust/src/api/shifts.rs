@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::models::{AssignShift, Operator, UpsertOperator};
+use crate::models::{AssignShift, Machine, Operator, UpsertOperator};
 use crate::state::AppState;
 
 pub async fn list_operators(
@@ -71,8 +71,8 @@ pub async fn get_shift(
     Query(q): Query<ShiftQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let work_date = q.date.unwrap_or_else(crate::services::detection::work_date_wib);
-    let row = sqlx::query_as::<_, (Uuid, NaiveDate, String, String, Option<String>)>(
-        r#"SELECT id, work_date, operator_nik, operator_name, notes
+    let row = sqlx::query_as::<_, (Uuid, NaiveDate, String, String, Option<String>, chrono::DateTime<chrono::Utc>)>(
+        r#"SELECT id, work_date, operator_nik, operator_name, notes, updated_at
            FROM daily_shifts WHERE machine_id = $1 AND work_date = $2"#,
     )
     .bind(id)
@@ -82,18 +82,20 @@ pub async fn get_shift(
     .map_err(internal)?;
 
     Ok(Json(match row {
-        Some((sid, d, nik, name, notes)) => json!({
+        Some((sid, d, nik, name, notes, logged_at)) => json!({
             "id": sid,
             "work_date": d,
             "operator_nik": nik,
             "operator_name": name,
             "notes": notes,
+            "logged_at": logged_at.to_rfc3339(),
         }),
         None => json!({
             "work_date": work_date,
             "operator_nik": null,
             "operator_name": null,
             "notes": null,
+            "logged_at": null,
         }),
     }))
 }
@@ -162,6 +164,7 @@ pub async fn assign_shift(
         String,
         Option<String>,
         Option<String>,
+        chrono::DateTime<chrono::Utc>,
     )>(
         r#"INSERT INTO daily_shifts (
              machine_id, work_date, operator_id, operator_nik, operator_name, notes,
@@ -182,7 +185,7 @@ pub async fn assign_shift(
              color_name = EXCLUDED.color_name,
              updated_at = NOW()
            RETURNING id, work_date, operator_nik, operator_name, notes,
-                     shift_status, garment_style, wo"#,
+                     shift_status, garment_style, wo, updated_at"#,
     )
     .bind(id)
     .bind(work_date)
@@ -236,6 +239,14 @@ pub async fn assign_shift(
         }
     }
 
+    if let Ok(Some(m)) = sqlx::query_as::<_, Machine>(r#"SELECT * FROM machines WHERE id = $1"#)
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        crate::mqtt::push_operator_snapshot(&state, &m).await;
+    }
+
     Ok(Json(json!({
         "id": row.0,
         "work_date": row.1,
@@ -245,6 +256,7 @@ pub async fn assign_shift(
         "shift_status": row.5,
         "garment_style": row.6,
         "wo": row.7,
+        "logged_at": row.8.to_rfc3339(),
         "operator_id": op.id,
     })))
 }
@@ -377,6 +389,8 @@ struct ResumeDbRow {
     default_operator_name: Option<String>,
     device_uid: Option<String>,
     is_online: bool,
+    /// Waktu login terakhir (WIB di UI); null jika belum ada daily_shifts
+    logged_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn machines_resume(
@@ -443,6 +457,7 @@ pub async fn machines_resume(
                   s.operator_name,
                   s.notes,
                   s.shift_status,
+                  s.updated_at AS logged_at,
                   COALESCE(
                     NULLIF(TRIM(s.garment_style), ''),
                     (
@@ -608,6 +623,7 @@ pub async fn machines_resume(
                     .or(r.default_operator_name),
                 "operator_note": r.notes,
                 "shift_status": r.shift_status.unwrap_or_else(|| "work".into()),
+                "logged_at": r.logged_at.map(|t| t.to_rfc3339()),
                 "garment_style": r.garment_style,
                 "wo": r.wo,
                 "size_label": r.size_label,

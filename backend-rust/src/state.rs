@@ -52,6 +52,25 @@ pub struct AppState {
 pub struct MqttOut {
     pub topic: String,
     pub payload: String,
+    pub retain: bool,
+}
+
+impl MqttOut {
+    pub fn cmd(topic: String, payload: String) -> Self {
+        Self {
+            topic,
+            payload,
+            retain: false,
+        }
+    }
+
+    pub fn retained(topic: String, payload: String) -> Self {
+        Self {
+            topic,
+            payload,
+            retain: true,
+        }
+    }
 }
 
 impl AppState {

@@ -97,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/machines/{id}/compare", get(api::compare::compare_stats))
         .route("/api/machines/{id}/disputes", get(api::compare::recent_disputes))
         .route("/api/machines/{id}/command", post(api::machines::send_command))
+        .route("/api/machines/{id}/ota", post(api::machines::start_ota))
         .route("/ws", get(ws::ws_handler))
         .layer(
             CorsLayer::new()
@@ -125,7 +126,8 @@ async fn main() -> anyhow::Result<()> {
     println!("  health   http://{lan_ip}:{}/health", cfg.port);
     println!("  devices  http://{lan_ip}:{}/devices", cfg.port);
     println!("  ws       ws://{lan_ip}:{}/ws", cfg.port);
-    println!("  MQTT     {}:{}  prefix={}", cfg.mqtt_host, cfg.mqtt_port, cfg.mqtt_topic_prefix);
+    println!("  MQTT     {:?}  prefix={}  auth={}", cfg.mqtt_brokers(), cfg.mqtt_topic_prefix,
+        if cfg.mqtt_user.is_empty() { "anonymous" } else { "user" });
     println!("  DB       {db_hint}");
     println!("  offline  {}s (last_seen)", cfg.offline_timeout_sec);
     println!("  logs     panel bawah di /devices (bukan terminal)");

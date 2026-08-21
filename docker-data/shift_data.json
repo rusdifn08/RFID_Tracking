@@ -55,6 +55,6 @@
     "GCC_20": "day",
     "GCC_21": "day"
   },
-  "lastUpdated": "2026-07-13T00:58:28.192Z",
+  "lastUpdated": "2026-07-16T02:34:38.135Z",
   "description": "Data shift untuk production lines. 'day' = shift siang, 'night' = shift malam. Key adalah line ID dengan environment prefix untuk line yang shared (CLN_1, MJL_1, MJL2_1, dll)"
 }

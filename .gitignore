@@ -34,5 +34,6 @@ scratch/
 .env
 backend-rust/.env
 backend-rust/target/
+backend-rust/mosquitto/mosquitto.passwd
 
 backend-rust/tmp_mqtt.json

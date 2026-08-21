@@ -4,7 +4,7 @@ use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use tokio::sync::broadcast;
 
 use crate::logbuf;
-use crate::models::{AdxlPayload, DeviceStatusPayload, PzemPayload, WsEvent};
+use crate::models::{AdxlPayload, DeviceStatusPayload, Machine, PzemPayload, WsEvent};
 use crate::services::{detection, machine as machine_svc, magnitude_g};
 use crate::state::{AppState, MqttOut, WifiScanAp, WifiScanResult, ZigbeeMeshSnap};
 
@@ -81,22 +81,27 @@ async fn subscribe_all(client: &AsyncClient, prefix: &str) -> anyhow::Result<()>
     Ok(())
 }
 
-fn new_client(state: &AppState, suffix: u32) -> (AsyncClient, rumqttc::EventLoop) {
+fn new_client_for_broker(
+    state: &AppState,
+    broker_host: &str,
+    broker_port: u16,
+    suffix: u32,
+) -> (AsyncClient, rumqttc::EventLoop) {
+    let sanitized_host = broker_host.replace('.', "_");
     let id = if suffix == 0 {
-        state.cfg.mqtt_client_id.clone()
+        format!("{}-{}", state.cfg.mqtt_client_id, sanitized_host)
     } else {
-        format!("{}-{}", state.cfg.mqtt_client_id, suffix)
+        format!("{}-{}-{}", state.cfg.mqtt_client_id, sanitized_host, suffix)
     };
-    let mut opts = MqttOptions::new(id, state.cfg.mqtt_host.clone(), state.cfg.mqtt_port);
+    let mut opts = MqttOptions::new(id, broker_host, broker_port);
     opts.set_keep_alive(Duration::from_secs(30));
+    if !state.cfg.mqtt_user.is_empty() {
+        opts.set_credentials(state.cfg.mqtt_user.clone(), state.cfg.mqtt_password.clone());
+    }
     AsyncClient::new(opts, 64)
 }
 
 pub async fn run_mqtt_loop(state: AppState) -> anyhow::Result<()> {
-    let prefix = state.cfg.mqtt_topic_prefix.clone();
-    let mut reconnect = 0u32;
-    let cmd_rx = state.mqtt_cmd_tx.subscribe();
-
     let state_offline = state.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10));
@@ -108,35 +113,70 @@ pub async fn run_mqtt_loop(state: AppState) -> anyhow::Result<()> {
         }
     });
 
+    let brokers = state.cfg.mqtt_brokers();
+    logbuf::info(format!(
+        "Starting MQTT service with {} broker(s): {:?}",
+        brokers.len(),
+        brokers
+    ));
+
+    let mut handles = Vec::new();
+    for (host, port) in brokers {
+        let st = state.clone();
+        handles.push(tokio::spawn(async move {
+            run_single_broker_loop(st, host, port).await;
+        }));
+    }
+
+    for h in handles {
+        let _ = h.await;
+    }
+
+    Ok(())
+}
+
+async fn run_single_broker_loop(state: AppState, broker_host: String, broker_port: u16) {
+    let prefix = state.cfg.mqtt_topic_prefix.clone();
+    let mut reconnect = 0u32;
+    let cmd_rx = state.mqtt_cmd_tx.subscribe();
+
     loop {
-        let (client, mut eventloop) = new_client(&state, reconnect);
+        let (client, mut eventloop) =
+            new_client_for_broker(&state, &broker_host, broker_port, reconnect);
         reconnect += 1;
 
         if let Err(e) = subscribe_all(&client, &prefix).await {
-            logbuf::error(format!("MQTT subscribe failed: {e:#}"));
+            logbuf::error(format!(
+                "MQTT subscribe failed on {broker_host}:{broker_port}: {e:#}"
+            ));
             tokio::time::sleep(Duration::from_secs(3)).await;
             continue;
         }
 
         logbuf::info(format!(
-            "MQTT broker {}:{} prefix={}",
-            state.cfg.mqtt_host,
-            state.cfg.mqtt_port,
+            "MQTT broker connected: {}:{} prefix={}",
+            broker_host,
+            broker_port,
             prefix
         ));
 
         let client_pub = client.clone();
         let mut cmd_rx_loop = cmd_rx.resubscribe();
+        let bh_pub = broker_host.clone();
 
         let pub_task = tokio::spawn(async move {
             loop {
                 match cmd_rx_loop.recv().await {
-                    Ok(MqttOut { topic, payload }) => {
+                    Ok(MqttOut {
+                        topic,
+                        payload,
+                        retain,
+                    }) => {
                         if let Err(e) = client_pub
-                            .publish(topic, QoS::AtLeastOnce, false, payload)
+                            .publish(topic, QoS::AtLeastOnce, retain, payload)
                             .await
                         {
-                            logbuf::warn(format!("MQTT publish failed: {e}"));
+                            logbuf::warn(format!("MQTT publish failed on {bh_pub}: {e}"));
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -159,9 +199,9 @@ pub async fn run_mqtt_loop(state: AppState) -> anyhow::Result<()> {
                     if payload.is_empty() {
                         continue;
                     }
-                    if let Err(e) = handle_message(&state, &topic, &payload).await {
+                    if let Err(e) = handle_message(&state, &broker_host, &topic, &payload).await {
                         logbuf::warn(format!(
-                            "MQTT handle {topic}: {e:#} | payload={}",
+                            "MQTT [{broker_host}] handle {topic}: {e:#} | payload={}",
                             if payload.len() > 120 {
                                 format!("{}...", &payload[..120])
                             } else {
@@ -172,7 +212,9 @@ pub async fn run_mqtt_loop(state: AppState) -> anyhow::Result<()> {
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    logbuf::error(format!("MQTT disconnected: {e}; reconnecting..."));
+                    logbuf::error(format!(
+                        "MQTT broker {broker_host}:{broker_port} disconnected: {e}; reconnecting..."
+                    ));
                     break;
                 }
             }
@@ -183,7 +225,12 @@ pub async fn run_mqtt_loop(state: AppState) -> anyhow::Result<()> {
     }
 }
 
-async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow::Result<()> {
+async fn handle_message(
+    state: &AppState,
+    broker_host: &str,
+    topic: &str,
+    payload: &str,
+) -> anyhow::Result<()> {
     let prefix = state.cfg.mqtt_topic_prefix.as_str();
     let mesh_topic = format!("{prefix}/coordinator/mesh");
     if topic == mesh_topic {
@@ -301,58 +348,7 @@ async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow:
                         publish_command(state, &m.code, &sync.to_string());
                     }
 
-                    // Cek login harian → ESP tampil "OPERATOR BELUM…" jika belum
-                    let today = detection::work_date_wib();
-                    let shift = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-                        r#"SELECT operator_nik, operator_name, garment_style, shift_status
-                           FROM daily_shifts
-                           WHERE machine_id = $1 AND work_date = $2"#,
-                    )
-                    .bind(m.id)
-                    .bind(today)
-                    .fetch_optional(&state.pool)
-                    .await
-                    .ok()
-                    .flatten();
-
-                    let login_push = if !m.login_required {
-                        if let Some((nik, name, style, st)) = shift.clone() {
-                            serde_json::json!({
-                                "command": "login_status",
-                                "logged_in": true,
-                                "login_required": false,
-                                "operator_nik": nik,
-                                "operator_name": name,
-                                "garment_style": style,
-                                "shift_status": st.unwrap_or_else(|| "work".into()),
-                            })
-                        } else {
-                            serde_json::json!({
-                                "command": "login_status",
-                                "logged_in": true,
-                                "login_required": false,
-                                "operator_nik": m.default_operator_nik,
-                                "operator_name": m.default_operator_name,
-                            })
-                        }
-                    } else if let Some((nik, name, style, st)) = shift {
-                        serde_json::json!({
-                            "command": "login_status",
-                            "logged_in": true,
-                            "login_required": true,
-                            "operator_nik": nik,
-                            "operator_name": name,
-                            "garment_style": style,
-                            "shift_status": st.unwrap_or_else(|| "work".into()),
-                        })
-                    } else {
-                        serde_json::json!({
-                            "command": "login_status",
-                            "logged_in": false,
-                            "login_required": true,
-                        })
-                    };
-                    publish_command(state, &m.code, &login_push.to_string());
+                    let _ = push_operator_snapshot(state, &m).await;
 
                     // set_login_system eksplisit (ON/OFF) + channel device
                     let sys = serde_json::json!({
@@ -376,12 +372,11 @@ async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow:
                     .fetch_optional(&state.pool)
                     .await
                     {
-                        publish_device_command(state, &uid, &login_push.to_string());
                         publish_device_command(state, &uid, &sys_s);
                     }
 
                     logbuf::info(format!(
-                        "re-push calibration+display+login {} thrA={} kpi={} login_required={}",
+                        "re-push desired_state {} thrA={} kpi={} login_required={}",
                         m.code,
                         m.current_threshold_a,
                         m.kpi_source,
@@ -409,7 +404,7 @@ async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow:
             if msg.sensor.is_none() {
                 msg.sensor = Some(kind.to_string());
             }
-            ingest_device_status(state, msg).await?;
+            ingest_device_status(state, broker_host, msg).await?;
         }
         "telemetry" => match kind {
             "adxl" => {
@@ -417,14 +412,14 @@ async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow:
                 if msg.machine_code.is_none() {
                     msg.machine_code = Some(machine_code.to_string());
                 }
-                ingest_adxl(state, msg).await?;
+                ingest_adxl(state, broker_host, msg).await?;
             }
             "pzem" => {
                 let mut msg: PzemPayload = serde_json::from_str(payload)?;
                 if msg.machine_code.is_none() {
                     msg.machine_code = Some(machine_code.to_string());
                 }
-                ingest_pzem(state, msg).await?;
+                ingest_pzem(state, broker_host, msg).await?;
             }
             _ => {}
         },
@@ -433,7 +428,11 @@ async fn handle_message(state: &AppState, topic: &str, payload: &str) -> anyhow:
     Ok(())
 }
 
-async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> anyhow::Result<()> {
+async fn ingest_device_status(
+    state: &AppState,
+    broker_host: &str,
+    msg: DeviceStatusPayload,
+) -> anyhow::Result<()> {
     let machine =
         machine_svc::find_or_provision(state, msg.machine_code.as_deref(), &msg.device_uid).await?;
 
@@ -448,6 +447,10 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
     let sensor_ok = msg.sensor_ok.unwrap_or(false);
     let detail = msg.detail.clone().unwrap_or_default();
     let ts = chrono::Utc::now();
+    let mqtt_service = msg
+        .mqtt_service
+        .as_deref()
+        .unwrap_or(broker_host);
 
     // ESP masih hidup (kecuali LWT mqtt_lost) → touch last_seen
     if online || msg.state != "mqtt_lost" {
@@ -472,8 +475,8 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
     }
 
     logbuf::info(format!(
-        "HEALTH {}/{} state={} sensor_ok={} rssi={:?} — {}",
-        machine.code, sensor, msg.state, sensor_ok, msg.rssi, detail
+        "HEALTH {}/{} [MQTT:{}] state={} sensor_ok={} rssi={:?} — {}",
+        machine.code, sensor, mqtt_service, msg.state, sensor_ok, msg.rssi, detail
     ));
 
     let link_zigbee = msg
@@ -495,7 +498,8 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
              wifi_ssid = COALESCE(NULLIF($7, ''), wifi_ssid),
              mac_addr = COALESCE(NULLIF($8, ''), mac_addr),
              last_health_at = NOW(),
-             link_type = CASE WHEN $9 THEN 'zigbee' ELSE link_type END
+             link_type = CASE WHEN $9 THEN 'zigbee' ELSE link_type END,
+             mqtt_service = COALESCE(NULLIF($10, ''), mqtt_service)
            WHERE device_uid = $1"#,
     )
     .bind(&msg.device_uid)
@@ -512,6 +516,7 @@ async fn ingest_device_status(state: &AppState, msg: DeviceStatusPayload) -> any
             .unwrap_or_default(),
     )
     .bind(link_zigbee)
+    .bind(mqtt_service)
     .execute(&state.pool)
     .await;
 
@@ -647,7 +652,11 @@ mod parse_status_ts_tests {
     }
 }
 
-pub async fn ingest_adxl(state: &AppState, msg: AdxlPayload) -> anyhow::Result<()> {
+pub async fn ingest_adxl(
+    state: &AppState,
+    broker_host: &str,
+    msg: AdxlPayload,
+) -> anyhow::Result<()> {
     let mut machine =
         machine_svc::find_or_provision(state, msg.machine_code.as_deref(), &msg.device_uid).await?;
 
@@ -732,8 +741,21 @@ pub async fn ingest_adxl(state: &AppState, msg: AdxlPayload) -> anyhow::Result<(
         ts,
     });
 
+    let mqtt_service = msg
+        .mqtt_service
+        .as_deref()
+        .unwrap_or(broker_host);
+
     if persist_db && sensor_ok {
         let _ = machine_svc::touch_device(state, machine.id, &msg.device_uid).await;
+        let _ = sqlx::query(
+            r#"UPDATE devices SET mqtt_service = COALESCE(NULLIF($2, ''), mqtt_service) WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(mqtt_service)
+        .execute(&state.pool)
+        .await;
+
         let _ = sqlx::query(
             r#"INSERT INTO telemetry_adxl (machine_id, device_uid, ts, ax, ay, az, magnitude_g)
                VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
@@ -749,16 +771,40 @@ pub async fn ingest_adxl(state: &AppState, msg: AdxlPayload) -> anyhow::Result<(
         .await;
     } else if !sensor_ok {
         let _ = machine_svc::touch_device(state, machine.id, &msg.device_uid).await;
+        let _ = sqlx::query(
+            r#"UPDATE devices SET mqtt_service = COALESCE(NULLIF($2, ''), mqtt_service) WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(mqtt_service)
+        .execute(&state.pool)
+        .await;
     }
 
     Ok(())
 }
 
-pub async fn ingest_pzem(state: &AppState, msg: PzemPayload) -> anyhow::Result<()> {
+pub async fn ingest_pzem(
+    state: &AppState,
+    broker_host: &str,
+    msg: PzemPayload,
+) -> anyhow::Result<()> {
     let machine =
         machine_svc::find_or_provision(state, msg.machine_code.as_deref(), &msg.device_uid).await?;
 
     machine_svc::touch_device(state, machine.id, &msg.device_uid).await?;
+    let mqtt_service = msg
+        .mqtt_service
+        .as_deref()
+        .unwrap_or(broker_host);
+
+    let _ = sqlx::query(
+        r#"UPDATE devices SET mqtt_service = COALESCE(NULLIF($2, ''), mqtt_service) WHERE device_uid = $1"#,
+    )
+    .bind(&msg.device_uid)
+    .bind(mqtt_service)
+    .execute(&state.pool)
+    .await;
+
     if msg
         .transport
         .as_deref()
@@ -903,10 +949,7 @@ pub async fn ingest_pzem(state: &AppState, msg: PzemPayload) -> anyhow::Result<(
 
 pub fn publish_command(state: &AppState, machine_code: &str, body: &str) {
     let topic = format!("{}/{}/cmd", state.cfg.mqtt_topic_prefix, machine_code);
-    let _ = state.mqtt_cmd_tx.send(MqttOut {
-        topic,
-        payload: body.to_string(),
-    });
+    let _ = state.mqtt_cmd_tx.send(MqttOut::cmd(topic, body.to_string()));
 }
 
 /// Channel stabil per device: iot/gistex/dev/{UID}/cmd — tetap diterima meski code berubah.
@@ -915,15 +958,227 @@ pub fn publish_device_command(state: &AppState, device_uid: &str, body: &str) {
         return;
     }
     let topic = format!("{}/dev/{}/cmd", state.cfg.mqtt_topic_prefix, device_uid);
-    let _ = state.mqtt_cmd_tx.send(MqttOut {
-        topic,
-        payload: body.to_string(),
+    let _ = state.mqtt_cmd_tx.send(MqttOut::cmd(topic, body.to_string()));
+}
+
+fn lcd_display_name(m: &Machine) -> String {
+    let b = m.brand.trim();
+    let p = m.process_name.trim();
+    if !b.is_empty() && !p.is_empty() {
+        format!("{b} {p}")
+    } else if !p.is_empty() {
+        p.to_string()
+    } else if !b.is_empty() {
+        b.to_string()
+    } else {
+        m.name.clone()
+    }
+}
+
+fn publish_lcd_state(state: &AppState, machine_code: &str, device_uid: &str, body: &str) {
+    let prefix = &state.cfg.mqtt_topic_prefix;
+    let _ = state.mqtt_cmd_tx.send(MqttOut::retained(
+        format!("{prefix}/{machine_code}/lcd_state"),
+        body.to_string(),
+    ));
+    if !device_uid.is_empty() {
+        let _ = state.mqtt_cmd_tx.send(MqttOut::retained(
+            format!("{prefix}/dev/{device_uid}/lcd_state"),
+            body.to_string(),
+        ));
+    }
+}
+
+fn lcd16(s: &str) -> String {
+    s.chars().take(16).collect()
+}
+
+fn lcd_page(l1: &str, l2: &str) -> Option<serde_json::Value> {
+    let a = l1.trim();
+    let b = l2.trim();
+    if a.is_empty() && b.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({ "l1": lcd16(a), "l2": lcd16(b) }))
+}
+
+/// Halaman LCD 16x2 dari metadata backend (maks 6). Firmware menampilkan apa adanya.
+fn build_lcd_pages(
+    machine_name: &str,
+    process_name: &str,
+    operator_name: Option<&str>,
+    operator_nik: Option<&str>,
+    garment_style: Option<&str>,
+    line_name: &str,
+    branch: &str,
+    location_note: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let mut pages = Vec::new();
+    if let Some(p) = lcd_page(machine_name, process_name) {
+        pages.push(p);
+    }
+    let op = operator_name.unwrap_or("").trim();
+    let nik = operator_nik.unwrap_or("").trim();
+    if let Some(p) = lcd_page(op, nik) {
+        pages.push(p);
+    }
+    let style = garment_style.unwrap_or("").trim();
+    if let Some(p) = lcd_page(style, line_name) {
+        pages.push(p);
+    }
+    if let Some(p) = lcd_page(location_note.unwrap_or(""), branch) {
+        pages.push(p);
+    }
+    pages.truncate(6);
+    pages
+}
+
+fn desired_revision() -> u32 {
+    chrono::Utc::now().timestamp().clamp(1, i64::from(u32::MAX)) as u32
+}
+
+fn publish_desired_state(state: &AppState, machine_code: &str, device_uid: &str, body: &str) {
+    let prefix = &state.cfg.mqtt_topic_prefix;
+    let _ = state.mqtt_cmd_tx.send(MqttOut::retained(
+        format!("{prefix}/{machine_code}/desired"),
+        body.to_string(),
+    ));
+    if !device_uid.is_empty() {
+        let _ = state.mqtt_cmd_tx.send(MqttOut::retained(
+            format!("{prefix}/dev/{device_uid}/desired"),
+            body.to_string(),
+        ));
+    }
+}
+
+/// Snapshot operator/line ke MQTT (desired_state retained + cmd lama) dan WebSocket dashboard.
+/// ESP offline: retain di broker; saat WiFi nyambung subscribe → LCD ikut frontend.
+pub async fn push_operator_snapshot(state: &AppState, m: &Machine) {
+    let today = detection::work_date_wib();
+    let shift = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(
+        r#"SELECT operator_nik, operator_name, garment_style, shift_status, updated_at
+           FROM daily_shifts
+           WHERE machine_id = $1 AND work_date = $2"#,
+    )
+    .bind(m.id)
+    .bind(today)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+
+    let uid = sqlx::query_scalar::<_, String>(
+        r#"SELECT device_uid FROM devices WHERE machine_id = $1
+           ORDER BY last_seen_at DESC NULLS LAST LIMIT 1"#,
+    )
+    .bind(m.id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+
+    let (logged_in, nik, name, style, st, logged_at) = if let Some((nik, name, style, st, at)) = shift {
+        (
+            true,
+            Some(nik),
+            Some(name),
+            style,
+            st.unwrap_or_else(|| "work".into()),
+            Some(at),
+        )
+    } else if !m.login_required {
+        (
+            true,
+            m.default_operator_nik.clone(),
+            m.default_operator_name.clone(),
+            None,
+            "work".into(),
+            None,
+        )
+    } else {
+        (false, None, None, None, "work".into(), None)
+    };
+
+    let lcd_pages = build_lcd_pages(
+        &lcd_display_name(m),
+        &m.process_name,
+        name.as_deref(),
+        nik.as_deref(),
+        style.as_deref(),
+        &m.line_name,
+        &m.branch,
+        m.location_note.as_deref(),
+    );
+    let revision = desired_revision();
+    let desired = serde_json::json!({
+        "command": "desired_state",
+        "protocol": 1,
+        "revision": revision,
+        "work_date": today,
+        "target_uid": uid,
+        "logged_in": logged_in,
+        "login_required": m.login_required,
+        "operator_nik": nik.clone(),
+        "operator_name": name.clone(),
+        "garment_style": style.clone(),
+        "shift_status": st,
+        "machine_name": lcd_display_name(m),
+        "process_name": m.process_name,
+        "branch": m.branch,
+        "line_name": m.line_name,
+        "location_note": m.location_note,
+        "machine_code": m.code,
+        "current_threshold_a": m.current_threshold_a,
+        "off_current_a": m.off_current_a,
+        "power_threshold_w": m.power_threshold_w,
+        "lcd_auto_ms": m.lcd_auto_ms,
+        "kpi_source": m.kpi_source,
+        "lcd_pages": lcd_pages,
+    });
+    let desired_s = desired.to_string();
+    publish_desired_state(state, &m.code, &uid, &desired_s);
+
+    // kompatibilitas firmware lama (login_status + lcd_state retained)
+    let payload = serde_json::json!({
+        "command": "login_status",
+        "logged_in": logged_in,
+        "login_required": m.login_required,
+        "work_date": today,
+        "operator_nik": nik.clone(),
+        "operator_name": name.clone(),
+        "garment_style": style.clone(),
+        "shift_status": st,
+        "machine_name": lcd_display_name(m),
+        "process_name": m.process_name,
+        "branch": m.branch,
+        "line_name": m.line_name,
+        "location_note": m.location_note,
+        "machine_code": m.code,
+    });
+    let s = payload.to_string();
+    publish_command(state, &m.code, &s);
+    if !uid.is_empty() {
+        publish_device_command(state, &uid, &s);
+    }
+    publish_lcd_state(state, &m.code, &uid, &s);
+
+    let _ = state.ws_tx.send(WsEvent::MachineMeta {
+        machine_id: m.id,
+        work_date: today,
+        operator_nik: nik,
+        operator_name: name,
+        garment_style: style,
+        branch: m.branch.clone(),
+        line_name: m.line_name.clone(),
+        location_note: m.location_note.clone(),
+        logged_at,
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_mac;
+    use super::{build_lcd_pages, desired_revision, normalize_mac};
 
     #[test]
     fn normalize_mac_colon_and_bare() {
@@ -936,5 +1191,48 @@ mod tests {
             Some("AA:BB:CC:DD:EE:FF")
         );
         assert_eq!(normalize_mac("aa-bb"), None);
+    }
+
+    fn iso_to_ymd(s: &str) -> Option<i32> {
+        let mut p = s.split('-');
+        let y: i32 = p.next()?.parse().ok()?;
+        let m: i32 = p.next()?.parse().ok()?;
+        let d: i32 = p.next()?.parse().ok()?;
+        if p.next().is_some() || m < 1 || m > 12 || d < 1 || d > 31 {
+            return None;
+        }
+        Some(y * 10000 + m * 100 + d)
+    }
+
+    #[test]
+    fn lcd_pages_from_metadata_and_truncate() {
+        let pages = build_lcd_pages(
+            "JUKI DDL-9000B EXTRA",
+            "LOCKSTITCH",
+            Some("Siti"),
+            Some("123456"),
+            Some("STYLE-A"),
+            "Line 1",
+            "GM1",
+            Some("Blok A"),
+        );
+        assert_eq!(pages.len(), 4);
+        assert_eq!(pages[0]["l1"], "JUKI DDL-9000B E");
+        assert_eq!(pages[1]["l2"], "123456");
+        assert_eq!(pages[2]["l1"], "STYLE-A");
+        assert_eq!(pages[3]["l1"], "Blok A");
+    }
+
+    #[test]
+    fn desired_revision_fits_u32() {
+        let r = desired_revision();
+        assert!(r >= 1_700_000_000);
+    }
+
+    #[test]
+    fn lcd_retain_work_date_stale_vs_today() {
+        assert_eq!(iso_to_ymd("2026-08-14"), Some(20260814));
+        assert_ne!(iso_to_ymd("2026-08-13").unwrap(), 20260814);
+        assert_eq!(iso_to_ymd("bad"), None);
     }
 }
