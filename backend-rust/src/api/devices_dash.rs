@@ -146,7 +146,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
 <body>
 <header>
   <h1>Device Health Monitor</h1>
-  <span class="meta">Poll <strong>2s</strong> · <span id="clock">—</span> · online <strong id="n-on">0</strong>/<span id="n-tot">0</span> · Broker: <strong style="color:#c084fc">10.5.0.106</strong> (Lokal) & <strong style="color:#38bdf8">10.5.2.223</strong> (Robotic)
+  <span class="meta">Poll <strong>2s</strong> · <span id="clock">—</span> · online <strong id="n-on">0</strong>/<span id="n-tot">0</span> · Broker: <strong style="color:#c084fc">10.5.0.106</strong> (Lokal) & <strong style="color:#38bdf8">10.5.2.222</strong> (Robotic)
     <span class="legend">
       <span><i class="dot on-run"></i>Running</span>
       <span><i class="dot on-idle"></i>Idle</span>
@@ -272,7 +272,7 @@ function render(list) {
     const q = r.signal_quality || 'unknown';
     const rssi = r.rssi != null ? r.rssi + ' dBm' : '—';
     const mqttBadge = r.mqtt_service
-      ? '<span class="pill ' + (r.mqtt_service.includes('10.5.2.223') ? 'robotic' : 'local') + '">' + esc(r.mqtt_service) + '</span>'
+      ? '<span class="pill ' + (r.mqtt_service.includes('10.5.2.222') ? 'robotic' : 'local') + '">' + esc(r.mqtt_service) + '</span>'
       : '—';
     return '<tr class="pick' + (selectedMachineId===r.id?' active':'') + '" data-mid="' + esc(r.id) + '">' +
       '<td><strong>' + esc(r.code) + '</strong><div class="meta">' + esc(r.display_name||r.name||'') + '</div></td>' +
@@ -416,7 +416,7 @@ async function loadHistory(mid) {
         '<td class="mono">' + fmtSec(h.power_on_sec) + '</td>' +
         '<td class="mono font-bold" style="color:' + prodColor + '">' + prod + '%</td>' +
         '<td class="mono meta" style="font-size:.72rem;">' + (h.saved_at ? new Date(h.saved_at).toLocaleString('id-ID') : '—') + '</td>' +
-        '<td class="mono"><span class="pill ' + ((h.mqtt_service||'').includes('10.5.2.223') ? 'robotic' : 'local') + '">' + esc(h.mqtt_service||'—') + '</span></td>' +
+        '<td class="mono"><span class="pill ' + ((h.mqtt_service||'').includes('10.5.2.222') ? 'robotic' : 'local') + '">' + esc(h.mqtt_service||'—') + '</span></td>' +
         '</tr>';
     }).join('');
   } catch (e) {

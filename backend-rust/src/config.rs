@@ -31,7 +31,7 @@ impl Config {
                 .parse()
                 .unwrap_or(1883),
             mqtt_host_robotic: std::env::var("MQTT_HOST_ROBOTIC")
-                .unwrap_or_else(|_| "10.5.2.223".into()),
+                .unwrap_or_else(|_| "10.5.2.222".into()),
             mqtt_port_robotic: std::env::var("MQTT_PORT_ROBOTIC")
                 .unwrap_or_else(|_| "1883".into())
                 .parse()
