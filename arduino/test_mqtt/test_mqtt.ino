@@ -173,8 +173,10 @@ void publishStatus(const char *state, const char *detail) {
 
   char buf[640];
   size_t n = serializeJson(doc, buf);
-  bool ok = mqtt.publish(topicStatus, (const uint8_t *)buf, n, false);
-  Serial.printf("[MQTT] status %s → %s (%u B)\n", ok ? "OK" : "FAIL", topicStatus, (unsigned)n);
+  // retain=true menimpa LWT mqtt_lost di broker (supaya /devices tidak stuck OFFLINE)
+  bool ok = mqtt.publish(topicStatus, (const uint8_t *)buf, n, true);
+  Serial.printf("[MQTT] status %s → %s (%u B) retain mac=%s\n",
+                ok ? "OK" : "FAIL", topicStatus, (unsigned)n, macStr);
 }
 
 void publishTelemetry() {

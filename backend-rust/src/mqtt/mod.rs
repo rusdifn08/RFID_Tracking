@@ -655,6 +655,24 @@ async fn ingest_device_status(
         .as_deref()
         .unwrap_or(broker_host);
 
+    // Retained LWT mqtt_lost sering masuk ulang saat backend reconnect,
+    // padahal ESP masih hidup — abaikan jika runtime baru saja touch.
+    if msg.state == "mqtt_lost" && !online {
+        let recently_alive = state
+            .runtime
+            .get(&machine.id)
+            .and_then(|rt| rt.last_seen.or(rt.pzem.last_seen).or(rt.adxl.last_seen))
+            .map(|t| (ts - t).num_seconds() < state.cfg.offline_timeout_sec)
+            .unwrap_or(false);
+        if recently_alive {
+            logbuf::info(format!(
+                "HEALTH {}/{} ignore stale mqtt_lost (ESP still alive <{}s)",
+                machine.code, sensor, state.cfg.offline_timeout_sec
+            ));
+            return Ok(());
+        }
+    }
+
     // ESP masih hidup (kecuali LWT mqtt_lost) → touch last_seen
     if online || msg.state != "mqtt_lost" {
         if let Some(mut rt) = state.runtime.get_mut(&machine.id) {
@@ -689,39 +707,56 @@ async fn ingest_device_status(
         .unwrap_or(false)
         && is_zigbee_uid(&msg.device_uid);
 
-    // Persist link quality ke devices (RSSI/LQI tiap status; IP hanya jika dikirim)
-    let _ = sqlx::query(
-        r#"UPDATE devices SET
-             last_seen_at = NOW(),
-             is_online = $2,
-             rssi = COALESCE($3, rssi),
-             wifi_ok = COALESCE($4, wifi_ok),
-             mqtt_ok = COALESCE($5, mqtt_ok),
-             ip_addr = COALESCE(NULLIF($6, ''), ip_addr),
-             wifi_ssid = COALESCE(NULLIF($7, ''), wifi_ssid),
-             mac_addr = COALESCE(NULLIF($8, ''), mac_addr),
-             last_health_at = NOW(),
-             link_type = CASE WHEN $9 THEN 'zigbee' ELSE link_type END,
-             mqtt_service = COALESCE(NULLIF($10, ''), mqtt_service)
-           WHERE device_uid = $1"#,
-    )
-    .bind(&msg.device_uid)
-    .bind(online)
-    .bind(msg.rssi)
-    .bind(if online { msg.wifi_ok } else { Some(false) })
-    .bind(if online { Some(mqtt_ok) } else { Some(false) })
-    .bind(msg.ip.as_deref().unwrap_or(""))
-    .bind(msg.wifi_ssid.as_deref().unwrap_or(""))
-    .bind(
-        msg.mac
-            .as_deref()
-            .and_then(normalize_mac)
-            .unwrap_or_default(),
-    )
-    .bind(link_zigbee)
-    .bind(mqtt_service)
-    .execute(&state.pool)
-    .await;
+    // Persist link quality. mqtt_lost: jangan refresh last_seen/last_health.
+    let _ = if msg.state == "mqtt_lost" && !online {
+        sqlx::query(
+            r#"UPDATE devices SET
+                 is_online = FALSE,
+                 wifi_ok = FALSE,
+                 mqtt_ok = FALSE,
+                 link_type = CASE WHEN $2 THEN 'zigbee' ELSE link_type END,
+                 mqtt_service = COALESCE(NULLIF($3, ''), mqtt_service)
+               WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(link_zigbee)
+        .bind(mqtt_service)
+        .execute(&state.pool)
+        .await
+    } else {
+        sqlx::query(
+            r#"UPDATE devices SET
+                 last_seen_at = NOW(),
+                 is_online = $2,
+                 rssi = COALESCE($3, rssi),
+                 wifi_ok = COALESCE($4, wifi_ok),
+                 mqtt_ok = COALESCE($5, mqtt_ok),
+                 ip_addr = COALESCE(NULLIF($6, ''), ip_addr),
+                 wifi_ssid = COALESCE(NULLIF($7, ''), wifi_ssid),
+                 mac_addr = COALESCE(NULLIF($8, ''), mac_addr),
+                 last_health_at = NOW(),
+                 link_type = CASE WHEN $9 THEN 'zigbee' ELSE link_type END,
+                 mqtt_service = COALESCE(NULLIF($10, ''), mqtt_service)
+               WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(online)
+        .bind(msg.rssi)
+        .bind(if online { msg.wifi_ok } else { Some(false) })
+        .bind(if online { Some(mqtt_ok) } else { Some(false) })
+        .bind(msg.ip.as_deref().unwrap_or(""))
+        .bind(msg.wifi_ssid.as_deref().unwrap_or(""))
+        .bind(
+            msg.mac
+                .as_deref()
+                .and_then(normalize_mac)
+                .unwrap_or_default(),
+        )
+        .bind(link_zigbee)
+        .bind(mqtt_service)
+        .execute(&state.pool)
+        .await
+    };
 
     let _ = state.ws_tx.send(WsEvent::DeviceHealth {
         machine_id: machine.id,

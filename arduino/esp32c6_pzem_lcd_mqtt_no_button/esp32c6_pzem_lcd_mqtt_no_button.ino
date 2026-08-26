@@ -1239,7 +1239,8 @@ uint8_t dailyHistoryCount = 0;
  
    char buf[512];
    size_t n = serializeJson(doc, buf);
-   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, false) && lastState != state) {
+   // retain=true menimpa LWT mqtt_lost — backend reconnect tidak stuck OFFLINE
+   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, true) && lastState != state) {
      lastState = state;
    }
  }
@@ -1268,7 +1269,7 @@ uint8_t dailyHistoryCount = 0;
    doc["ip_once"] = true;
    char buf[384];
    size_t n = serializeJson(doc, buf);
-   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, false)) {
+   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, true)) {
      ipReportedOnce = true;
    }
  }
