@@ -113,8 +113,8 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || `http://${BACKEND_IP}:${B
 // Backend khusus Needle Manager (dipisah dari backend environment utama agar tidak mengubah flow existing).
 const NEEDLE_BACKEND_BASE_URL = process.env.NEEDLE_BACKEND_BASE_URL || 'http://10.5.0.107:8080';
 
-// MQTT Broker - mendukung multi broker (Lokal 10.5.0.106 & Robotic 10.5.2.223)
-const MQTT_BROKER_URLS = (process.env.MQTT_BROKER_URLS || process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883,mqtt://10.5.2.223:1883')
+// MQTT Broker - mendukung multi broker (Lokal 10.5.0.106 & Robotic 10.5.2.222)
+const MQTT_BROKER_URLS = (process.env.MQTT_BROKER_URLS || process.env.MQTT_BROKER_URL || 'mqtt://10.5.0.106:1883,mqtt://10.5.2.222:1883')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
