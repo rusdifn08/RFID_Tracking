@@ -55,6 +55,19 @@ const PAGE: &str = r#"<!DOCTYPE html>
   .poor { color: var(--bad); } .unk { color: var(--unk); }
   .pill.robotic { background: rgba(56,189,248,.18); color: #38bdf8; }
   .pill.local { background: rgba(168,85,247,.18); color: #c084fc; }
+  .pill.sleep { background: rgba(96,165,250,.18); color: #60a5fa; }
+  .filters {
+    display: flex; flex-wrap: wrap; gap: .45rem .75rem; align-items: center;
+    padding: .55rem 1.25rem; border-bottom: 1px solid var(--line); background: #121a24;
+  }
+  .filters label { color: var(--muted); font-size: .75rem; font-weight: 600; }
+  .filters select, .filters button {
+    background: #0b121b; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: .28rem .5rem; font-size: .8rem;
+  }
+  .filters button { cursor: pointer; background: #17314f; border-color: #245789; }
+  .filters button:hover { background: #214066; }
+  .filters .hint { color: var(--muted); font-size: .72rem; }
   .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace; }
   .empty { color: var(--muted); padding: 1.5rem; text-align: center; }
   .err { color: var(--bad); padding: .5rem 0; }
@@ -154,12 +167,36 @@ const PAGE: &str = r#"<!DOCTYPE html>
     </span>
   </span>
 </header>
+<div class="filters">
+  <label>STATUS ESP</label>
+  <select id="f-status">
+    <option value="all">Semua</option>
+    <option value="online">Online saja</option>
+    <option value="offline">Offline saja</option>
+    <option value="deepsleep">Deep sleep saja</option>
+  </select>
+  <label>MQTT</label>
+  <select id="f-mqtt">
+    <option value="all">Semua broker</option>
+    <option value="222">10.5.2.222 (Robotic)</option>
+    <option value="106">10.5.0.106 (Lokal)</option>
+  </select>
+  <label>Urutkan</label>
+  <select id="f-sort">
+    <option value="code">Kode mesin</option>
+    <option value="rssi_best">Sinyal terbaik</option>
+    <option value="rssi_worst">Sinyal terlemah</option>
+    <option value="uid">UID</option>
+  </select>
+  <button type="button" id="btn-filter-reset">Reset</button>
+  <span class="hint" id="f-count">—</span>
+</div>
 <div id="top">
   <div id="err" class="err" hidden></div>
   <table>
     <thead>
       <tr>
-        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>Link</th><th>IP</th><th>MAC</th><th>SSID</th><th>MQTT Service</th>
+        <th>Mesin</th><th>UID</th><th>Phase</th><th>Arus</th><th>STATUS ESP</th><th>IP</th><th>MAC</th><th>SSID</th><th>MQTT Service</th>
         <th>RSSI</th><th>Sinyal</th><th>WiFi</th><th>MQTT</th><th>Last ping</th><th>Memori 7 Hari (ESP)</th>
       </tr>
     </thead>
@@ -229,6 +266,28 @@ const logEl = document.getElementById('logs');
 logEl.addEventListener('scroll', () => {
   stickBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
 });
+function espStatusOf(r) {
+  return String(r.esp_status || (r.in_deep_sleep ? 'deepsleep' : (r.is_online ? 'online' : 'offline'))).toLowerCase();
+}
+function applyDeviceFilters(list) {
+  const st = document.getElementById('f-status').value;
+  const mq = document.getElementById('f-mqtt').value;
+  const sort = document.getElementById('f-sort').value;
+  let out = (list || []).slice();
+  if (st !== 'all') out = out.filter(r => espStatusOf(r) === st);
+  if (mq === '222') out = out.filter(r => String(r.mqtt_service || '').includes('10.5.2.222'));
+  if (mq === '106') out = out.filter(r => String(r.mqtt_service || '').includes('10.5.0.106'));
+  out.sort((a, b) => {
+    if (sort === 'rssi_best' || sort === 'rssi_worst') {
+      const ra = (a.rssi == null ? -999 : a.rssi);
+      const rb = (b.rssi == null ? -999 : b.rssi);
+      return sort === 'rssi_best' ? (rb - ra) : (ra - rb);
+    }
+    if (sort === 'uid') return String(a.device_uid || '').localeCompare(String(b.device_uid || ''));
+    return String(a.code || '').localeCompare(String(b.code || ''));
+  });
+  return out;
+}
 function ageLabel(s) {
   if (s == null || s >= 9999) return '—';
   if (s < 60) return s + 's';
@@ -259,15 +318,25 @@ function phaseDots(st, online) {
     '<i class="dot' + idle + '" title="Idle"></i>' +
     '<i class="dot' + off + '" title="Off"></i></span>';
 }
+function espStatusPill(r) {
+  const st = espStatusOf(r);
+  if (st === 'deepsleep') return '<span class="pill sleep">DEEPSLEEP</span>';
+  if (st === 'online') return '<span class="pill on">ONLINE</span>';
+  return '<span class="pill off">OFFLINE</span>';
+}
 function render(list) {
   const tb = document.getElementById('rows');
   const empty = document.getElementById('empty');
-  const devices = (list || []).filter(r => r.has_device || r.device_uid);
-  devicesCache = devices;
-  document.getElementById('n-tot').textContent = devices.length;
-  document.getElementById('n-on').textContent = devices.filter(r => r.is_online).length;
-  if (!devices.length) { tb.innerHTML = ''; empty.hidden = false; return; }
+  const all = (list || []).filter(r => r.has_device || r.device_uid);
+  devicesCache = all;
+  const devices = applyDeviceFilters(all);
+  document.getElementById('n-tot').textContent = all.length;
+  document.getElementById('n-on').textContent = all.filter(r => r.is_online && !r.in_deep_sleep).length;
+  const fc = document.getElementById('f-count');
+  if (fc) fc.textContent = 'Tampil ' + devices.length + ' / ' + all.length;
+  if (!devices.length) { tb.innerHTML = ''; empty.hidden = false; empty.textContent = all.length ? 'Tidak ada device sesuai filter.' : 'Belum ada mesin / perangkat.'; return; }
   empty.hidden = true;
+  empty.textContent = 'Belum ada mesin / perangkat.';
   tb.innerHTML = devices.map(r => {
     const q = r.signal_quality || 'unknown';
     const rssi = r.rssi != null ? r.rssi + ' dBm' : '—';
@@ -277,9 +346,9 @@ function render(list) {
     return '<tr class="pick' + (selectedMachineId===r.id?' active':'') + '" data-mid="' + esc(r.id) + '">' +
       '<td><strong>' + esc(r.code) + '</strong><div class="meta">' + esc(r.display_name||r.name||'') + '</div></td>' +
       '<td class="mono">' + esc(r.device_uid||'—') + '</td>' +
-      '<td>' + phaseDots(r.status_pzem, r.is_online) + '</td>' +
+      '<td>' + phaseDots(r.status_pzem, r.is_online && !r.in_deep_sleep) + '</td>' +
       '<td class="mono">' + (r.current_a != null ? Number(r.current_a).toFixed(3) + ' A' : '—') + '</td>' +
-      '<td><span class="pill ' + (r.is_online?'on':'off') + '">' + (r.is_online?'ONLINE':'OFFLINE') + '</span></td>' +
+      '<td>' + espStatusPill(r) + '</td>' +
       '<td class="mono">' + esc(r.ip_addr||'—') + '</td>' +
       '<td class="mono">' + esc(r.mac_addr||'—') + '</td>' +
       '<td>' + esc(r.wifi_ssid||'—') + '</td>' +
@@ -457,6 +526,15 @@ async function tick() {
 }
 document.getElementById('btn-scan').addEventListener('click', () => requestScan().catch(e => setWifiMsg('Error: ' + e.message)));
 document.getElementById('btn-apply').addEventListener('click', () => applyWifi().catch(e => setWifiMsg('Error: ' + e.message)));
+['f-status', 'f-mqtt', 'f-sort'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => render(devicesCache));
+});
+document.getElementById('btn-filter-reset').addEventListener('click', () => {
+  document.getElementById('f-status').value = 'all';
+  document.getElementById('f-mqtt').value = 'all';
+  document.getElementById('f-sort').value = 'code';
+  render(devicesCache);
+});
 tick();
 setInterval(tick, 2000);
 </script>

@@ -55,6 +55,7 @@ pub async fn run_migrations(pool: &PgPool) -> anyhow::Result<()> {
         include_str!("../../migrations/039_device_mqtt_service.sql"),
         include_str!("../../migrations/040_gm3_operators_process.sql"),
         include_str!("../../migrations/041_esp_daily_history.sql"),
+        include_str!("../../migrations/042_device_in_deep_sleep.sql"),
     ] {
         sqlx::raw_sql(sql).execute(pool).await?;
     }

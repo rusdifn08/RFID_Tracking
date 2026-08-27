@@ -1,16 +1,15 @@
 /**
  * ESP32-C6 SuperMini + PZEM-004T v4 + LCD I2C 16x2
- * MQTT broker: 10.5.0.106:1883
+ * MQTT broker robotic: 10.5.2.222:1883 (lokal Tracked → MQTT_HOST_LOCAL)
  *
  * Continuity KPI (selaras LCD <-> backend <-> dashboard):
  *   - kpi_source=esp: counter ESP = sumber → dashboard & LCD sama
  *   - kpi_source=telemetry: dashboard dari DB → MQTT sync_kpi ke LCD
  *   - set_calibration / set_display dari backend (NVS di ESP)
  *   - Reset dashboard -> MQTT reset_day -> ESP nol -> LCD & dashboard 0
- *   - Deep sleep: OFF ≥ 1 jam → sleep, wake tiap 30 mnt cek arus;
- *     MQTT status deep_sleep_enter / deep_sleep_exit (from→to)
- *   - WiFi failover: SSID1→2→3 (1 mnt/ssid) × 5 putaran → scan 5 terbaik
- *     (pass Factory@RFID, 1 mnt) → LCD GAGAL KONEKSI / SEMUA WIFI
+ *   - Deep sleep: OFF ≥ 2 jam → wajib MQTT dulu (reboot 1× jika belum connect),
+ *     kirim deep_sleep_enter, sleep 20 mnt; bangun → WiFi+MQTT → kirim OFF →
+ *     tunggu 5 mnt; masih OFF → sleep lagi; ON → deep_sleep_exit
  *   - Counter Run/Loss/Off tetap jalan + NVS saat WiFi putus; MQTT sync saat nyambung
  *   - LCD saat reconnect: 2 slide (Reconnect Wifi · Runn/Loss)
  *
@@ -49,19 +48,19 @@
  #include <Preferences.h>
  #include <time.h>
  #include <esp_wifi.h>
+ #include <esp_idf_version.h>
  #include <esp_sleep.h>
  
  // ===================== CONFIG (default flash; bisa diubah dashboard → NVS) =====================
 static const char *DEFAULT_WIFI_SSID = "Tracked (9)";
 static const char *DEFAULT_WIFI_PASS = "Factory@RFID";
-static const char *MQTT_HOST_ROBOTIC = "10.5.2.223";   // Broker saat terhubung ke Tracked (9)
+static const char *MQTT_HOST_ROBOTIC = "10.5.2.222";   // Broker robotic (Tracked)
 static const uint16_t MQTT_PORT_ROBOTIC = 1883;
 
-static const char *DEFAULT_WIFI_SSID2 = "GM3_Dry Room";
-static const char *DEFAULT_WIFI_PASS2 = "Factory@Maja";
-static const char *DEFAULT_WIFI_SSID3 = "Robot Gedung 3";
-static const char *DEFAULT_WIFI_PASS3 = "robot8888";
-static const char *MQTT_HOST_LOCAL = "10.5.0.106";      // Broker saat terhubung ke WiFi lokal
+/** Cadangan: hanya dipakai setelah primary gagal ≥ 30 menit */
+static const char *DEFAULT_WIFI_SSID_FALLBACK = "GM3_DuckDown";
+static const char *DEFAULT_WIFI_PASS_FALLBACK = "Factory@Maja";
+static const char *MQTT_HOST_LOCAL = "10.5.0.106";      // Broker saat WiFi cadangan / lokal
 static const uint16_t MQTT_PORT_LOCAL = 1883;
 
 // Default awal MQTT (dinamis disesuaikan SSID)
@@ -69,7 +68,6 @@ static const char *DEFAULT_MQTT_HOST = MQTT_HOST_ROBOTIC;
 static const uint16_t MQTT_PORT = 1883;
 // WiFi boot awal timeout
 static const uint32_t BOOT_WIFI_TIMEOUT_MS = 12000;  // 12 detik
-static const char *WIFI_SCAN_PASS = "Factory@Maja";
  static const char *DEFAULT_MACHINE_CODE = "JUKI011";
  static const char *DEFAULT_DEVICE_UID = "011";
  /** true = wajib login operator; false = KPI jalan tanpa login (default firmware) */
@@ -107,23 +105,32 @@ static const char *WIFI_SCAN_PASS = "Factory@Maja";
  static const uint32_t LCD_MS = 250;
  static const uint32_t LCD_PAGE_AUTO_MS = 4000;  // 4 dtk per slide
  static const uint32_t LCD_SCROLL_MS = 350;
- static const uint32_t WIFI_RETRY_MS = 8000;
- static const uint32_t WIFI_TRY_MS = 60UL * 1000UL;  // 1 menit per SSID
- static const uint8_t WIFI_KNOWN_ROUNDS = 5;
- static const uint8_t WIFI_SCAN_TOP = 5;
- static const uint32_t MQTT_RETRY_MS = 3000;
- static const uint32_t MQTT_RETRY_MAX_MS = 60000;
- static const uint16_t MQTT_KEEPALIVE_SEC = 60;
- static const uint16_t MQTT_SOCKET_TIMEOUT_SEC = 10;
+ static const uint32_t WIFI_RETRY_MS = 8000;              // retry SSID yang sama
+ static const uint32_t WIFI_PRIMARY_ONLY_MS = 30UL * 60UL * 1000UL;  // 30 mnt baru ke cadangan
+ static const uint32_t WIFI_FALLBACK_RETRY_MS = 10UL * 60UL * 1000UL; // 10 mnt di cadangan lalu balik primary
+ /** Watchdog sinyal lemah: roam ke BSSID lebih kuat (anti putus di area noise) */
+ static const int8_t WIFI_RSSI_ROAM_DBM = -85;           // lebih ketat: jangan roam terlalu sering
+ static const int8_t WIFI_RSSI_ROAM_IMPROVE_DB = 8;      // hanya roam jika ≥8 dB lebih kuat
+ static const uint8_t WIFI_RSSI_BAD_HITS = 5;            // butuh lebih banyak sampel jelek
+ static const uint32_t WIFI_RSSI_CHECK_MS = 15000;
+ static const uint32_t MQTT_RETRY_MS = 5000;       // jeda awal reconnect (jangan spam)
+ static const uint32_t MQTT_RETRY_MAX_MS = 120000; // max backoff 2 mnt
+ static const uint16_t MQTT_KEEPALIVE_SEC = 60;    // 60s: lebih tahan WiFi noise / scan singkat
+ static const uint16_t MQTT_SOCKET_TIMEOUT_SEC = 15;
+ /** Setelah MQTT nyambung, tahan roam WiFi agar tidak putus-nyambung */
+ static const uint32_t MQTT_STABLE_BEFORE_ROAM_MS = 5UL * 60UL * 1000UL;
+ static const uint32_t WIFI_ROAM_COOLDOWN_MS = 5UL * 60UL * 1000UL;
  static const uint32_t BTN_DEBOUNCE_MS = 40;
  static const uint32_t BTN_LONG_MS = 2000;
  static const uint32_t NVS_SAVE_MS = 10000;  // simpan flash max tiap 10 dtk (hemat wear)
  static const uint32_t RECOVERY_REBOOT_MS = 10 * 60 * 1000UL; // 10 menit gagal konek total -> reboot self-heal
- /** Mesin OFF terus selama ini → deep sleep (hemat daya, tidak spam MQTT) */
- static const uint32_t OFF_BEFORE_SLEEP_MS = 60UL * 60UL * 1000UL;  // 1 jam
- /** Timer wake cek mesin sudah nyala lagi? */
- static const uint64_t DEEP_SLEEP_US = 30ULL * 60ULL * 1000000ULL;  // 30 menit
- static const uint32_t SLEEP_CHUNK_SEC = 30UL * 60UL;
+ /** Mesin OFF terus selama ini → deep sleep (wajib MQTT dulu) */
+ static const uint32_t OFF_BEFORE_SLEEP_MS = 2UL * 60UL * 60UL * 1000UL;  // 2 jam
+ /** Timer wake */
+ static const uint64_t DEEP_SLEEP_US = 20ULL * 60ULL * 1000000ULL;  // 20 menit
+ static const uint32_t SLEEP_CHUNK_SEC = 20UL * 60UL;
+ /** Setelah bangun + MQTT: pantau mesin ON selama ini sebelum sleep lagi */
+ static const uint32_t DS_WAKE_WATCH_MS = 5UL * 60UL * 1000UL;  // 5 menit
  
  uint32_t mqttBackoffMs = MQTT_RETRY_MS;
  
@@ -230,19 +237,22 @@ uint8_t dailyHistoryCount = 0;
  uint32_t lastLcdMs = 0;
  uint32_t lastPageAutoMs = 0;
  uint32_t lastWifiAttemptMs = 0;
- enum WifiPhase : uint8_t { WP_KNOWN = 0, WP_SCAN = 1, WP_FAIL = 2 };
- WifiPhase wifiPhase = WP_KNOWN;
- uint8_t wifiKnownIdx = 0;
- uint8_t wifiKnownRound = 0;
- uint8_t wifiScanIdx = 0;
- uint8_t wifiScanN = 0;
- char wifiScanSsid[WIFI_SCAN_TOP][33];
+ enum WifiPhase : uint8_t { WP_PRIMARY = 0, WP_FALLBACK = 1 };
+ WifiPhase wifiPhase = WP_PRIMARY;
  uint32_t wifiTryStartMs = 0;
+ uint32_t wifiDownSinceMs = 0;  // mulai putus terus (untuk timer 30 mnt)
  bool wifiAllFailed = false;
+ uint32_t lastRssiCheckMs = 0;
+ uint8_t wifiRssiBadHits = 0;
  uint32_t lastMqttAttemptMs = 0;
+ uint32_t mqttConnectedAtMs = 0;   // kapan MQTT terakhir sukses connect
+ uint32_t lastWifiRoamMs = 0;
+ bool mqttEverConnected = false;   // false = boot pertama (clean session)
  uint32_t offlineSinceMs = 0;
  uint32_t offSinceMs = 0;  // millis saat mulai OFF terus (untuk deep sleep)
  bool dsPendingExit = false;  // bangun sleep + mesin ON → publish exit setelah MQTT
+ bool dsWakeWatch = false;    // bangun sleep, tunggu 5 mnt dengan WiFi/MQTT
+ uint32_t dsWatchStartMs = 0; // 0 = belum mulai (tunggu MQTT)
  
  bool btnPagePrev = true;
  bool btnResetPrev = true;
@@ -260,6 +270,8 @@ uint8_t dailyHistoryCount = 0;
  void handleDeepSleepWake();
  void publishDeepSleepEvent(const char *state, uint32_t fromEpoch, uint32_t toEpoch);
  void tryPublishDeepSleepExit();
+ void serviceDeepSleepLogic();
+ bool tryEnterDeepSleepWithMqtt(const char *reason, bool firstEnter);
  OpStatus classify(float v, float a, float w, bool ok);
  static const char *statusStr(OpStatus s);
  void saveLoginState();
@@ -340,9 +352,9 @@ uint8_t dailyHistoryCount = 0;
  void updateMqttHostForSsid(const char *ssid) {
   const char *targetHost = MQTT_HOST_LOCAL;
   if (ssid && (strstr(ssid, "Tracked") != nullptr || strcmp(ssid, DEFAULT_WIFI_SSID) == 0)) {
-    targetHost = MQTT_HOST_ROBOTIC;
+    targetHost = MQTT_HOST_ROBOTIC;  // Tracked → 10.5.2.222
   } else {
-    targetHost = MQTT_HOST_LOCAL;
+    targetHost = MQTT_HOST_LOCAL;    // GM3_DuckDown → 10.5.0.106
   }
   if (strcmp(mqttHost, targetHost) != 0) {
     strncpy(mqttHost, targetHost, sizeof(mqttHost) - 1);
@@ -962,7 +974,7 @@ uint8_t dailyHistoryCount = 0;
  
    // WiFi/MQTT belum siap → 2 slide: reconnect + Run/Loss (counter tetap jalan)
    if (wifiAllFailed && WiFi.status() != WL_CONNECTED) {
-     lcdPrint2("GAGAL KONEKSI", "SEMUA WIFI");
+     lcdPrint2("GAGAL KONEKSI", wifiPhase == WP_FALLBACK ? "Cadangan WiFi" : "Tracked WiFi");
      return;
    }
    if (WiFi.status() != WL_CONNECTED) {
@@ -1076,7 +1088,7 @@ uint8_t dailyHistoryCount = 0;
    }
  }
  
- // ---------- Deep sleep (mesin OFF ≥ 1 jam → bangun tiap 30 mnt) ----------
+ // ---------- Deep sleep (OFF ≥ 2 jam → MQTT dulu → sleep 20 mnt → wake WiFi/MQTT → nunggu 5 mnt) ----------
  uint32_t epochNowOr0() {
    time_t t = time(nullptr);
    return (t > 100000) ? (uint32_t)t : 0;
@@ -1095,8 +1107,10 @@ uint8_t dailyHistoryCount = 0;
    doc["mqtt_service"] = mqttHost;
    doc["sensor_ok"] = pzemOk;
    doc["detail"] = (strcmp(state, "deep_sleep_enter") == 0)
-                       ? "OFF 1 jam — deep sleep 30 mnt wake"
-                       : "Bangun — mesin nyala lagi";
+                       ? "OFF ≥2 jam — deep sleep 20 mnt wake"
+                       : (strcmp(state, "deep_sleep_wake") == 0)
+                             ? "Bangun — cek OFF 5 mnt"
+                             : "Bangun — mesin nyala lagi";
    doc["rssi"] = WiFi.RSSI();
    doc["uptime_sec"] = millis() / 1000;
    doc["run_sec"] = runSec;
@@ -1110,11 +1124,51 @@ uint8_t dailyHistoryCount = 0;
    }
    char buf[480];
    size_t n = serializeJson(doc, buf);
-   mqtt.publish(topicStatus, (const uint8_t *)buf, n, false);
+   // retain enter supaya /devices tahu DEEPSLEEP
+   bool retain = (strcmp(state, "deep_sleep_enter") == 0 || strcmp(state, "deep_sleep_exit") == 0);
+   mqtt.publish(topicStatus, (const uint8_t *)buf, n, retain);
    lastState = state;
  }
  
- void enterDeepSleep(const char *reason, bool firstEnter) {
+ void deepSleepHardwareStart() {
+   lcdPrint2("Deep sleep", "wake 20 min");
+   delay(250);
+   if (mqtt.connected()) mqtt.disconnect();
+   WiFi.disconnect(true);
+   WiFi.mode(WIFI_OFF);
+   esp_sleep_enable_timer_wakeup(DEEP_SLEEP_US);
+   esp_deep_sleep_start();
+ }
+ 
+ /** Wajib WiFi+MQTT sebelum sleep. Belum connect → reboot 1× lalu terus coba (jangan sleep). */
+ bool tryEnterDeepSleepWithMqtt(const char *reason, bool firstEnter) {
+   (void)reason;
+   bool wifiOk = (WiFi.status() == WL_CONNECTED);
+   bool mqttOk = mqtt.connected();
+ 
+   if (!wifiOk || !mqttOk) {
+     prefs.begin("pzemkpi", false);
+     bool alreadyReboot = prefs.getBool("dsReb", false);
+     prefs.putBool("dsWant", true);
+     prefs.end();
+ 
+     if (!alreadyReboot) {
+       Serial.println("[DS] belum WiFi/MQTT → reboot 1x sebelum deep sleep");
+       lcdPrint2("DS: reboot", "cari WiFi/MQTT");
+       saveCounters(true);
+       prefs.begin("pzemkpi", false);
+       prefs.putBool("dsReb", true);
+       prefs.putBool("dsWant", true);
+       prefs.end();
+       delay(500);
+       ESP.restart();
+     }
+     // Sudah pernah reboot — jangan sleep dulu, terus coba connect
+     lcdPrint2("DS tunggu", mqttOk ? "WiFi..." : "WiFi+MQTT...");
+     return false;
+   }
+ 
+   // Sudah connect — kirim MQTT dulu baru sleep
    saveCounters(true);
    uint32_t nowEp = epochNowOr0();
    if (firstEnter) {
@@ -1122,24 +1176,30 @@ uint8_t dailyHistoryCount = 0;
      prefs.putBool("dsOn", true);
      prefs.putULong("dsFrom", nowEp);
      prefs.putULong("dsLast", nowEp);
+     prefs.putBool("dsWant", false);
+     prefs.putBool("dsReb", false);
      prefs.end();
-     if (mqtt.connected()) {
-       publishDeepSleepEvent("deep_sleep_enter", nowEp, 0);
-       delay(150);
-     }
    } else {
      prefs.begin("pzemkpi", false);
      prefs.putBool("dsOn", true);
+     prefs.putBool("dsWant", false);
+     prefs.putBool("dsReb", false);
      prefs.end();
    }
-   (void)reason;
-   lcdPrint2("Deep sleep", "wake 30 min");
-   delay(250);
-   if (mqtt.connected()) mqtt.disconnect();
-   WiFi.disconnect(true);
-   WiFi.mode(WIFI_OFF);
-   esp_sleep_enable_timer_wakeup(DEEP_SLEEP_US);
-   esp_deep_sleep_start();
+ 
+   publishStatus("ok", "sebelum deep sleep — mesin OFF", pzemOk);
+   publishTelemetry();
+   publishDeepSleepEvent("deep_sleep_enter", firstEnter ? nowEp : 0, 0);
+   delay(300);
+   mqtt.loop();
+   delay(200);
+ 
+   deepSleepHardwareStart();
+   return true;  // tidak kembali
+ }
+ 
+ void enterDeepSleep(const char *reason, bool firstEnter) {
+   tryEnterDeepSleepWithMqtt(reason, firstEnter);
  }
  
  void handleDeepSleepWake() {
@@ -1150,12 +1210,12 @@ uint8_t dailyHistoryCount = 0;
    prefs.end();
    if (!dsOn) return;
  
-   // Tambah durasi sleep ke off_sec (estimasi 30 mnt jika NTP belum siap)
+   // Tambah durasi sleep ke off_sec (~20 mnt)
    uint32_t nowEp = epochNowOr0();
    uint32_t dt = SLEEP_CHUNK_SEC;
    if (nowEp > 0 && lastEp > 0 && nowEp > lastEp) {
      dt = nowEp - lastEp;
-     if (dt > 2 * SLEEP_CHUNK_SEC) dt = SLEEP_CHUNK_SEC;  // clamp outlier
+     if (dt > 2 * SLEEP_CHUNK_SEC) dt = SLEEP_CHUNK_SEC;
    }
    offSec += dt;
    saveCounters(true);
@@ -1170,8 +1230,8 @@ uint8_t dailyHistoryCount = 0;
    pendStatus = raw;
  
    if (raw != ST_OFF && pzemOk) {
-     // Mesin nyala lagi — lanjut boot normal, publish exit setelah MQTT
      dsPendingExit = true;
+     dsWakeWatch = false;
      prefs.begin("pzemkpi", false);
      prefs.putBool("dsOn", false);
      prefs.putBool("dsExit", true);
@@ -1179,10 +1239,10 @@ uint8_t dailyHistoryCount = 0;
      prefs.end();
      lcdPrint2("Wake: machine", "ON - connect");
    } else {
-     // Masih OFF — tidur lagi tanpa spam MQTT
-     lcdPrint2("Wake: still OFF", "sleep again");
-     delay(400);
-     enterDeepSleep("still_off", false);
+     // Masih OFF — WAJIB WiFi+MQTT dulu, kirim data, nunggu 5 mnt (jangan sleep langsung)
+     dsWakeWatch = true;
+     dsWatchStartMs = 0;
+     lcdPrint2("Wake: OFF", "WiFi+MQTT dulu");
    }
  }
  
@@ -1197,10 +1257,88 @@ uint8_t dailyHistoryCount = 0;
    publishDeepSleepEvent("deep_sleep_exit", fromEp, toEp);
    prefs.begin("pzemkpi", false);
    prefs.putBool("dsExit", false);
+   prefs.putBool("dsOn", false);
+   prefs.putBool("dsWant", false);
+   prefs.putBool("dsReb", false);
    prefs.remove("dsFrom");
    prefs.remove("dsLast");
    prefs.end();
    dsPendingExit = false;
+   dsWakeWatch = false;
+   dsWatchStartMs = 0;
+ }
+ 
+ /** Dipanggil dari loop: dsWant (setelah reboot) + wake watch 5 mnt. */
+ void serviceDeepSleepLogic() {
+   // Mesin nyala saat nunggu enter → batalkan
+   if (opStatus != ST_OFF && pzemOk) {
+     prefs.begin("pzemkpi", false);
+     bool want = prefs.getBool("dsWant", false);
+     prefs.end();
+     if (want) {
+       prefs.begin("pzemkpi", false);
+       prefs.putBool("dsWant", false);
+       prefs.putBool("dsReb", false);
+       prefs.end();
+     }
+   }
+ 
+   prefs.begin("pzemkpi", false);
+   bool wantEnter = prefs.getBool("dsWant", false);
+   prefs.end();
+   if (wantEnter && opStatus == ST_OFF) {
+     tryEnterDeepSleepWithMqtt("ds_want", true);
+     return;
+   }
+ 
+   if (!dsWakeWatch) return;
+ 
+   // Tunggu WiFi+MQTT sebelum mulai timer 5 mnt
+   if (WiFi.status() != WL_CONNECTED || !mqtt.connected()) {
+     lcdPrint2("Wake tunggu", "WiFi / MQTT");
+     return;
+   }
+ 
+   if (dsWatchStartMs == 0) {
+     dsWatchStartMs = millis();
+     prefs.begin("pzemkpi", false);
+     uint32_t fromEp = prefs.getULong("dsFrom", 0);
+     prefs.end();
+     publishDeepSleepEvent("deep_sleep_wake", fromEp, 0);
+     publishStatus("ok", "wake check — mesin masih OFF", pzemOk);
+     publishTelemetry();
+     lcdPrint2("Wake: pantau", "5 mnt OFF?");
+     Serial.println("[DS] wake MQTT OK — pantau 5 menit");
+   }
+ 
+   // Mesin nyala dalam jendela 5 mnt
+   if (opStatus != ST_OFF && pzemOk) {
+     dsPendingExit = true;
+     prefs.begin("pzemkpi", false);
+     prefs.putBool("dsOn", false);
+     prefs.putBool("dsExit", true);
+     prefs.end();
+     tryPublishDeepSleepExit();
+     dsWakeWatch = false;
+     dsWatchStartMs = 0;
+     offSinceMs = 0;
+     return;
+   }
+ 
+   uint32_t elapsed = millis() - dsWatchStartMs;
+   if (elapsed < DS_WAKE_WATCH_MS) {
+     char line2[17];
+     uint32_t left = (DS_WAKE_WATCH_MS - elapsed) / 1000;
+     snprintf(line2, sizeof(line2), "OFF sisa %lum", (unsigned long)((left + 59) / 60));
+     if ((millis() / 1000) % 10 == 0) lcdPrint2("Wake pantau", line2);
+     return;
+   }
+ 
+   // Masih OFF setelah 5 mnt → kirim MQTT sleep lagi
+   Serial.println("[DS] masih OFF 5 mnt → deep sleep 20 mnt");
+   dsWakeWatch = false;
+   dsWatchStartMs = 0;
+   tryEnterDeepSleepWithMqtt("still_off_5m", false);
  }
  
  // ---------- MQTT status ----------
@@ -1239,8 +1377,12 @@ uint8_t dailyHistoryCount = 0;
  
    char buf[512];
    size_t n = serializeJson(doc, buf);
-   // retain=true menimpa LWT mqtt_lost — backend reconnect tidak stuck OFFLINE
-   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, true) && lastState != state) {
+   // Retain HANYA saat ganti state / event penting — heartbeat "ok" tanpa retain
+   // (retain tiap 5 dtk membebani broker & memicu flapping di sisi subscribe)
+   bool doRetain = (lastState != state) ||
+                   (strcmp(state, "network") == 0) ||
+                   (strcmp(state, "resync") == 0);
+   if (mqtt.publish(topicStatus, (const uint8_t *)buf, n, doRetain) && lastState != state) {
      lastState = state;
    }
  }
@@ -1610,14 +1752,15 @@ uint8_t dailyHistoryCount = 0;
  }
  
  /**
-  * Optimasi WiFi STA ESP32-C6 SuperMini:
-  * 1. Power Saving Nonaktif (WIFI_PS_NONE & setSleep(false)) -> Radio WiFi 100% aktif (anti packet loss & latency spike di area industri).
-  * 2. Max TX Power (84 = 21.0 dBm) -> Daya pancar RF maksimum hardware ESP32-C6.
-  * 3. Bandwidth HT20 (20 MHz) -> Sensitivitas penerimaan sinyal lebih tinggi (+3dB) & lebih tahan interferensi mesin.
-  * 4. Protokol 11b/g/n/ax -> Mendukung Wi-Fi 6 (OFDMA HE20) pada ESP32-C6 untuk efisiensi jaringan padat, fallback mulus ke 11b/g/n.
-  * 5. Country Code "ID" (Channel 1-13) -> Memastikan scan menjangkau seluruh channel lokal (termasuk channel 12 & 13).
-  * 6. Sort Method WIFI_CONNECT_AP_BY_SIGNAL -> Otomatis memilih AP/BSSID dengan RSSI sinyal terkuat jika terdapat multiple AP dengan SSID yang sama.
-  * 7. Flash wear prevention (WiFi.persistent(false)) & WiFi.setAutoReconnect(true).
+  * Optimasi WiFi STA ESP32-C6 SuperMini (sinyal jauh + noise industri):
+  * 1. PS_NONE — radio 100% aktif (anti packet loss / latency spike).
+  * 2. TX max 21 dBm — jangkauan uplink lebih jauh.
+  * 3. HT20 — sensitivitas RX lebih baik (+~3 dB) vs HT40 di lingkungan noise.
+  * 4. 11b/g/n/ax — HE20 bila AP Wi‑Fi 6, fallback mulus.
+  * 5. Country ID ch 1–13 — scan channel lokal penuh.
+  * 6. ALL_CHANNEL_SCAN + CONNECT_AP_BY_SIGNAL — pilih BSSID RSSI terkuat.
+  * 7. failure_retry_cnt tinggi — tahan flapping auth di edge coverage.
+  * 8. Watchdog RSSI (wifiWatchRssiAndRoam) — roam ke AP lebih kuat jika sinyal jelek.
   */
  void applyWifiStaOptimizations() {
    WiFi.persistent(false);
@@ -1637,7 +1780,6 @@ uint8_t dailyHistoryCount = 0;
    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
  
  #ifdef WIFI_PROTOCOL_11AX
-   // C6: izinkan 11B/G/N/AX — AP WiFi 6 akan nego HE20
    esp_wifi_set_protocol(
        WIFI_IF_STA,
        WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX);
@@ -1646,16 +1788,26 @@ uint8_t dailyHistoryCount = 0;
        WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
  #endif
  
-   // Satuan 0.25 dBm; 84 = 21.0 dBm (Max RF Power ESP32-C6)
+   // 0.25 dBm units; 84 = 21.0 dBm
    esp_wifi_set_max_tx_power(84);
+ 
+   // ponytail: STA inactive lebih longgar agar AP tidak drop cepat saat noise spike
+   esp_wifi_set_inactive_time(WIFI_IF_STA, 30);
  
    wifi_config_t conf;
    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
      conf.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
      conf.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
-     conf.sta.threshold.rssi = -127;
+     conf.sta.threshold.rssi = -127;  // jangan tolak AP lemah saat connect awal
      conf.sta.threshold.authmode = WIFI_AUTH_OPEN;
-     conf.sta.listen_interval = 0;
+     conf.sta.listen_interval = 3;    // beacon listen lebih sering (anti miss AP)
+ #if ESP_IDF_VERSION_MAJOR >= 4
+     conf.sta.failure_retry_cnt = 8;
+ #endif
+ #ifdef CONFIG_ESP_WIFI_ENABLE_WPA3_SAE
+     conf.sta.pmf_cfg.capable = true;
+     conf.sta.pmf_cfg.required = false;
+ #endif
      esp_wifi_set_config(WIFI_IF_STA, &conf);
    }
  }
@@ -1668,17 +1820,14 @@ uint8_t dailyHistoryCount = 0;
    updateMqttHostForSsid(wifiSsid);
  }
  
- void wifiLoadKnown(uint8_t i) {
-   if (i == 1) wifiCopyCreds(DEFAULT_WIFI_SSID2, DEFAULT_WIFI_PASS2);
-   else if (i == 2) wifiCopyCreds(DEFAULT_WIFI_SSID3, DEFAULT_WIFI_PASS3);
-   else wifiCopyCreds(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
+ void wifiLoadPrimary() {
+   wifiPhase = WP_PRIMARY;
+   wifiCopyCreds(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
  }
  
- bool wifiIsKnownSsid(const char *s) {
-   if (!s || !s[0]) return true;
-   return strcmp(s, DEFAULT_WIFI_SSID) == 0 ||
-          strcmp(s, DEFAULT_WIFI_SSID2) == 0 ||
-          strcmp(s, DEFAULT_WIFI_SSID3) == 0;
+ void wifiLoadFallback() {
+   wifiPhase = WP_FALLBACK;
+   wifiCopyCreds(DEFAULT_WIFI_SSID_FALLBACK, DEFAULT_WIFI_PASS_FALLBACK);
  }
  
  void wifiBeginCurrent() {
@@ -1690,140 +1839,207 @@ uint8_t dailyHistoryCount = 0;
    WiFi.setHostname(mqttClientId);
    WiFi.begin(wifiSsid, wifiPass);
  
-   // Pastikan sort_method tetap aktif setelah WiFi.begin()
+   // Re-apply setelah begin (IDF kadang reset sebagian config)
    wifi_config_t conf;
    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
      conf.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
      conf.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+     conf.sta.threshold.rssi = -127;
+ #if ESP_IDF_VERSION_MAJOR >= 4
+     conf.sta.failure_retry_cnt = 8;
+ #endif
      esp_wifi_set_config(WIFI_IF_STA, &conf);
    }
+   esp_wifi_set_ps(WIFI_PS_NONE);
+   esp_wifi_set_max_tx_power(84);
+   WiFi.setSleep(false);
  
    wifiTryStartMs = millis();
    lastWifiAttemptMs = wifiTryStartMs;
+   wifiRssiBadHits = 0;
+   lastRssiCheckMs = millis();
  }
  
- void wifiFillScan() {
-   wifiScanN = 0;
-   wifiScanIdx = 0;
-   int n = WiFi.scanNetworks(false, false);
-   if (n < 0) n = 0;
-   bool used[48];
-   memset(used, 0, sizeof(used));
-   if (n > (int)sizeof(used)) n = (int)sizeof(used);
-   for (uint8_t k = 0; k < WIFI_SCAN_TOP; k++) {
-     int best = -1;
-     int32_t bestR = -999;
-     for (int i = 0; i < n; i++) {
-       if (used[i]) continue;
-       String ss = WiFi.SSID(i);
-       if (ss.length() == 0 || wifiIsKnownSsid(ss.c_str())) continue;
-       bool dup = false;
-       for (uint8_t j = 0; j < wifiScanN; j++) {
-         if (ss.equals(wifiScanSsid[j])) {
-           dup = true;
-           break;
-         }
-       }
-       if (dup) continue;
-       int32_t r = WiFi.RSSI(i);
-       if (best < 0 || r > bestR) {
-         best = i;
-         bestR = r;
-       }
-     }
-     if (best < 0) break;
-     used[best] = true;
-     strncpy(wifiScanSsid[wifiScanN], WiFi.SSID(best).c_str(), 32);
-     wifiScanSsid[wifiScanN][32] = 0;
-     wifiScanN++;
+ /** Scan SSID yang sama; reconnect ke BSSID yang ≥ improveDb lebih kuat. */
+ bool wifiRoamToStrongerBssid() {
+   if (WiFi.status() != WL_CONNECTED) return false;
+   uint32_t now = millis();
+   if (lastWifiRoamMs != 0 && (now - lastWifiRoamMs) < WIFI_ROAM_COOLDOWN_MS) return false;
+   // Jangan roam saat MQTT baru stabil — scan blocking mematikan keepalive
+   if (mqtt.connected() && mqttConnectedAtMs != 0 &&
+       (now - mqttConnectedAtMs) < MQTT_STABLE_BEFORE_ROAM_MS) {
+     return false;
    }
+ 
+   String curSsid = WiFi.SSID();
+   if (curSsid.length() == 0) return false;
+   int curRssi = WiFi.RSSI();
+   uint8_t curBssid[6];
+   memcpy(curBssid, WiFi.BSSID(), 6);
+ 
+   // Service MQTT dulu sebelum scan blocking
+   if (mqtt.connected()) mqtt.loop();
+ 
+   int n = WiFi.scanNetworks(/*async=*/false, /*hidden=*/true);
+   if (n <= 0) {
+     WiFi.scanDelete();
+     if (mqtt.connected()) mqtt.loop();
+     return false;
+   }
+ 
+   int bestIdx = -1;
+   int32_t bestRssi = curRssi + WIFI_RSSI_ROAM_IMPROVE_DB;
+   for (int i = 0; i < n; i++) {
+     if (!curSsid.equals(WiFi.SSID(i))) continue;
+     uint8_t *bss = WiFi.BSSID(i);
+     if (!bss) continue;
+     if (memcmp(bss, curBssid, 6) == 0) continue;
+     int32_t r = WiFi.RSSI(i);
+     if (r > bestRssi) {
+       bestRssi = r;
+       bestIdx = i;
+     }
+   }
+ 
+   if (bestIdx < 0) {
+     WiFi.scanDelete();
+     if (mqtt.connected()) mqtt.loop();
+     return false;
+   }
+ 
+   uint8_t bestBssid[6];
+   memcpy(bestBssid, WiFi.BSSID(bestIdx), 6);
+   int32_t channel = WiFi.channel(bestIdx);
    WiFi.scanDelete();
+ 
+   Serial.printf("[WiFi] roam RSSI %d→%d dBm BSSID %02X:%02X:%02X:%02X:%02X:%02X\n",
+                 curRssi, (int)bestRssi,
+                 bestBssid[0], bestBssid[1], bestBssid[2],
+                 bestBssid[3], bestBssid[4], bestBssid[5]);
+ 
+   saveCounters(true);
+   if (mqtt.connected()) {
+     mqtt.disconnect();
+     mqttWasOk = false;
+   }
+   ipReportedOnce = false;
+ 
+   WiFi.disconnect(false);
+   delay(40);
+   applyWifiStaOptimizations();
+   WiFi.setHostname(mqttClientId);
+   WiFi.begin(wifiSsid, wifiPass, channel, bestBssid, true);
+   esp_wifi_set_ps(WIFI_PS_NONE);
+   esp_wifi_set_max_tx_power(84);
+   wifiRssiBadHits = 0;
+   lastRssiCheckMs = millis();
+   lastWifiRoamMs = millis();
+   return true;
  }
  
- void wifiAdvance() {
-   wifiFailCount++;
-   if (wifiPhase == WP_KNOWN) {
-     wifiKnownIdx++;
-     if (wifiKnownIdx >= 3) {
-       wifiKnownIdx = 0;
-       wifiKnownRound++;
-       if (wifiKnownRound >= WIFI_KNOWN_ROUNDS) {
-         wifiPhase = WP_SCAN;
-         wifiFillScan();
-         if (wifiScanN == 0) {
-           wifiPhase = WP_FAIL;
-           wifiAllFailed = true;
-           wifiTryStartMs = millis();
-           return;
-         }
-         wifiCopyCreds(wifiScanSsid[0], WIFI_SCAN_PASS);
-         wifiBeginCurrent();
-         return;
-       }
-     }
-     wifiLoadKnown(wifiKnownIdx);
-     wifiBeginCurrent();
+ /** Saat connected: pantau RSSI lemah → roam; sinyal bagus → reset hit. */
+ void wifiWatchRssiAndRoam() {
+   uint32_t now = millis();
+   if (now - lastRssiCheckMs < WIFI_RSSI_CHECK_MS) return;
+   lastRssiCheckMs = now;
+ 
+   int rssi = WiFi.RSSI();
+   if (rssi > WIFI_RSSI_ROAM_DBM) {
+     wifiRssiBadHits = 0;
+     // jaga radio tetap full (beberapa AP/PS bisa nyalakan sleep lagi)
+     esp_wifi_set_ps(WIFI_PS_NONE);
+     WiFi.setSleep(false);
      return;
    }
-   if (wifiPhase == WP_SCAN) {
-     wifiScanIdx++;
-     if (wifiScanIdx >= wifiScanN) {
-       wifiPhase = WP_FAIL;
-       wifiAllFailed = true;
-       wifiTryStartMs = millis();
-       return;
-     }
-     wifiCopyCreds(wifiScanSsid[wifiScanIdx], WIFI_SCAN_PASS);
-     wifiBeginCurrent();
-   }
+ 
+   wifiRssiBadHits++;
+   Serial.printf("[WiFi] RSSI lemah %d dBm hit=%u/%u\n",
+                 rssi, wifiRssiBadHits, WIFI_RSSI_BAD_HITS);
+   if (wifiRssiBadHits < WIFI_RSSI_BAD_HITS) return;
+   wifiRssiBadHits = 0;
+   wifiRoamToStrongerBssid();
  }
  
  void wifiResetCycle() {
-   wifiPhase = WP_KNOWN;
-   wifiKnownIdx = 0;
-   wifiKnownRound = 0;
-   wifiScanIdx = 0;
-   wifiScanN = 0;
    wifiAllFailed = false;
-   wifiLoadKnown(0);
+   wifiDownSinceMs = millis();
+   wifiLoadPrimary();
    wifiBeginCurrent();
  }
  
  bool ensureWifi() {
+   uint32_t now = millis();
+ 
    if (WiFi.status() == WL_CONNECTED) {
      if (!wifiWasOk) {
        wifiWasOk = true;
        wifiAllFailed = false;
-       wifiPhase = WP_KNOWN;
-       wifiKnownRound = 0;
+       wifiDownSinceMs = 0;
+       wifiRssiBadHits = 0;
        updateMqttHostForSsid(wifiSsid);
        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
        saveIdentity();
+       Serial.printf("[WiFi] OK ssid=%s ip=%s mqtt=%s\n",
+                     wifiSsid, WiFi.localIP().toString().c_str(), mqttHost);
      }
+     wifiWatchRssiAndRoam();
      return true;
    }
+ 
    if (wifiWasOk) {
      saveCounters(true);
      wifiWasOk = false;
      mqttWasOk = false;
      ntpOk = false;
+     wifiRssiBadHits = 0;
      if (mqtt.connected()) mqtt.disconnect();
      ipReportedOnce = false;
+     wifiDownSinceMs = now;
+     wifiAllFailed = false;
+     wifiLoadPrimary();  // putus → balik ke Tracked (9) dulu
+     wifiBeginCurrent();
+     return false;
+   }
+ 
+   if (wifiDownSinceMs == 0) {
      wifiResetCycle();
      return false;
    }
  
-   if (wifiTryStartMs == 0) {
-     wifiResetCycle();
+   uint32_t downFor = now - wifiDownSinceMs;
+ 
+   if (wifiPhase == WP_PRIMARY) {
+     wifiAllFailed = false;
+     if (downFor >= WIFI_PRIMARY_ONLY_MS) {
+       Serial.println("[WiFi] primary gagal ≥30 mnt → cadangan GM3_DuckDown");
+       wifiLoadFallback();
+       wifiBeginCurrent();
+       return false;
+     }
+     if (now - wifiTryStartMs >= WIFI_RETRY_MS) {
+       wifiLoadPrimary();
+       wifiBeginCurrent();
+     }
      return false;
    }
  
-   if (wifiAllFailed) {
-     if (millis() - wifiTryStartMs >= WIFI_TRY_MS) wifiResetCycle();
+   // WP_FALLBACK — satu opsi cadangan
+   if (downFor >= WIFI_PRIMARY_ONLY_MS + WIFI_FALLBACK_RETRY_MS) {
+     // cadangan juga gagal lama → balik primary, timer 30 mnt ulang
+     Serial.println("[WiFi] cadangan gagal → ulang Tracked (9)");
+     wifiAllFailed = true;
+     wifiDownSinceMs = now;
+     wifiLoadPrimary();
+     wifiBeginCurrent();
      return false;
    }
  
-   if (millis() - wifiTryStartMs >= WIFI_TRY_MS) wifiAdvance();
+   if (now - wifiTryStartMs >= WIFI_RETRY_MS) {
+     wifiLoadFallback();
+     wifiBeginCurrent();
+   }
+   // LCD "GAGAL" setelah >1 mnt di fase cadangan masih putus
+   wifiAllFailed = (downFor > WIFI_PRIMARY_ONLY_MS + 60000UL);
    return false;
  }
  
@@ -1832,10 +2048,12 @@ uint8_t dailyHistoryCount = 0;
      if (!mqttWasOk) {
        mqttWasOk = true;
        mqttBackoffMs = MQTT_RETRY_MS;
+       mqttConnectedAtMs = millis();
        ipReportedOnce = false;
        saveCounters(true);
        publishNetworkOnce();
        publishTelemetry();
+       // retain sekali saat nyambung — timpa LWT
        publishStatus("resync", "MQTT reconnect — sync Run/Loss dari ESP", pzemOk);
        tryPublishDeepSleepExit();
      }
@@ -1845,6 +2063,7 @@ uint8_t dailyHistoryCount = 0;
    if (mqttWasOk) {
      saveCounters(true);
      mqttWasOk = false;
+     Serial.println("[MQTT] disconnected — will reconnect with backoff");
    }
  
    uint32_t now = millis();
@@ -1852,23 +2071,44 @@ uint8_t dailyHistoryCount = 0;
    lastMqttAttemptMs = now;
    mqttFailCount++;
  
-   // Clean session + LWT; client id unik (lihat buildMqttClientId)
-   bool ok = mqtt.connect(mqttClientId, nullptr, nullptr, topicStatus, 1, true, willPayload, true);
+   // Pastikan socket lama bersih sebelum connect ulang
+   mqtt.disconnect();
+   delay(50);
+   mqtt.setServer(mqttHost, MQTT_PORT);
+   mqtt.setKeepAlive(MQTT_KEEPALIVE_SEC);
+   mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
+ 
+   // Boot pertama: clean session. Reconnect: keep session (lebih ringan di broker)
+   bool cleanSession = !mqttEverConnected;
+   Serial.printf("[MQTT] connect %s:%u client=%s clean=%d backoff=%lums\n",
+                 mqttHost, MQTT_PORT, mqttClientId, cleanSession ? 1 : 0,
+                 (unsigned long)mqttBackoffMs);
+ 
+   bool ok = mqtt.connect(mqttClientId, nullptr, nullptr, topicStatus, 1, true, willPayload,
+                          cleanSession);
    if (ok) {
+     mqttEverConnected = true;
      mqttBackoffMs = MQTT_RETRY_MS;
-     ipReportedOnce = false;  // sesi baru → boleh kirim IP sekali
+     mqttConnectedAtMs = millis();
+     ipReportedOnce = false;
      resubscribeMqtt();
      mqttWasOk = true;
      saveCounters(true);
-     publishNetworkOnce();  // IP + SSID + RSSI sekali
+     publishNetworkOnce();
      publishAck("boot", true);
      publishTelemetry();
      publishStatus("resync", "MQTT connected — sync Run/Loss dari ESP", pzemOk);
-     publishAllDailyHistory();
+     // History 7 hari: hanya boot pertama / setelah lama offline — jangan tiap reconnect
+     if (cleanSession) {
+       publishAllDailyHistory();
+     }
      tryPublishDeepSleepExit();
+     Serial.println("[MQTT] connected OK");
      return true;
    }
-   // Exponential backoff: 3s → 6s → … → 60s
+ 
+   Serial.printf("[MQTT] connect gagal state=%d\n", mqtt.state());
+   // Exponential backoff: 5s → 10s → … → 120s (hindari ban broker)
    if (mqttBackoffMs < MQTT_RETRY_MAX_MS) {
      uint32_t next = mqttBackoffMs * 2;
      mqttBackoffMs = next > MQTT_RETRY_MAX_MS ? MQTT_RETRY_MAX_MS : next;
@@ -2066,15 +2306,15 @@ uint8_t dailyHistoryCount = 0;
    bool fromDeepSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
  
    if (!fromDeepSleep) {
-     showUidSplashLcd(2000);   // nomor UID besar 2 digit (00)
-     showMacSplashLcd(2500);   // MAC ADDRESS + 12 hex
+     showUidSplashLcd(2000);
+     showMacSplashLcd(2500);
    }
  
    PZEM_UART.begin(9600, SERIAL_8N1, PZEM_RX_PIN, PZEM_TX_PIN);
    delay(400);
  
    if (fromDeepSleep) {
-     handleDeepSleepWake();  // masih OFF → tidak return (sleep lagi)
+     handleDeepSleepWake();  // set dsWakeWatch atau dsPendingExit — tidak sleep langsung
    }
  
    mqtt.setServer(mqttHost, MQTT_PORT);
@@ -2085,39 +2325,36 @@ uint8_t dailyHistoryCount = 0;
  
    WiFi.mode(WIFI_STA);
  
-   // ====== Boot WiFi: Koneksi cepat ke WiFi utama (Tracked (9) / NVS) ======
-   if (!fromDeepSleep) {
-     showConnLcd("Connecting WiFi", wifiSsid);
-     wifiBeginCurrent();
-     uint32_t bootWifiStart = millis();
-     bool bootWifiOk = false;
-     while ((millis() - bootWifiStart) < BOOT_WIFI_TIMEOUT_MS) {
-       if (WiFi.status() == WL_CONNECTED) {
-         bootWifiOk = true;
-         break;
-       }
-       delay(200);
-       uint32_t elapsed = millis() - bootWifiStart;
-       uint32_t remaining = (BOOT_WIFI_TIMEOUT_MS > elapsed) ? ((BOOT_WIFI_TIMEOUT_MS - elapsed) / 1000) : 0;
-       char countLine[17];
-       snprintf(countLine, sizeof(countLine), "%.10s %luds", wifiSsid, (unsigned long)remaining);
-       showConnLcd("Connecting WiFi", countLine);
+   // Boot / wake: selalu coba WiFi (wake deep sleep juga butuh MQTT)
+   showConnLcd(fromDeepSleep ? "Wake WiFi" : "Connecting WiFi", wifiSsid);
+   wifiBeginCurrent();
+   uint32_t bootWifiStart = millis();
+   bool bootWifiOk = false;
+   while ((millis() - bootWifiStart) < BOOT_WIFI_TIMEOUT_MS) {
+     if (WiFi.status() == WL_CONNECTED) {
+       bootWifiOk = true;
+       break;
      }
-     if (bootWifiOk) {
-       wifiWasOk = true;
-       wifiAllFailed = false;
-       wifiPhase = WP_KNOWN;
-       wifiKnownRound = 0;
-       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-       showConnLcd("WiFi OK!", WiFi.localIP().toString().c_str());
-       delay(1000);
-     } else {
-       showConnLcd("WiFi Failover", "Cari AP lain...");
-       delay(1000);
-     }
+     delay(200);
+     uint32_t elapsed = millis() - bootWifiStart;
+     uint32_t remaining = (BOOT_WIFI_TIMEOUT_MS > elapsed) ? ((BOOT_WIFI_TIMEOUT_MS - elapsed) / 1000) : 0;
+     char countLine[17];
+     snprintf(countLine, sizeof(countLine), "%.10s %luds", wifiSsid, (unsigned long)remaining);
+     showConnLcd(fromDeepSleep ? "Wake WiFi" : "Connecting WiFi", countLine);
+   }
+   if (bootWifiOk) {
+     wifiWasOk = true;
+     wifiAllFailed = false;
+     wifiPhase = WP_PRIMARY;
+     wifiDownSinceMs = 0;
+     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+     showConnLcd("WiFi OK!", WiFi.localIP().toString().c_str());
+     delay(600);
+   } else {
+     showConnLcd("WiFi Retry", DEFAULT_WIFI_SSID);
+     delay(500);
    }
  
-   // Jika boot WiFi belum konek atau deep sleep → jalankan siklus failover
    if (WiFi.status() != WL_CONNECTED) {
      wifiResetCycle();
    }
@@ -2146,7 +2383,6 @@ uint8_t dailyHistoryCount = 0;
      if (!mqtt.connected()) {
        ensureMqtt();
      } else {
-       // Panggil loop sering — keepalive 60s tetap butuh service rutin
        mqtt.loop();
      }
      checkWibMidnight();
@@ -2165,24 +2401,29 @@ uint8_t dailyHistoryCount = 0;
      }
    }
  
-   // Service MQTT lagi di akhir cycle (jika masih connected)
-   if (mqtt.connected()) mqtt.loop();
+   // Service MQTT sering (keepalive + inbound cmd) — hindari blocking lama tanpa loop
+   if (mqtt.connected()) {
+     mqtt.loop();
+   }
  
    if (now - lastPzemMs >= PZEM_MS) {
      lastPzemMs = now;
      readPzem();
      tickTimers();
+     if (mqtt.connected()) mqtt.loop();
  
-     // Deep sleep: OFF terus ≥ 1 jam (PZEM gagal = ikut OFF)
+     // Deep sleep: OFF terus ≥ 2 jam → wajib MQTT dulu
      if (opStatus == ST_OFF) {
        if (offSinceMs == 0) offSinceMs = now;
-       else if ((now - offSinceMs) >= OFF_BEFORE_SLEEP_MS) {
-         enterDeepSleep("off_1h", true);
+       else if ((now - offSinceMs) >= OFF_BEFORE_SLEEP_MS && !dsWakeWatch) {
+         tryEnterDeepSleepWithMqtt("off_2h", true);
        }
      } else {
        offSinceMs = 0;
      }
    }
+ 
+   serviceDeepSleepLogic();
  
    // Simpan berkala (juga saat offline)
    if (countersDirty) saveCounters(false);
@@ -2190,12 +2431,14 @@ uint8_t dailyHistoryCount = 0;
    if (mqtt.connected() && (now - lastTelemetryMs >= TELEMETRY_MS)) {
      lastTelemetryMs = now;
      publishTelemetry();
+     mqtt.loop();
    }
  
    if (mqtt.connected() && (now - lastStatusMs >= STATUS_MS)) {
      lastStatusMs = now;
      if (pzemOk) publishStatus("ok", "ESP-C6+PZEM sehat", true);
      else publishStatus("sensor_fail", "ESP online, PZEM gagal", false);
+     mqtt.loop();
    }
  
    handleButtons();

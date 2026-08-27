@@ -68,6 +68,7 @@ pub async fn list_control_machines(
         mac_addr: Option<String>,
         last_health_at: Option<chrono::DateTime<chrono::Utc>>,
         mqtt_service: Option<String>,
+        in_deep_sleep: bool,
     }
 
     let rows = sqlx::query_as::<_, Row>(
@@ -90,11 +91,13 @@ pub async fn list_control_machines(
               COALESCE(d.is_online, FALSE) AS is_online,
               (d.device_uid IS NOT NULL) AS has_device,
               d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.mac_addr, d.last_health_at,
-              d.mqtt_service
+              d.mqtt_service,
+              COALESCE(d.in_deep_sleep, FALSE) AS in_deep_sleep
            FROM machines m
            LEFT JOIN LATERAL (
              SELECT device_uid, last_seen_at, is_online,
-                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at, mqtt_service
+                    rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at, mqtt_service,
+                    in_deep_sleep
              FROM devices
              WHERE machine_id = m.id
              ORDER BY last_seen_at DESC NULLS LAST
@@ -128,6 +131,13 @@ pub async fn list_control_machines(
                 .unwrap_or(9999);
             // Stale last-seen = tidak di WiFi/MQTT — jangan tampilkan flag/rssi lama
             let online = link_live(r.is_online, live_online, age_sec, state.cfg.offline_timeout_sec);
+            let esp_status = if r.in_deep_sleep {
+                "deepsleep"
+            } else if online {
+                "online"
+            } else {
+                "offline"
+            };
             let rssi = if online { r.rssi } else { None };
             let signal = signal_quality(rssi);
             json!({
@@ -156,6 +166,8 @@ pub async fn list_control_machines(
                 "device_uid": r.device_uid.clone().unwrap_or_default(),
                 "last_seen_at": r.last_seen_at,
                 "is_online": online,
+                "in_deep_sleep": r.in_deep_sleep,
+                "esp_status": esp_status,
                 "has_device": r.has_device,
                 "rssi": rssi,
                 "wifi_ok": online && r.wifi_ok.unwrap_or(false),

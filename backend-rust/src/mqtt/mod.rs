@@ -776,6 +776,15 @@ async fn ingest_device_status(
     // Periode deep sleep ESP (OFF lama) — 1 baris: enter buka, exit tutup
     if msg.state == "deep_sleep_enter" || msg.state == "deep_sleep_exit" {
         record_deep_sleep(state, &machine, &msg, ts).await;
+        let _ = sqlx::query(
+            r#"UPDATE devices SET in_deep_sleep = $2, is_online = $3, last_health_at = NOW()
+               WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(msg.state == "deep_sleep_enter")
+        .bind(msg.state == "deep_sleep_exit")
+        .execute(&state.pool)
+        .await;
         if msg.state == "deep_sleep_exit" && machine.kpi_source == "esp" {
             if let (Some(run), Some(loss)) = (msg.run_sec, msg.loss_sec) {
                 let off = msg.off_sec.unwrap_or(0);
