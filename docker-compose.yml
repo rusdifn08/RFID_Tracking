@@ -56,6 +56,8 @@ services:
       VITE_GCC_CUTTING_PROXY_TARGET: ${VITE_GCC_CUTTING_PROXY_TARGET}
       VITE_SEWING_SERVICE_PROXY_TARGET: ${VITE_SEWING_SERVICE_PROXY_TARGET}
       VITE_NODE_PROXY_URL: ${VITE_NODE_PROXY_URL:-}
+      VITE_NGROK: ${VITE_NGROK:-}
+      VITE_HMR: ${VITE_HMR:-}
   backend-rust:
     build:
       context: ./backend-rust

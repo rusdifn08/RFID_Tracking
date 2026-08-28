@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import http from 'node:http'
-import os from 'node:os'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
@@ -75,23 +74,6 @@ function gccCuttingRegBatchProxyPlugin(target: string): Plugin {
       })
     },
   }
-}
-
-/** IPv4 non-loopback — agar HMR/WebSocket tidak mengarah ke localhost saat akses http(s)://IP-LAN:5173 */
-function getPrimaryLanIPv4(): string | undefined {
-  const nets = os.networkInterfaces()
-  const candidates: string[] = []
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name] || []) {
-      const fam = net.family as string | number
-      const isV4 = fam === 'IPv4' || fam === 4
-      if (isV4 && !net.internal && net.address) {
-        candidates.push(net.address)
-      }
-    }
-  }
-  const preferred = candidates.find((a) => !a.startsWith('169.254.'))
-  return preferred || candidates[0]
 }
 
 const VITE_HANDLED_PREFIXES = [
@@ -253,6 +235,7 @@ export default defineConfig(({ mode, command }) => {
     command === 'serve' && (env.VITE_DEV_HTTPS === 'true' || env.VITE_DEV_HTTPS === '1')
 
   const ngrokTunnel = env.VITE_NGROK === 'true' || env.VITE_NGROK === '1'
+  const hmrDisabled = env.VITE_HMR === 'false' || env.VITE_HMR === '0'
   const hmrClientPortRaw = env.VITE_HMR_CLIENT_PORT
   const hmrClientPortParsed = hmrClientPortRaw ? Number(hmrClientPortRaw) : NaN
   const hmrClientPort = Number.isFinite(hmrClientPortParsed) && hmrClientPortParsed > 0
@@ -261,12 +244,27 @@ export default defineConfig(({ mode, command }) => {
       ? 443
       : undefined
 
-  const hmrHost =
-    ngrokTunnel
-      ? undefined
-      : env.VITE_DEV_HMR_HOST ||
-        env.VITE_DEV_HOST ||
-        (command === 'serve' ? getPrimaryLanIPv4() : undefined)
+  // Jangan auto-set IP LAN/Docker (172.27.0.1) — browser/ngrok tidak bisa reach → HMR loop & lemot
+  const explicitHmrHost = env.VITE_DEV_HMR_HOST || env.VITE_DEV_HOST
+  const tunnelHmr = ngrokTunnel || useDevHttps
+
+  const resolveHmrConfig = () => {
+    if (command !== 'serve') return undefined
+    if (hmrDisabled) return false
+    if (tunnelHmr) {
+      return {
+        protocol: 'wss' as const,
+        clientPort: hmrClientPort ?? 443,
+      }
+    }
+    if (explicitHmrHost) {
+      return {
+        host: explicitHmrHost,
+        ...(hmrClientPort != null ? { clientPort: hmrClientPort } : {}),
+      }
+    }
+    return true
+  }
 
   const iotRustPort = Number(env.RUST_PORT || env.VITE_IOT_PROXY_PORT || 8088) || 8088
   const iotRustTarget = env.VITE_IOT_PROXY_TARGET || `http://127.0.0.1:${iotRustPort}`
@@ -314,19 +312,8 @@ export default defineConfig(({ mode, command }) => {
       allowedHosts: true, // ngrok / tunnel URL berubah tiap sesi
       open: false, // Jangan auto-open browser
 
-      // HMR: ngrok HTTPS → clientPort 443 (jangan paksa IP Docker/LAN)
-      hmr:
-        command === 'serve'
-          ? {
-            protocol: useDevHttps || ngrokTunnel ? 'wss' : 'ws',
-            ...(ngrokTunnel
-              ? { clientPort: hmrClientPort }
-              : {
-                host: hmrHost || 'localhost',
-                ...(hmrClientPort != null ? { clientPort: hmrClientPort } : {}),
-              }),
-          }
-          : undefined,
+      // HMR: ngrok/VITE_NGROK → wss:443 same-host; default true (hostname = tab browser)
+      hmr: resolveHmrConfig(),
 
       proxy: {
         // Backend Rust IoT (:8088) — same-origin saat ngrok/HTTPS (tanpa :8088 di browser)
