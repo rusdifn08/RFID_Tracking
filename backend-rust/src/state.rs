@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -23,6 +25,39 @@ pub struct WifiScanResult {
 }
 
 /// Snapshot langsung dari Coordinator (`…/coordinator/mesh`).
+static LOGIN_EVENT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct LoginSystemEvent {
+    pub id: u64,
+    pub device_uid: String,
+    pub machine_code: String,
+    pub login_required: bool,
+    pub status: String,
+    pub message: String,
+    pub at: chrono::DateTime<chrono::Utc>,
+}
+
+impl LoginSystemEvent {
+    pub fn new(
+        device_uid: String,
+        machine_code: String,
+        login_required: bool,
+        status: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: LOGIN_EVENT_SEQ.fetch_add(1, Ordering::Relaxed),
+            device_uid,
+            machine_code,
+            login_required,
+            status: status.into(),
+            message: message.into(),
+            at: chrono::Utc::now(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ZigbeeMeshSnap {
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -44,6 +79,8 @@ pub struct AppState {
     pub wifi_scans: Arc<DashMap<String, WifiScanResult>>,
     /// Cache mesh dari Coordinator MQTT (realtime).
     pub zigbee_mesh: Arc<RwLock<Option<ZigbeeMeshSnap>>>,
+    /// Popup System Login di /devices (ACK dari ESP).
+    pub login_events: Arc<RwLock<VecDeque<LoginSystemEvent>>>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub mqtt_cmd_tx: broadcast::Sender<MqttOut>,
 }
@@ -84,6 +121,7 @@ impl AppState {
             machine_cache: Arc::new(DashMap::new()),
             wifi_scans: Arc::new(DashMap::new()),
             zigbee_mesh: Arc::new(RwLock::new(None)),
+            login_events: Arc::new(RwLock::new(VecDeque::new())),
             ws_tx,
             mqtt_cmd_tx,
         }

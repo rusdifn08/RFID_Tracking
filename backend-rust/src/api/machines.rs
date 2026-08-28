@@ -69,6 +69,7 @@ pub async fn list_control_machines(
         last_health_at: Option<chrono::DateTime<chrono::Utc>>,
         mqtt_service: Option<String>,
         in_deep_sleep: bool,
+        esp_login_required: Option<bool>,
     }
 
     let rows = sqlx::query_as::<_, Row>(
@@ -92,12 +93,13 @@ pub async fn list_control_machines(
               (d.device_uid IS NOT NULL) AS has_device,
               d.rssi, d.wifi_ok, d.mqtt_ok, d.ip_addr, d.wifi_ssid, d.mac_addr, d.last_health_at,
               d.mqtt_service,
-              COALESCE(d.in_deep_sleep, FALSE) AS in_deep_sleep
+              COALESCE(d.in_deep_sleep, FALSE) AS in_deep_sleep,
+              d.esp_login_required
            FROM machines m
            LEFT JOIN LATERAL (
              SELECT device_uid, last_seen_at, is_online,
                     rssi, wifi_ok, mqtt_ok, ip_addr, wifi_ssid, mac_addr, last_health_at, mqtt_service,
-                    in_deep_sleep
+                    in_deep_sleep, esp_login_required
              FROM devices
              WHERE machine_id = m.id
              ORDER BY last_seen_at DESC NULLS LAST
@@ -152,6 +154,7 @@ pub async fn list_control_machines(
                 "branch": r.branch,
                 "line_name": r.line_name,
                 "login_required": r.login_required,
+                "esp_login_required": r.esp_login_required,
                 "default_operator_nik": r.default_operator_nik,
                 "default_operator_name": r.default_operator_name,
                 "status_pzem": r.status_pzem,
@@ -689,7 +692,7 @@ pub async fn update_calibration(
     Ok(Json(row))
 }
 
-fn push_login_system(state: &AppState, row: &Machine, uid: &str, old_uid: Option<&str>) {
+pub fn push_login_system(state: &AppState, row: &Machine, uid: &str, old_uid: Option<&str>) {
     // login_required=true → System Login ON (wajib); false → OFF (tanpa login)
     let payload = json!({
         "command": "set_login_system",

@@ -6,7 +6,7 @@ use tokio::sync::broadcast;
 use crate::logbuf;
 use crate::models::{AdxlPayload, DeviceStatusPayload, Machine, PzemPayload, WsEvent};
 use crate::services::{detection, machine as machine_svc, magnitude_g};
-use crate::state::{AppState, MqttOut, WifiScanAp, WifiScanResult, ZigbeeMeshSnap};
+use crate::state::{AppState, LoginSystemEvent, MqttOut, WifiScanAp, WifiScanResult, ZigbeeMeshSnap};
 
 /// UID Zigbee baru: 0001, 0002, … (min 4 digit). UID 001–008 = Wi‑Fi lama.
 fn is_zigbee_uid(uid: &str) -> bool {
@@ -291,6 +291,16 @@ async fn handle_message(
                     );
                     logbuf::info(format!("wifi_scan {} networks={} (uid={})", parts[parts.len() - 2], list.len(), uid));
                 }
+            }
+            if cmd == "login_system_feedback"
+                || (cmd == "set_login_system" && v.get("login_required").is_some())
+                || (cmd == "desired_state" && v.get("login_required").is_some() && v.get("ok").and_then(|x| x.as_bool()).unwrap_or(true))
+            {
+                let mc = parts
+                    .get(parts.len().saturating_sub(2))
+                    .copied()
+                    .or_else(|| v.get("machine_code").and_then(|x| x.as_str()));
+                ingest_login_system_ack(state, &v, mc, cmd == "login_system_feedback").await;
             }
             if cmd == "boot" && parts.len() >= 2 {
                 let machine_code = parts[parts.len() - 2];
@@ -1049,8 +1059,18 @@ pub async fn ingest_pzem(
     )
     .bind(&msg.device_uid)
     .bind(mqtt_service)
-    .execute(&state.pool)
-    .await;
+        .execute(&state.pool)
+        .await;
+
+    if let Some(login_req) = msg.login_required {
+        let _ = sqlx::query(
+            r#"UPDATE devices SET esp_login_required = $2 WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .bind(login_req)
+        .execute(&state.pool)
+        .await;
+    }
 
     if msg
         .transport
@@ -1421,6 +1441,64 @@ pub async fn push_operator_snapshot(state: &AppState, m: &Machine) {
         location_note: m.location_note.clone(),
         logged_at,
     });
+}
+
+async fn ingest_login_system_ack(
+    state: &AppState,
+    v: &serde_json::Value,
+    machine_code: Option<&str>,
+    push_popup: bool,
+) {
+    let uid = v
+        .get("device_uid")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if uid.is_empty() {
+        return;
+    }
+    let Some(login_req) = v.get("login_required").and_then(|x| x.as_bool()) else {
+        return;
+    };
+    let _ = sqlx::query(
+        r#"UPDATE devices SET esp_login_required = $2 WHERE device_uid = $1"#,
+    )
+    .bind(&uid)
+    .bind(login_req)
+    .execute(&state.pool)
+    .await;
+
+    if !push_popup {
+        return;
+    }
+    let code = machine_code
+        .map(|s| s.to_string())
+        .or_else(|| v.get("machine_code").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default();
+    let status = v
+        .get("status")
+        .and_then(|x| x.as_str())
+        .unwrap_or(if login_req {
+            "ACTIVATED"
+        } else {
+            "DEACTIVATED"
+        });
+    let message = v
+        .get("message")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("System Login UID {uid} {status}"));
+    let ev = LoginSystemEvent::new(uid, code, login_req, status, message);
+    logbuf::info(format!(
+        "LOGIN_SYSTEM {} uid={} required={}",
+        ev.status, ev.device_uid, ev.login_required
+    ));
+    let mut q = state.login_events.write().await;
+    q.push_back(ev);
+    while q.len() > 64 {
+        q.pop_front();
+    }
 }
 
 #[cfg(test)]

@@ -193,6 +193,11 @@ pub struct PzemPayload {
     pub transport: Option<String>,
     #[serde(default, alias = "mqtt_server", alias = "mqtt_host")]
     pub mqtt_service: Option<String>,
+    /// System Login ON/OFF di ESP (laporan telemetry)
+    #[serde(default)]
+    pub login_required: Option<bool>,
+    #[serde(default)]
+    pub operator_logged_in: Option<bool>,
     #[serde(default)]
     pub ts: Option<DateTime<Utc>>,
 }

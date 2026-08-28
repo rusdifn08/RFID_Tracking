@@ -151,6 +151,11 @@ static const uint32_t BOOT_WIFI_TIMEOUT_MS = 12000;  // 12 detik
  char lcdName[40] = "";      // machine name / Brand+Proses
  char lcdProcess[40] = "";   // proses saja
  char lcdOperator[40] = "";  // nama operator aktif (tanpa code mesin)
+ char lcdBranch[24] = "";
+ char lcdLine[24] = "";
+ char lcdLocation[32] = "";
+ char lcdGarmentStyle[24] = "";
+ uint32_t lastDesiredRevision = 0;  // NVS: hindari apply ulang retained lama
  uint8_t lcdScrollPos = 0;
  uint32_t lastScrollMs = 0;
  
@@ -171,6 +176,9 @@ static const uint32_t BOOT_WIFI_TIMEOUT_MS = 12000;  // 12 detik
  char topicStatus[96];
  char topicCmd[96];
  char topicDevCmd[96];  // iot/gistex/dev/{UID}/cmd
+ char topicDesired[96];     // retained desired_state per machine code
+ char topicDevDesired[96];  // retained desired_state per UID
+ char topicLcdState[96];    // retained login_status / lcd snapshot
  char topicAck[96];
  char topicHistory[96];       // iot/gistex/{CODE}/history
  char topicHistoryDaily[96];  // iot/gistex/{CODE}/history/daily
@@ -194,10 +202,11 @@ uint8_t dailyHistoryCount = 0;
  enum OpStatus : uint8_t { ST_OFF = 0, ST_IDLE = 1, ST_RUNNING = 2 };
  enum LcdPage : uint8_t {
    PAGE_RUNLOSS = 0,   // Slide 1: Loss / Runn
-   PAGE_IDENTITY = 1,  // Slide 2: Brand+Proses (scroll) / kode mesin tengah
+   PAGE_IDENTITY = 1,  // Slide 2: Operator / Proses
    PAGE_OFFIDLE = 2,   // Slide 3: OFF / IDLE
    PAGE_VI = 3,        // Slide 4: Voltage / Current
-   PAGE_COUNT = 4
+   PAGE_LOCATION = 4,  // Slide 5: Line / Branch (dari backend)
+   PAGE_COUNT = 5
  };
  
  OpStatus opStatus = ST_OFF;
@@ -282,9 +291,11 @@ uint8_t dailyHistoryCount = 0;
  void buildTopics();
  void applyIdentity(const char *code, const char *uid);
  void resubscribeMqtt();
+ bool applyDesiredState(JsonDocument &doc);
  void applyStatusFilter(OpStatus raw);
  void publishConfigAck(const char *cmd);
  void publishWifiScanAck();
+ void publishLoginSystemFeedback();
  void updateMqttHostForSsid(const char *ssid);
  
  int wibYmdNow() {
@@ -379,6 +390,9 @@ uint8_t dailyHistoryCount = 0;
    snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status/%s", TOPIC_PREFIX, machineCode, SENSOR_NAME);
    snprintf(topicCmd, sizeof(topicCmd), "%s/%s/cmd", TOPIC_PREFIX, machineCode);
    snprintf(topicDevCmd, sizeof(topicDevCmd), "%s/dev/%s/cmd", TOPIC_PREFIX, deviceUid);
+   snprintf(topicDesired, sizeof(topicDesired), "%s/%s/desired", TOPIC_PREFIX, machineCode);
+   snprintf(topicDevDesired, sizeof(topicDevDesired), "%s/dev/%s/desired", TOPIC_PREFIX, deviceUid);
+   snprintf(topicLcdState, sizeof(topicLcdState), "%s/%s/lcd_state", TOPIC_PREFIX, machineCode);
    snprintf(topicAck, sizeof(topicAck), "%s/%s/ack", TOPIC_PREFIX, machineCode);
    snprintf(topicHistory, sizeof(topicHistory), "%s/%s/history", TOPIC_PREFIX, machineCode);
    snprintf(topicHistoryDaily, sizeof(topicHistoryDaily), "%s/%s/history/daily", TOPIC_PREFIX, machineCode);
@@ -391,6 +405,10 @@ uint8_t dailyHistoryCount = 0;
    if (!mqtt.connected()) return;
    mqtt.subscribe(topicCmd);
    mqtt.subscribe(topicDevCmd);
+   // Retained: backend push saat ESP offline → apply otomatis saat subscribe
+   mqtt.subscribe(topicDesired);
+   mqtt.subscribe(topicDevDesired);
+   mqtt.subscribe(topicLcdState);
  }
  
  void applyIdentity(const char *code, const char *uid) {
@@ -411,6 +429,9 @@ uint8_t dailyHistoryCount = 0;
    if (mqtt.connected()) {
      mqtt.unsubscribe(topicCmd);
      mqtt.unsubscribe(topicDevCmd);
+     mqtt.unsubscribe(topicDesired);
+     mqtt.unsubscribe(topicDevDesired);
+     mqtt.unsubscribe(topicLcdState);
    }
    buildTopics();
    saveIdentity();
@@ -431,6 +452,11 @@ uint8_t dailyHistoryCount = 0;
    kpiFromBackend = prefs.getBool("kpiBe", false);
    prefs.getString("lcdName", lcdName, sizeof(lcdName));
    prefs.getString("lcdProc", lcdProcess, sizeof(lcdProcess));
+   prefs.getString("lcdBranch", lcdBranch, sizeof(lcdBranch));
+   prefs.getString("lcdLine", lcdLine, sizeof(lcdLine));
+   prefs.getString("lcdLoc", lcdLocation, sizeof(lcdLocation));
+   prefs.getString("lcdStyle", lcdGarmentStyle, sizeof(lcdGarmentStyle));
+   lastDesiredRevision = prefs.getUInt("dsRev", 0);
    prefs.end();
    // migrasi default lama 0.03 → 0.01 (Idle/MSN ON mulai di atas 0.01 A)
    bool offMigrated = false;
@@ -453,6 +479,11 @@ uint8_t dailyHistoryCount = 0;
    prefs.putBool("kpiBe", kpiFromBackend);
    prefs.putString("lcdName", lcdName);
    prefs.putString("lcdProc", lcdProcess);
+   prefs.putString("lcdBranch", lcdBranch);
+   prefs.putString("lcdLine", lcdLine);
+   prefs.putString("lcdLoc", lcdLocation);
+   prefs.putString("lcdStyle", lcdGarmentStyle);
+   prefs.putUInt("dsRev", lastDesiredRevision);
    prefs.end();
  }
  
@@ -909,7 +940,9 @@ uint8_t dailyHistoryCount = 0;
  
  uint8_t lcdSlideCount() {
    if (WiFi.status() != WL_CONNECTED || !mqtt.connected()) return 2;
-   if (!loginSystemOn || operatorLoggedIn) return (uint8_t)PAGE_COUNT;
+   uint8_t pages = (uint8_t)PAGE_COUNT;
+   if (!lcdLine[0] && !lcdBranch[0] && !lcdLocation[0]) pages--;  // tanpa meta lokasi
+   if (!loginSystemOn || operatorLoggedIn) return pages;
    return 2;
  }
  
@@ -1079,6 +1112,17 @@ uint8_t dailyHistoryCount = 0;
          } else {
            snprintf(b, sizeof(b), "Current : %4.1f A", lastA);
          }
+       }
+       lcdPrint2(a, b);
+       break;
+     }
+     case PAGE_LOCATION: {
+       if (lcdLine[0] || lcdBranch[0]) {
+         snprintf(a, sizeof(a), "Line: %.10s", lcdLine[0] ? lcdLine : "-");
+         snprintf(b, sizeof(b), "Br: %.12s", lcdBranch[0] ? lcdBranch : "-");
+       } else {
+         snprintf(a, sizeof(a), "Loc: %.12s", lcdLocation[0] ? lcdLocation : "-");
+         snprintf(b, sizeof(b), "UID %s", deviceUid);
        }
        lcdPrint2(a, b);
        break;
@@ -1454,7 +1498,26 @@ uint8_t dailyHistoryCount = 0;
    size_t n = serializeJson(doc, buf);
    mqtt.publish(topicAck, buf, n);
  }
- 
+
+ void publishLoginSystemFeedback() {
+   if (!mqtt.connected()) return;
+   StaticJsonDocument<320> doc;
+   doc["device_uid"] = deviceUid;
+   doc["machine_code"] = machineCode;
+   doc["command"] = "login_system_feedback";
+   doc["login_required"] = loginSystemOn;
+   doc["operator_logged_in"] = operatorLoggedIn;
+   const char *status = loginSystemOn ? "ACTIVATED" : "DEACTIVATED";
+   doc["status"] = status;
+   char msg[72];
+   snprintf(msg, sizeof(msg), "System Login UID %s %s", deviceUid, status);
+   doc["message"] = msg;
+   doc["ok"] = true;
+   char buf[320];
+   size_t n = serializeJson(doc, buf);
+   mqtt.publish(topicAck, buf, n);
+ }
+
  void publishWifiScanAck() {
    if (WiFi.status() != WL_CONNECTED) {
      publishAck("wifi_scan", false);
@@ -1487,12 +1550,131 @@ uint8_t dailyHistoryCount = 0;
    WiFi.scanDelete();
    flashLcdMsg("Scan WiFi OK", " ");
  }
- 
+
+ /**
+  * Terapkan snapshot backend (topic desired retained + cmd desired_state).
+  * revision monoton → ESP offline tetap dapat perubahan terakhir saat online.
+  */
+ bool applyDesiredState(JsonDocument &doc) {
+   const char *tgt = doc["target_uid"] | "";
+   if (tgt[0] && strcmp(tgt, deviceUid) != 0) return false;
+
+   uint32_t rev = doc["revision"] | 0;
+   if (rev > 0 && rev <= lastDesiredRevision) return false;
+
+   bool loginChanged = false;
+   const char *code = doc["machine_code"] | "";
+   const char *uid = doc["target_uid"] | "";
+   if (code[0] || uid[0]) applyIdentity(code, uid);
+
+   if (doc.containsKey("machine_name")) {
+     const char *n = doc["machine_name"] | "";
+     strncpy(lcdName, n, sizeof(lcdName) - 1);
+     lcdName[sizeof(lcdName) - 1] = '\0';
+   }
+   if (doc.containsKey("process_name")) {
+     const char *p = doc["process_name"] | "";
+     strncpy(lcdProcess, p, sizeof(lcdProcess) - 1);
+     lcdProcess[sizeof(lcdProcess) - 1] = '\0';
+   }
+   if (doc.containsKey("branch")) {
+     const char *v = doc["branch"] | "";
+     strncpy(lcdBranch, v, sizeof(lcdBranch) - 1);
+     lcdBranch[sizeof(lcdBranch) - 1] = '\0';
+   }
+   if (doc.containsKey("line_name")) {
+     const char *v = doc["line_name"] | "";
+     strncpy(lcdLine, v, sizeof(lcdLine) - 1);
+     lcdLine[sizeof(lcdLine) - 1] = '\0';
+   }
+   if (doc.containsKey("location_note")) {
+     const char *v = doc["location_note"] | "";
+     strncpy(lcdLocation, v, sizeof(lcdLocation) - 1);
+     lcdLocation[sizeof(lcdLocation) - 1] = '\0';
+   }
+   if (doc.containsKey("garment_style")) {
+     const char *v = doc["garment_style"] | "";
+     strncpy(lcdGarmentStyle, v, sizeof(lcdGarmentStyle) - 1);
+     lcdGarmentStyle[sizeof(lcdGarmentStyle) - 1] = '\0';
+   }
+   if (doc.containsKey("current_threshold_a")) {
+     float v = doc["current_threshold_a"].as<float>();
+     if (v >= 0.005f && v <= 50.0f) currentThresholdA = v;
+   }
+   if (doc.containsKey("off_current_a")) {
+     float v = doc["off_current_a"].as<float>();
+     if (v >= 0.0f && v <= 5.0f) offCurrentA = v;
+   }
+   if (doc.containsKey("power_threshold_w")) {
+     float v = doc["power_threshold_w"].as<float>();
+     if (v >= 0.0f && v <= 5000.0f) powerThresholdW = v;
+   }
+   if (doc.containsKey("lcd_auto_ms")) {
+     uint32_t v = doc["lcd_auto_ms"].as<uint32_t>();
+     if (v >= 4000 && v <= 60000) lcdAutoMs = v;
+   }
+   if (doc.containsKey("kpi_source")) {
+     const char *src = doc["kpi_source"] | "esp";
+     kpiFromBackend = (strcmp(src, "telemetry") == 0 || strcmp(src, "backend") == 0);
+   }
+   if (doc.containsKey("login_required")) {
+     bool en = doc["login_required"].as<bool>();
+     if (en != loginSystemOn) {
+       loginChanged = true;
+       loginSystemOn = en;
+       if (!loginSystemOn) {
+         operatorLoggedIn = true;
+         int ymd = wibYmdNow();
+         loginWibYmd = ymd > 0 ? ymd : 0;
+       } else {
+         clearOperatorLogin("desired_state");
+       }
+     }
+   }
+   if (doc.containsKey("logged_in")) {
+     bool ok = doc["logged_in"].as<bool>();
+     if (!loginSystemOn) ok = true;
+     setOperatorLoggedIn(ok, false);
+   }
+   if (doc.containsKey("operator_name")) {
+     const char *op = doc["operator_name"] | "";
+     if (op[0]) {
+       strncpy(lcdOperator, op, sizeof(lcdOperator) - 1);
+       lcdOperator[sizeof(lcdOperator) - 1] = '\0';
+     } else if (doc.containsKey("logged_in") && !doc["logged_in"].as<bool>()) {
+       lcdOperator[0] = '\0';
+     }
+   }
+
+   if (rev > 0) lastDesiredRevision = rev;
+   saveCalibration();
+   saveLoginState();
+   renderLcd();
+
+   StaticJsonDocument<256> ack;
+   ack["device_uid"] = deviceUid;
+   ack["machine_code"] = machineCode;
+   ack["command"] = "desired_state";
+   ack["ok"] = true;
+   ack["revision"] = lastDesiredRevision;
+   ack["login_required"] = loginSystemOn;
+   ack["logged_in"] = operatorLoggedIn;
+   char buf[256];
+   size_t n = serializeJson(ack, buf);
+   mqtt.publish(topicAck, buf, n);
+   if (loginChanged) publishLoginSystemFeedback();
+   return true;
+ }
+
  void onMqttMessage(char *topic, byte *payload, unsigned int length) {
-   (void)topic;
-   StaticJsonDocument<512> doc;
+   StaticJsonDocument<1536> doc;
    if (deserializeJson(doc, payload, length)) return;
    const char *cmd = doc["command"] | "";
+
+   if (strcmp(cmd, "desired_state") == 0) {
+     applyDesiredState(doc);
+     return;
+   }
  
    if (strcmp(cmd, "wifi_scan") == 0) {
      publishWifiScanAck();
@@ -1708,6 +1890,7 @@ uint8_t dailyHistoryCount = 0;
      bool en = loginSystemOn;
      if (doc.containsKey("login_required")) en = doc["login_required"].as<bool>();
      else if (doc.containsKey("enabled")) en = doc["enabled"].as<bool>();
+     bool changed = (en != loginSystemOn);
      loginSystemOn = en;
      if (!loginSystemOn) {
        operatorLoggedIn = true;
@@ -1722,7 +1905,8 @@ uint8_t dailyHistoryCount = 0;
        msg = loginSystemOn ? "System Login Di Aktifkan" : "System Login Non-Aktifkan";
      }
      flashLcdScrollMsg(msg, " ");
-     publishAck(cmd, true);
+     if (changed) publishLoginSystemFeedback();
+     else publishAck(cmd, true);
    } else if (strcmp(cmd, "login_status") == 0) {
      // Sinkron dari backend saat boot/resync
      if (doc.containsKey("login_required")) {
@@ -1911,7 +2095,7 @@ uint8_t dailyHistoryCount = 0;
    memcpy(bestBssid, WiFi.BSSID(bestIdx), 6);
    int32_t channel = WiFi.channel(bestIdx);
    WiFi.scanDelete();
- 
+
    Serial.printf("[WiFi] roam RSSI %d→%d dBm BSSID %02X:%02X:%02X:%02X:%02X:%02X\n",
                  curRssi, (int)bestRssi,
                  bestBssid[0], bestBssid[1], bestBssid[2],
@@ -2253,6 +2437,8 @@ uint8_t dailyHistoryCount = 0;
    doc["power_threshold_w"] = powerThresholdW;
    doc["fail_count"] = pzemFailCount;
    doc["mqtt_service"] = mqttHost;
+   doc["login_required"] = loginSystemOn;
+   doc["operator_logged_in"] = operatorLoggedIn;
  
    char buf[480];
    size_t n = serializeJson(doc, buf);
@@ -2319,7 +2505,7 @@ uint8_t dailyHistoryCount = 0;
  
    mqtt.setServer(mqttHost, MQTT_PORT);
    mqtt.setCallback(onMqttMessage);
-   mqtt.setBufferSize(1024);
+   mqtt.setBufferSize(1536);
    mqtt.setKeepAlive(MQTT_KEEPALIVE_SEC);
    mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
  
