@@ -4,6 +4,7 @@ import MachineComparePanel from './MachineComparePanel';
 import MachineSensorFocusPanel from './MachineSensorFocusPanel';
 import MachineStatusBadge from './MachineStatusBadge';
 import MachineCalibrationPanel from './MachineCalibrationPanel';
+import { iotApiBase } from './iotApi';
 import type { DetectionMode, MachineRow } from './types';
 
 type Props = {
@@ -61,7 +62,7 @@ export default function MachineProductivityContent({
         Array<{ work_date: string; running_sec: number; energy_kwh: number; utilization_pct: number }>
     >([]);
 
-    const apiBase = import.meta.env.VITE_IOT_API_URL ?? 'http://127.0.0.1:8088';
+    const apiBase = iotApiBase();
 
     useEffect(() => {
         if (!selected) {

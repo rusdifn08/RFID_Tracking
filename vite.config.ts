@@ -101,6 +101,12 @@ const VITE_HANDLED_PREFIXES = [
   '/api/smv',
   '/api/prep',
   '/api/prendi',
+  '/api/machines',
+  '/api/devices',
+  '/api/zigbee',
+  '/api/operators',
+  '/ws',
+  '/devices',
   '/rework',
   '/qc-pqc',
   '/pqc-rework',
@@ -246,10 +252,24 @@ export default defineConfig(({ mode, command }) => {
   const useDevHttps =
     command === 'serve' && (env.VITE_DEV_HTTPS === 'true' || env.VITE_DEV_HTTPS === '1')
 
+  const ngrokTunnel = env.VITE_NGROK === 'true' || env.VITE_NGROK === '1'
+  const hmrClientPortRaw = env.VITE_HMR_CLIENT_PORT
+  const hmrClientPortParsed = hmrClientPortRaw ? Number(hmrClientPortRaw) : NaN
+  const hmrClientPort = Number.isFinite(hmrClientPortParsed) && hmrClientPortParsed > 0
+    ? hmrClientPortParsed
+    : ngrokTunnel
+      ? 443
+      : undefined
+
   const hmrHost =
-    env.VITE_DEV_HMR_HOST ||
-    env.VITE_DEV_HOST ||
-    (command === 'serve' ? getPrimaryLanIPv4() : undefined)
+    ngrokTunnel
+      ? undefined
+      : env.VITE_DEV_HMR_HOST ||
+        env.VITE_DEV_HOST ||
+        (command === 'serve' ? getPrimaryLanIPv4() : undefined)
+
+  const iotRustPort = Number(env.RUST_PORT || env.VITE_IOT_PROXY_PORT || 8088) || 8088
+  const iotRustTarget = env.VITE_IOT_PROXY_TARGET || `http://127.0.0.1:${iotRustPort}`
 
   const devServerPort = Number(env.VITE_DEV_SERVER_PORT || 5173) || 5173
   const nodeProxyPort =
@@ -294,16 +314,29 @@ export default defineConfig(({ mode, command }) => {
       allowedHosts: true, // ngrok / tunnel URL berubah tiap sesi
       open: false, // Jangan auto-open browser
 
-      // HMR diatur agar menyesuaikan apakah HTTPS menyala atau tidak
+      // HMR: ngrok HTTPS → clientPort 443 (jangan paksa IP Docker/LAN)
       hmr:
         command === 'serve'
           ? {
-            protocol: useDevHttps ? 'wss' : 'ws',
-            host: hmrHost || 'localhost',
+            protocol: useDevHttps || ngrokTunnel ? 'wss' : 'ws',
+            ...(ngrokTunnel
+              ? { clientPort: hmrClientPort }
+              : {
+                host: hmrHost || 'localhost',
+                ...(hmrClientPort != null ? { clientPort: hmrClientPort } : {}),
+              }),
           }
           : undefined,
 
       proxy: {
+        // Backend Rust IoT (:8088) — same-origin saat ngrok/HTTPS (tanpa :8088 di browser)
+        '/api/machines': { target: iotRustTarget, changeOrigin: true, secure: false },
+        '/api/devices': { target: iotRustTarget, changeOrigin: true, secure: false },
+        '/api/zigbee': { target: iotRustTarget, changeOrigin: true, secure: false },
+        '/api/operators': { target: iotRustTarget, changeOrigin: true, secure: false },
+        '/devices': { target: iotRustTarget, changeOrigin: true, secure: false },
+        '/ws': { target: iotRustTarget, changeOrigin: true, secure: false, ws: true },
+
         // Proxy khusus untuk dashboard Production Tracking Time
         '/rework': { target: trackingProxyTarget, changeOrigin: true, secure: false },
         '/qc-pqc': { target: trackingProxyTarget, changeOrigin: true, secure: false },
