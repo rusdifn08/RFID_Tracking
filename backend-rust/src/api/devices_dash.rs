@@ -378,6 +378,19 @@ const PAGE: &str = r#"<!DOCTYPE html>
           <div class="fld"><label>Device UID (read-only)</label><input id="dev-uid" type="text" readonly/></div>
         </div>
         <div class="dev-section">
+          <h4>Threshold Arus (PZEM)</h4>
+          <div class="fld">
+            <label>Running — mulai produksi (A)</label>
+            <input id="dev-thr-running" type="number" step="0.01" min="0.005" max="50" placeholder="0.6"/>
+            <div class="meta">Default sistem: <strong>0.6 A</strong> · arus ≥ nilai ini = RUNNING</div>
+          </div>
+          <div class="fld">
+            <label>OFF — mesin mati (A)</label>
+            <input id="dev-thr-off" type="number" step="0.001" min="0" max="5" placeholder="0.01"/>
+            <div class="meta">Default sistem: <strong>0.01 A</strong> · di bawah ini = OFF</div>
+          </div>
+        </div>
+        <div class="dev-section">
           <h4>Lokasi Produksi</h4>
           <div class="fld"><label>Location (Branch)</label>
             <select id="dev-branch">
@@ -459,6 +472,8 @@ const PAGE: &str = r#"<!DOCTYPE html>
 </div>
 <script>
 const SIG = { excellent:'Sangat bagus', good:'Bagus', fair:'Cukup', weak:'Lemah', poor:'Buruk', unknown:'—' };
+const DEFAULT_THR_RUNNING = 0.6;
+const DEFAULT_THR_OFF = 0.01;
 let devicesCache = [];
 let selectedMachineId = '';
 let currentHistMachineId = '';
@@ -720,6 +735,8 @@ function openDeviceModal(mid) {
   document.getElementById('dev-login').checked = !!m.login_required;
   document.getElementById('dev-wifi-ssid').value = m.wifi_ssid || '';
   document.getElementById('dev-wifi-pass').value = '';
+  document.getElementById('dev-thr-running').value = String(m.current_threshold_a ?? DEFAULT_THR_RUNNING);
+  document.getElementById('dev-thr-off').value = String(m.off_current_a ?? DEFAULT_THR_OFF);
   document.getElementById('dev-wifi-list').innerHTML = '<div class="meta">Klik Scan WiFi untuk melihat jaringan di sekitar ESP.</div>';
   setDevMsg('');
   document.getElementById('device-modal').style.display = 'flex';
@@ -766,8 +783,19 @@ async function saveDeviceConfig() {
   const login_required = document.getElementById('dev-login').checked;
   const wifi_ssid = String(document.getElementById('dev-wifi-ssid').value || '').trim();
   const wifi_pass = String(document.getElementById('dev-wifi-pass').value || '');
+  const current_threshold_a = parseFloat(document.getElementById('dev-thr-running').value);
+  const off_current_a = parseFloat(document.getElementById('dev-thr-off').value);
   if (!code) { setDevMsg('Machine Code wajib diisi.'); return; }
   if (!process_name) { setDevMsg('Nama Proses wajib diisi.'); return; }
+  if (!Number.isFinite(current_threshold_a) || current_threshold_a < 0.005 || current_threshold_a > 50) {
+    setDevMsg('Threshold Running harus 0.005–50 A.'); return;
+  }
+  if (!Number.isFinite(off_current_a) || off_current_a < 0 || off_current_a > 5) {
+    setDevMsg('Threshold OFF harus 0–5 A.'); return;
+  }
+  if (off_current_a >= current_threshold_a) {
+    setDevMsg('Threshold OFF harus lebih kecil dari Threshold Running.'); return;
+  }
   setDevMsg('Menyimpan ke backend & mengirim ke ESP…');
   const btn = document.getElementById('btn-dev-save');
   btn.disabled = true;
@@ -777,6 +805,7 @@ async function saveDeviceConfig() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code, process_name, default_operator_name, branch, line, login_required,
+        current_threshold_a, off_current_a,
         wifi_ssid: wifi_ssid || null,
         wifi_pass: wifi_pass || null
       })
@@ -1087,6 +1116,8 @@ pub struct DeviceFullConfigBody {
     pub login_required: bool,
     pub wifi_ssid: Option<String>,
     pub wifi_pass: Option<String>,
+    pub current_threshold_a: Option<f64>,
+    pub off_current_a: Option<f64>,
 }
 
 /// Simpan konfigurasi lengkap device dari modal /devices (mesin + MQTT ke ESP + WiFi opsional).
@@ -1130,6 +1161,33 @@ pub async fn update_device_config(
         .to_string();
     let line_name = format!("Line {}", body.line);
 
+    let current_threshold_a = body.current_threshold_a.filter(|v| v.is_finite());
+    let off_current_a = body.off_current_a.filter(|v| v.is_finite());
+    if let Some(v) = current_threshold_a {
+        if !(0.005..=50.0).contains(&v) {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "current_threshold_a harus 0.005–50 A" }).to_string(),
+            ));
+        }
+    }
+    if let Some(v) = off_current_a {
+        if !(0.0..=5.0).contains(&v) {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "off_current_a harus 0–5 A" }).to_string(),
+            ));
+        }
+    }
+    if let (Some(run), Some(off)) = (current_threshold_a, off_current_a) {
+        if off >= run {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "off_current_a harus lebih kecil dari current_threshold_a" }).to_string(),
+            ));
+        }
+    }
+
     let update = UpdateMachine {
         name: None,
         brand: None,
@@ -1147,8 +1205,8 @@ pub async fn update_device_config(
         filter_aktif_ms: None,
         filter_diam_ms: None,
         power_threshold_w: None,
-        current_threshold_a: None,
-        off_current_a: None,
+        current_threshold_a,
+        off_current_a,
         kpi_source: None,
         lcd_auto_ms: None,
     };
@@ -1182,6 +1240,8 @@ pub async fn update_device_config(
         "ok": true,
         "machine_code": machine.code,
         "login_required": machine.login_required,
+        "current_threshold_a": machine.current_threshold_a,
+        "off_current_a": machine.off_current_a,
         "wifi_sent": wifi_sent,
     })))
 }
