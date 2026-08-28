@@ -26,6 +26,14 @@ const PAGE: &str = r#"<!DOCTYPE html>
     --shadow: 0 24px 48px rgba(0,0,0,.45);
   }
   * { box-sizing: border-box; }
+  /* Scrollbar disembunyikan — tetap bisa scroll (mouse / touch) */
+  #top, #logs, .modal-body, .dev-body, .dev-wifi-list {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #top::-webkit-scrollbar, #logs::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar, .dev-body::-webkit-scrollbar,
+  .dev-wifi-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
   html, body { height: 100%; margin: 0; }
   body {
     font-family: "Inter", "Segoe UI", system-ui, sans-serif;
@@ -136,9 +144,34 @@ const PAGE: &str = r#"<!DOCTYPE html>
     background: #fff; border-radius: 50%; transition: .2s;
   }
   .tog input:checked + span:before { transform: translateX(18px); }
-  .login-col { display: flex; flex-direction: column; gap: .2rem; align-items: flex-start; }
-  .login-col .row2 { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
-  .login-col .lbl { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  /* System Login — saklar ON/OFF + LED */
+  .login-sw { display: inline-block; cursor: pointer; user-select: none; }
+  .login-sw input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .login-sw-ui {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .28rem .65rem .28rem .5rem; border-radius: 999px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+    min-width: 4.1rem; justify-content: center; transition: background .2s, border-color .2s, color .2s;
+  }
+  .login-sw .led {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    transition: background .2s, box-shadow .2s;
+  }
+  .login-sw input:not(:checked) + .login-sw-ui {
+    background: rgba(248,113,113,.12); color: #fecaca; border: 1px solid rgba(239,68,68,.55);
+  }
+  .login-sw input:not(:checked) + .login-sw-ui .led {
+    background: #ef4444; box-shadow: 0 0 6px #ef4444, 0 0 12px rgba(239,68,68,.35);
+  }
+  .login-sw input:checked + .login-sw-ui {
+    background: rgba(52,211,153,.12); color: #bbf7d0; border: 1px solid rgba(34,197,94,.55);
+  }
+  .login-sw input:checked + .login-sw-ui .led {
+    background: #22c55e; box-shadow: 0 0 6px #22c55e, 0 0 12px rgba(34,197,94,.35);
+  }
+  .login-sw.warn .login-sw-ui { box-shadow: 0 0 0 2px rgba(251,191,36,.35); }
+  .login-sw .sw-txt::before { content: 'OFF'; }
+  .login-sw input:checked + .login-sw-ui .sw-txt::before { content: 'ON'; }
   .pill.sync-warn { background: rgba(245,165,36,.15); color: var(--warn); }
   #toast-box {
     position: fixed; top: .85rem; right: .85rem; z-index: 2000;
@@ -213,7 +246,7 @@ const PAGE: &str = r#"<!DOCTYPE html>
   .ap .ssid { font-weight: 600; }
   .ap .meta2 { color: var(--muted); font-size: .75rem; }
   #log-panel {
-    flex: 0 0 33vh; max-height: 33vh; min-height: 120px;
+    flex: 0 0 16.5vh; max-height: 16.5vh; min-height: 60px;
     display: flex; flex-direction: column;
     border-top: 1px solid var(--line); background: #0c1016;
   }
@@ -357,11 +390,10 @@ const PAGE: &str = r#"<!DOCTYPE html>
             <select id="dev-line"></select>
           </div>
           <div class="fld"><label>System Login</label>
-            <label class="tog" style="margin-top:.2rem;">
+            <label class="login-sw" id="dev-login-wrap" style="margin-top:.35rem;">
               <input type="checkbox" id="dev-login"/>
-              <span></span>
+              <span class="login-sw-ui"><i class="led"></i><span class="sw-txt"></span></span>
             </label>
-            <span class="meta" id="dev-login-hint" style="margin-left:.5rem;">OFF = tanpa login wajib</span>
           </div>
         </div>
         <div class="dev-section" style="grid-column:1/-1;">
@@ -437,7 +469,10 @@ logEl.addEventListener('scroll', () => {
   stickBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
 });
 function espStatusOf(r) {
-  return String(r.esp_status || (r.in_deep_sleep ? 'deepsleep' : (r.is_online ? 'online' : 'offline'))).toLowerCase();
+  if (r.is_online) return 'online';
+  const st = String(r.esp_status || (r.in_deep_sleep ? 'deepsleep' : 'offline')).toLowerCase();
+  if (st === 'deepsleep' || r.in_deep_sleep) return 'deepsleep';
+  return 'offline';
 }
 function applyDeviceFilters(list) {
   const st = document.getElementById('f-status').value;
@@ -494,24 +529,19 @@ function espStatusPill(r) {
   if (st === 'online') return '<span class="pill on">ONLINE</span>';
   return '<span class="pill off">OFFLINE</span>';
 }
-function espLoginPill(v) {
-  if (v === true) return '<span class="pill on">ON</span>';
-  if (v === false) return '<span class="pill off">OFF</span>';
-  return '<span class="pill off">—</span>';
-}
 function loginSystemCol(r) {
+  const on = !!r.login_required;
   const esp = r.esp_login_required;
-  const mismatch = esp !== null && esp !== undefined && esp !== r.login_required;
-  const syncHint = mismatch
-    ? '<span class="pill sync-warn" title="Backend dan ESP belum sama">Sync</span>'
-    : '';
-  return '<td class="login-col" onclick="event.stopPropagation()">' +
-    '<div class="row2"><span class="lbl">Set</span>' +
-    '<label class="tog" title="System Login backend (retained saat ESP offline)">' +
-    '<input type="checkbox" ' + (r.login_required ? 'checked' : '') +
+  const mismatch = esp !== null && esp !== undefined && esp !== on;
+  const tip = mismatch
+    ? 'System Login ' + (on ? 'ON' : 'OFF') + ' — menunggu sinkron ESP'
+    : 'System Login ' + (on ? 'ON' : 'OFF');
+  return '<td onclick="event.stopPropagation()">' +
+    '<label class="login-sw' + (mismatch ? ' warn' : '') + '" title="' + esc(tip) + '">' +
+    '<input type="checkbox" ' + (on ? 'checked' : '') +
     ' onchange="setLoginSystem(\'' + esc(r.id) + '\', this.checked, \'' + esc(r.code) + '\')"/>' +
-    '<span></span></label></div>' +
-    '<div class="row2"><span class="lbl">ESP</span>' + espLoginPill(esp) + syncHint + '</div></td>';
+    '<span class="login-sw-ui"><i class="led" aria-hidden="true"></i><span class="sw-txt"></span></span>' +
+    '</label></td>';
 }
 function memoriBtns(r) {
   return '<td onclick="event.stopPropagation()"><span class="btn-pair">' +

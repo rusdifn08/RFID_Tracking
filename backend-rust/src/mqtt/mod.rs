@@ -641,6 +641,55 @@ async fn ingest_esp_daily_history_batch(
     Ok(())
 }
 
+/// Broker mana yang dipakai untuk update DB — jangan timpa dari broker lain saat pesan offline/retained.
+fn mqtt_service_for_update<'a>(
+    msg: &'a DeviceStatusPayload,
+    broker_host: &'a str,
+    online: bool,
+) -> Option<&'a str> {
+    if let Some(s) = msg
+        .mqtt_service
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(s);
+    }
+    if online
+        || matches!(
+            msg.state.as_str(),
+            "ok" | "resync" | "boot" | "sensor_ok" | "deep_sleep_exit" | "deep_sleep_wake"
+        )
+    {
+        return Some(broker_host);
+    }
+    None
+}
+
+async fn ignore_stale_offline_on_other_broker(
+    pool: &sqlx::PgPool,
+    device_uid: &str,
+    broker_host: &str,
+    state: &str,
+    online: bool,
+) -> bool {
+    if online || !matches!(state, "deep_sleep_enter" | "mqtt_lost") {
+        return false;
+    }
+    let Ok(Some(current)) = sqlx::query_scalar::<_, Option<String>>(
+        r#"SELECT mqtt_service FROM devices WHERE device_uid = $1"#,
+    )
+    .bind(device_uid)
+    .fetch_optional(pool)
+    .await
+    else {
+        return false;
+    };
+    let cur = current.unwrap_or_default();
+    let cur = cur.trim();
+    !cur.is_empty() && cur != broker_host
+}
+
 async fn ingest_device_status(
     state: &AppState,
     broker_host: &str,
@@ -660,10 +709,25 @@ async fn ingest_device_status(
     let sensor_ok = msg.sensor_ok.unwrap_or(false);
     let detail = msg.detail.clone().unwrap_or_default();
     let ts = chrono::Utc::now();
-    let mqtt_service = msg
-        .mqtt_service
-        .as_deref()
-        .unwrap_or(broker_host);
+
+    if ignore_stale_offline_on_other_broker(
+        &state.pool,
+        &msg.device_uid,
+        broker_host,
+        &msg.state,
+        msg.online.unwrap_or(true),
+    )
+    .await
+    {
+        logbuf::info(format!(
+            "HEALTH ignore stale {} on broker {} for uid={} (device pakai broker lain)",
+            msg.state, broker_host, msg.device_uid
+        ));
+        return Ok(());
+    }
+
+    let mqtt_svc_update = mqtt_service_for_update(&msg, broker_host, msg.online.unwrap_or(true));
+    let mqtt_service = mqtt_svc_update.unwrap_or(broker_host);
 
     // Retained LWT mqtt_lost sering masuk ulang saat backend reconnect,
     // padahal ESP masih hidup — abaikan jika runtime baru saja touch.
@@ -730,7 +794,7 @@ async fn ingest_device_status(
         )
         .bind(&msg.device_uid)
         .bind(link_zigbee)
-        .bind(mqtt_service)
+        .bind(mqtt_svc_update.unwrap_or(""))
         .execute(&state.pool)
         .await
     } else {
@@ -763,7 +827,7 @@ async fn ingest_device_status(
                 .unwrap_or_default(),
         )
         .bind(link_zigbee)
-        .bind(mqtt_service)
+        .bind(mqtt_svc_update.unwrap_or(""))
         .execute(&state.pool)
         .await
     };
@@ -784,6 +848,15 @@ async fn ingest_device_status(
     });
 
     // Periode deep sleep ESP (OFF lama) — 1 baris: enter buka, exit tutup
+    if msg.state == "deep_sleep_wake" {
+        let _ = sqlx::query(
+            r#"UPDATE devices SET in_deep_sleep = FALSE, is_online = TRUE, last_health_at = NOW()
+               WHERE device_uid = $1"#,
+        )
+        .bind(&msg.device_uid)
+        .execute(&state.pool)
+        .await;
+    }
     if msg.state == "deep_sleep_enter" || msg.state == "deep_sleep_exit" {
         record_deep_sleep(state, &machine, &msg, ts).await;
         let _ = sqlx::query(
@@ -808,6 +881,21 @@ async fn ingest_device_status(
                 .await;
             }
         }
+    }
+
+    // Status hidup (ok/resync/boot) → buang flag deep sleep stale di DB
+    if online
+        && msg.state != "deep_sleep_enter"
+        && msg.state != "mqtt_lost"
+        && msg.state != "deep_sleep_wake"
+    {
+        let _ = sqlx::query(
+            r#"UPDATE devices SET in_deep_sleep = FALSE
+               WHERE device_uid = $1 AND in_deep_sleep = TRUE"#,
+        )
+        .bind(&msg.device_uid)
+        .execute(&state.pool)
+        .await;
     }
 
     Ok(())
@@ -1070,6 +1158,24 @@ pub async fn ingest_pzem(
         .bind(login_req)
         .execute(&state.pool)
         .await;
+    }
+
+    // Arus terdeteksi + sensor OK → ESP pasti bangun (bukan deep sleep)
+    let sensor_ok_early = msg.sensor_ok.or(msg.pzem_ok).unwrap_or(true);
+    if sensor_ok_early && msg.current_a > 0.01 {
+        let cleared = sqlx::query(
+            r#"UPDATE devices SET in_deep_sleep = FALSE, is_online = TRUE, last_seen_at = NOW()
+               WHERE device_uid = $1 AND in_deep_sleep = TRUE"#,
+        )
+        .bind(&msg.device_uid)
+        .execute(&state.pool)
+        .await;
+        if matches!(&cleared, Ok(r) if r.rows_affected() > 0) {
+            logbuf::info(format!(
+                "DEEP_SLEEP cleared {} uid={} — arus {:.3}A",
+                machine.code, msg.device_uid, msg.current_a
+            ));
+        }
     }
 
     if msg

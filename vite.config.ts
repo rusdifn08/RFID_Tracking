@@ -291,6 +291,7 @@ export default defineConfig(({ mode, command }) => {
       host: '0.0.0.0', // Akses dari semua interface (localhost dan jaringan lokal)
       port: Number(env.VITE_DEV_SERVER_PORT || 5173) || 5173,
       strictPort: true,
+      allowedHosts: true, // ngrok / tunnel URL berubah tiap sesi
       open: false, // Jangan auto-open browser
 
       // HMR diatur agar menyesuaikan apakah HTTPS menyala atau tidak

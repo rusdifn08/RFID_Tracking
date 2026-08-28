@@ -133,10 +133,11 @@ pub async fn list_control_machines(
                 .unwrap_or(9999);
             // Stale last-seen = tidak di WiFi/MQTT — jangan tampilkan flag/rssi lama
             let online = link_live(r.is_online, live_online, age_sec, state.cfg.offline_timeout_sec);
-            let esp_status = if r.in_deep_sleep {
-                "deepsleep"
-            } else if online {
+            // Online + telemetry = tidak mungkin deep sleep (flag DB bisa stale)
+            let esp_status = if online {
                 "online"
+            } else if r.in_deep_sleep {
+                "deepsleep"
             } else {
                 "offline"
             };
@@ -169,7 +170,7 @@ pub async fn list_control_machines(
                 "device_uid": r.device_uid.clone().unwrap_or_default(),
                 "last_seen_at": r.last_seen_at,
                 "is_online": online,
-                "in_deep_sleep": r.in_deep_sleep,
+                "in_deep_sleep": r.in_deep_sleep && !online,
                 "esp_status": esp_status,
                 "has_device": r.has_device,
                 "rssi": rssi,

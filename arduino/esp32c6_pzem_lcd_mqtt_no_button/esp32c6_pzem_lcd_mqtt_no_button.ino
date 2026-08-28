@@ -297,6 +297,9 @@ uint8_t dailyHistoryCount = 0;
  void publishWifiScanAck();
  void publishLoginSystemFeedback();
  void updateMqttHostForSsid(const char *ssid);
+ void syncMqttHostFromWifi();
+ void wifiMacString(char out[18]);
+ void wifiMacLcdString(char out[17]);
  
  int wibYmdNow() {
    struct tm ti;
@@ -372,6 +375,14 @@ uint8_t dailyHistoryCount = 0;
     mqttHost[sizeof(mqttHost) - 1] = 0;
     mqtt.setServer(mqttHost, MQTT_PORT);
     mqttNeedsReconnect = true;
+  }
+}
+
+void syncMqttHostFromWifi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    updateMqttHostForSsid(WiFi.SSID().c_str());
+  } else {
+    updateMqttHostForSsid(wifiSsid);
   }
 }
 
@@ -849,21 +860,9 @@ uint8_t dailyHistoryCount = 0;
  
  void showMacSplashLcd(uint32_t ms) {
    WiFi.mode(WIFI_STA);
-   String mac = WiFi.macAddress();  // AA:BB:CC:DD:EE:FF
-   char hex[13];
-   int j = 0;
-   for (unsigned i = 0; i < mac.length() && j < 12; i++) {
-     char c = mac[i];
-     if (c != ':') hex[j++] = c;
-   }
-   hex[j] = 0;
-   char line2[17];
-   memset(line2, ' ', 16);
-   line2[16] = 0;
-   int len = (int)strlen(hex);
-   int pad = len < 16 ? (16 - len) / 2 : 0;
-   memcpy(line2 + pad, hex, len > 16 ? 16 : (size_t)len);
-   lcdPrint2("  MAC ADDRESS", line2);
+   char mac[17];
+   wifiMacLcdString(mac);
+   lcdPrint2("  MAC ADDRESS", mac);
    delay(ms);
    lcd.clear();
  }
@@ -1185,10 +1184,18 @@ uint8_t dailyHistoryCount = 0;
  }
  
  /** Wajib WiFi+MQTT sebelum sleep. Belum connect → reboot 1× lalu terus coba (jangan sleep). */
- bool tryEnterDeepSleepWithMqtt(const char *reason, bool firstEnter) {
-   (void)reason;
-   bool wifiOk = (WiFi.status() == WL_CONNECTED);
-   bool mqttOk = mqtt.connected();
+bool tryEnterDeepSleepWithMqtt(const char *reason, bool firstEnter) {
+  (void)reason;
+  syncMqttHostFromWifi();
+  saveIdentity();
+  if (mqttNeedsReconnect) {
+    mqttNeedsReconnect = false;
+    if (mqtt.connected()) mqtt.disconnect();
+    mqtt.setServer(mqttHost, MQTT_PORT);
+  }
+
+  bool wifiOk = (WiFi.status() == WL_CONNECTED);
+  bool mqttOk = mqtt.connected();
  
    if (!wifiOk || !mqttOk) {
      prefs.begin("pzemkpi", false);
@@ -1231,9 +1238,11 @@ uint8_t dailyHistoryCount = 0;
      prefs.end();
    }
  
-   publishStatus("ok", "sebelum deep sleep — mesin OFF", pzemOk);
-   publishTelemetry();
-   publishDeepSleepEvent("deep_sleep_enter", firstEnter ? nowEp : 0, 0);
+  publishStatus("ok", "sebelum deep sleep — mesin OFF", pzemOk);
+  publishTelemetry();
+  syncMqttHostFromWifi();
+  saveIdentity();
+  publishDeepSleepEvent("deep_sleep_enter", firstEnter ? nowEp : 0, 0);
    delay(300);
    mqtt.loop();
    delay(200);
@@ -1291,11 +1300,16 @@ uint8_t dailyHistoryCount = 0;
  }
  
  void tryPublishDeepSleepExit() {
-   prefs.begin("pzemkpi", false);
+   if (!mqtt.connected()) return;
+   prefs.begin("pzemkpi", true);
    bool need = prefs.getBool("dsExit", false) || dsPendingExit;
+   bool dsTrack = prefs.getBool("dsOn", false) || prefs.getULong("dsFrom", 0) > 0;
    uint32_t fromEp = prefs.getULong("dsFrom", 0);
    prefs.end();
-   if (!need || !mqtt.connected()) return;
+   bool machineOn = (opStatus != ST_OFF && pzemOk);
+   // Mesin sudah ON tapi backend masih DEEPSLEEP → paksa exit
+   if (!need && machineOn && (dsTrack || dsWakeWatch)) need = true;
+   if (!need) return;
    uint32_t toEp = epochNowOr0();
    if (toEp == 0) toEp = fromEp + SLEEP_CHUNK_SEC;
    publishDeepSleepEvent("deep_sleep_exit", fromEp, toEp);
@@ -1314,6 +1328,9 @@ uint8_t dailyHistoryCount = 0;
  
  /** Dipanggil dari loop: dsWant (setelah reboot) + wake watch 5 mnt. */
  void serviceDeepSleepLogic() {
+   if (mqtt.connected() && opStatus != ST_OFF && pzemOk) {
+     tryPublishDeepSleepExit();
+   }
    // Mesin nyala saat nunggu enter → batalkan
    if (opStatus != ST_OFF && pzemOk) {
      prefs.begin("pzemkpi", false);
@@ -1390,6 +1407,14 @@ uint8_t dailyHistoryCount = 0;
    uint8_t mac[6];
    WiFi.macAddress(mac);
    snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+ }
+
+ void wifiMacLcdString(char out[17]) {
+   uint8_t mac[6];
+   WiFi.macAddress(mac);
+   // LCD saja — 16 char: XX:XX:XXXX:XX:XX
+   snprintf(out, 17, "%02X:%02X:%02X%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
  }
 
@@ -2159,9 +2184,9 @@ uint8_t dailyHistoryCount = 0;
        wifiWasOk = true;
        wifiAllFailed = false;
        wifiDownSinceMs = 0;
-       wifiRssiBadHits = 0;
-       updateMqttHostForSsid(wifiSsid);
-       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+      wifiRssiBadHits = 0;
+      syncMqttHostFromWifi();
+      configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
        saveIdentity();
        Serial.printf("[WiFi] OK ssid=%s ip=%s mqtt=%s\n",
                      wifiSsid, WiFi.localIP().toString().c_str(), mqttHost);
@@ -2528,12 +2553,15 @@ uint8_t dailyHistoryCount = 0;
      snprintf(countLine, sizeof(countLine), "%.10s %luds", wifiSsid, (unsigned long)remaining);
      showConnLcd(fromDeepSleep ? "Wake WiFi" : "Connecting WiFi", countLine);
    }
-   if (bootWifiOk) {
-     wifiWasOk = true;
-     wifiAllFailed = false;
-     wifiPhase = WP_PRIMARY;
-     wifiDownSinceMs = 0;
-     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  if (bootWifiOk) {
+    wifiWasOk = true;
+    wifiAllFailed = false;
+    wifiPhase = WP_PRIMARY;
+    wifiDownSinceMs = 0;
+    syncMqttHostFromWifi();
+    saveIdentity();
+    mqtt.setServer(mqttHost, MQTT_PORT);
+    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
      showConnLcd("WiFi OK!", WiFi.localIP().toString().c_str());
      delay(600);
    } else {
