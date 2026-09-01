@@ -1,10 +1,6 @@
-/** Same-origin lewat Vite proxy (ngrok HTTPS / dev HTTPS) — hindari mixed content ke :8088 */
+/** DEV: lewat Vite proxy (:5173 → :8088) — browser tidak perlu akses langsung port 8088 */
 function iotUseSameOriginProxy(): boolean {
-    return (
-        typeof window !== 'undefined' &&
-        import.meta.env.DEV &&
-        window.location.protocol === 'https:'
-    );
+    return typeof window !== 'undefined' && import.meta.env.DEV;
 }
 
 /** Backend IoT Rust — dev LAN: hostname:8088; ngrok/HTTPS: relative /api/... via Vite proxy */
