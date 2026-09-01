@@ -1162,7 +1162,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                         setEditModalOpen(false);
                         setSelectedLine(null);
                     }}
-                    lineId={selectedLine.id.toString()}
+                    lineId={selectedLine.id}
                     environment={environment}
                     pageType={pageType}
                     onUpdate={handleUpdate}
@@ -1189,7 +1189,6 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                     currentStartTime={startTimesData[selectedLine.id.toString()] || '07:30'}
                     currentTarget={typeof targetsData[selectedLine.id.toString()] === 'number' ? targetsData[selectedLine.id.toString()] : 0}
                     currentQueryLine={queryLinesData[selectedLine.id.toString()] || ''}
-                    onUpdate={handleUpdate}
                 />
             )}
         </div>

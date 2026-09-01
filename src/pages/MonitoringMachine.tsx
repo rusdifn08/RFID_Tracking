@@ -5,7 +5,7 @@ import Header from '../components/Header';
 import backgroundImage from '../assets/background.jpg';
 import DynamicEmbed from '../components/DynamicEmbed';
 import MachineResumePage from '../components/machine-productivity/MachineResumePage';
-import { SIMULASI_MACHINE } from '../config/hide';
+import { SIMULASI_MACHINE, JUKI_MONITOR_UID_SLOTS } from '../config/hide';
 import { Cpu, Scissors, ArrowRight, ArrowLeft, RotateCw, ExternalLink, Monitor, Server } from 'lucide-react';
 
 type MachineKind = 'template' | 'bullmer' | 'juki';
@@ -273,7 +273,11 @@ const MonitoringMachine = memo(() => {
 
                             {selectedMachine === 'juki' ? (
                                 <div className="flex-1 min-h-0 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-                                    <MachineResumePage key={refreshKey} enableSim={SIMULASI_MACHINE} />
+                                    <MachineResumePage
+                                        key={refreshKey}
+                                        enableSim={SIMULASI_MACHINE}
+                                        uidSlots={JUKI_MONITOR_UID_SLOTS}
+                                    />
                                 </div>
                             ) : (
                                 currentConfig && (

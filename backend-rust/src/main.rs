@@ -96,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
             get(api::machines::get_machine_by_uid_gate),
         )
         .route("/api/machines/resume", get(api::shifts::machines_resume))
+        .route("/api/machines/chart-kpi", get(api::telemetry::chart_kpi_batch))
         .route("/api/machines/{id}/sim-chart", get(api::shifts::sim_chart))
         .route("/api/machines/control", get(api::machines::list_control_machines))
         .route("/api/zigbee/mesh", get(api::zigbee::mesh_status))

@@ -11,6 +11,7 @@ import {
     YAxis,
 } from 'recharts';
 import { Download, RefreshCw } from 'lucide-react';
+import { computeDetailKpi, pzemBand } from './pzemKpi';
 
 export type TrendHours = 1 | 3 | 6 | 'today';
 
@@ -39,6 +40,8 @@ type Props = {
     offCurrentA?: number;
     /** Callback titik arus (untuk KPI dari grafik) */
     onPointsChange?: (points: Array<{ ts: string; current_a?: number; value?: number }>) => void;
+    /** KPI dari grafik status diskrit (selaras garis Idle/Running/Mati) */
+    onKpiChange?: (kpi: ReturnType<typeof kpiFromCurrentSeries>) => void;
     /** Override titik (simulasi) — skip fetch API */
     pointsOverride?: Array<{
         ts: string;
@@ -71,12 +74,6 @@ type Point = {
     current_run?: number | null;
     status_level?: number;
 };
-
-function pzemBand(a: number, offA: number, runA: number): 'off' | 'idle' | 'run' {
-    if (a < offA) return 'off';
-    if (a >= runA) return 'run';
-    return 'idle';
-}
 
 const MINUTE_MS = 60_000;
 
@@ -250,6 +247,7 @@ export default function SensorTrendChart({
     currentThresholdA = 0.6,
     offCurrentA = 0.03,
     onPointsChange,
+    onKpiChange,
     pointsOverride,
 }: Props) {
     const isPzem = sensor === 'pzem';
@@ -396,6 +394,25 @@ export default function SensorTrendChart({
     }, [points, isPzem, colorByStatus, enabled.current_a, offCurrentA, currentThresholdA, hours, toLocal]);
 
     const showStatusLines = isPzem && colorByStatus && !!enabled.current_a;
+
+    const onKpiChangeRef = useRef(onKpiChange);
+    onKpiChangeRef.current = onKpiChange;
+    const lastKpiRef = useRef('');
+
+    useEffect(() => {
+        if (!onKpiChangeRef.current) return;
+        if (!showStatusLines || points.length < 2) return;
+        let endMs = Date.now();
+        if (hours === 'custom' && toLocal) {
+            const t = new Date(toLocal).getTime();
+            if (Number.isFinite(t)) endMs = Math.min(t, Date.now());
+        }
+        const kpi = computeDetailKpi(points, offCurrentA, currentThresholdA, endMs);
+        const sig = `${kpi.running}|${kpi.idle}|${kpi.off}|${kpi.prod.toFixed(2)}`;
+        if (sig === lastKpiRef.current) return;
+        lastKpiRef.current = sig;
+        onKpiChangeRef.current(kpi);
+    }, [showStatusLines, points, offCurrentA, currentThresholdA, hours, toLocal]);
 
     const title = showStatusLines
         ? 'Status mesin (diskrit)'

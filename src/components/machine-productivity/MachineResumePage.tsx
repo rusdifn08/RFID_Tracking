@@ -57,7 +57,13 @@ type Enriched = ResumeRow & {
     off: number;
     prod: number;
     cat: ProdCat;
+    /** true setelah KPI telemetry (sama detail grafik) siap */
+    kpiReady: boolean;
 };
+
+function telKey(id: string, workDate: string) {
+    return `${id}|${workDateOnly(workDate)}`;
+}
 
 function emptyTimes(): SensorTimes {
     return {
@@ -180,8 +186,8 @@ function rexyOf(t: SensorTimes) {
 }
 
 function prodCat(pct: number): ProdCat {
-    if (pct >= 90) return 'GOOD';
-    if (pct >= 80) return 'NORMAL';
+    if (pct > 80) return 'GOOD';
+    if (pct >= 40) return 'NORMAL';
     return 'BAD';
 }
 
@@ -191,11 +197,98 @@ function catBadge(cat: ProdCat) {
     return 'bg-rose-100 text-rose-700';
 }
 
-function enrichRows(rows: ResumeRow[]): Enriched[] {
+type TelKpi = { running_sec: number; idle_sec: number; off_sec: number };
+
+function enrichRows(rows: ResumeRow[], telKpi: Record<string, TelKpi> = {}, sim = false): Enriched[] {
     return rows.map((m) => {
-        const r = rexyOf(m.pzem);
-        return { ...m, ...r, off: m.pzem.off_sec, cat: prodCat(r.prod) };
+        const key = telKey(m.id, m.work_date);
+        const tel = telKpi[key];
+        const pzem = tel
+            ? {
+                  ...m.pzem,
+                  running_sec: tel.running_sec,
+                  idle_sec: tel.idle_sec,
+                  off_sec: tel.off_sec,
+              }
+            : m.pzem;
+        const r = rexyOf(pzem);
+        return { ...m, pzem, ...r, off: pzem.off_sec, cat: prodCat(r.prod), kpiReady: sim || !!tel };
     });
+}
+
+function resolveJukiUid(row: Pick<ResumeRow, 'device_uid' | 'code'>): string | null {
+    const uid = (row.device_uid ?? '').trim();
+    if (/^\d{1,4}$/.test(uid)) {
+        const n = Number.parseInt(uid, 10);
+        return n > 0 && n <= 999 ? String(n).padStart(3, '0') : null;
+    }
+    const m = (row.code ?? '').trim().toUpperCase().match(/^JUKI(\d{1,3})$/);
+    return m ? m[1].padStart(3, '0') : null;
+}
+
+function placeholderJukiRow(uid: string, workDate: string): ResumeRow {
+    return {
+        id: `slot-${uid}`,
+        code: `JUKI${uid}`,
+        name: `JUKI UID ${uid}`,
+        brand: 'JUKI',
+        process_name: '—',
+        display_name: 'JUKI —',
+        device_uid: uid,
+        location_note: null,
+        branch: '',
+        line_name: '',
+        status_pzem: 'off',
+        status_adxl: 'off',
+        is_online: false,
+        work_date: workDate,
+        pzem: emptyTimes(),
+        adxl: emptyTimes(),
+        operator_nik: null,
+        operator_name: null,
+        operator_note: null,
+        shift_status: 'work',
+        logged_at: null,
+        garment_style: null,
+        wo: null,
+        size_label: null,
+        buyer: null,
+        item_name: null,
+        color_name: null,
+    };
+}
+
+/** Lengkapi slot UID 001..N yang belum punya device (placeholder menunggu hardware). */
+function padJukiUidSlots(rows: ResumeRow[], slotCount: number): ResumeRow[] {
+    if (slotCount <= 0) return rows;
+    const dates = [...new Set(rows.map((r) => workDateOnly(r.work_date)))];
+    if (!dates.length) dates.push(todayIso());
+    const covered = new Set<string>();
+    for (const r of rows) {
+        const uid = resolveJukiUid(r);
+        if (uid) covered.add(`${workDateOnly(r.work_date)}|${uid}`);
+    }
+    const extra: ResumeRow[] = [];
+    for (const day of dates) {
+        for (let n = 1; n <= slotCount; n++) {
+            const uid = String(n).padStart(3, '0');
+            if (!covered.has(`${day}|${uid}`)) extra.push(placeholderJukiRow(uid, day));
+        }
+    }
+    return extra.length ? [...rows, ...extra] : rows;
+}
+
+function sortByJukiUid(a: ResumeRow, b: ResumeRow) {
+    const ua = resolveJukiUid(a);
+    const ub = resolveJukiUid(b);
+    if (ua && ub) return ua.localeCompare(ub, undefined, { numeric: true });
+    if (ua) return -1;
+    if (ub) return 1;
+    return a.code.localeCompare(b.code);
+}
+
+function isSyntheticMachineId(id: string) {
+    return id.startsWith('sim-') || id.startsWith('slot-');
 }
 
 function filterRows(list: Enriched[], q: string, area: string) {
@@ -251,15 +344,39 @@ function filterRows(list: Enriched[], q: string, area: string) {
     );
 }
 
+/** AVG & terendah: hanya mesin prod > 0 & KPI telemetry siap. */
 function summarize(list: Enriched[]) {
+    const ready = list.filter((m) => m.kpiReady);
     const n = list.length;
-    const good = list.filter((m) => m.cat === 'GOOD').length;
-    const normal = list.filter((m) => m.cat === 'NORMAL').length;
-    const bad = list.filter((m) => m.cat === 'BAD').length;
-    const avg = n === 0 ? 0 : list.reduce((a, m) => a + m.prod, 0) / n;
-    const best = list.reduce<Enriched | null>((b, m) => (!b || m.prod > b.prod ? m : b), null);
-    const worst = list.reduce<Enriched | null>((b, m) => (!b || m.prod < b.prod ? m : b), null);
-    return { n, good, normal, bad, avg, best, worst };
+    if (!ready.length) {
+        return {
+            n,
+            good: 0,
+            normal: 0,
+            bad: 0,
+            avg: 0,
+            activeCount: 0,
+            best: null as Enriched | null,
+            worst: null as Enriched | null,
+            kpiReady: false,
+        };
+    }
+    const good = ready.filter((m) => m.cat === 'GOOD').length;
+    const normal = ready.filter((m) => m.cat === 'NORMAL').length;
+    const bad = ready.filter((m) => m.cat === 'BAD').length;
+    const active = ready.filter((m) => m.prod > 0);
+    const avg =
+        active.length === 0 ? 0 : active.reduce((a, m) => a + m.prod, 0) / active.length;
+    const best = ready.reduce<Enriched | null>((b, m) => (!b || m.prod > b.prod ? m : b), null);
+    const worst = active.reduce<Enriched | null>(
+        (b, m) => (!b || m.prod < b.prod ? m : b),
+        null,
+    );
+    return { n, good, normal, bad, avg, activeCount: active.length, best, worst, kpiReady: true };
+}
+
+function formatProd(m: Enriched) {
+    return m.kpiReady ? `${m.prod.toFixed(2)}%` : '…';
 }
 
 function toSheetRows(list: Enriched[]) {
@@ -352,7 +469,13 @@ function LiveStatusDot({ m }: { m: Pick<ResumeRow, 'is_online' | 'status_pzem'> 
     );
 }
 
-export default function MachineResumePage({ enableSim = false }: { enableSim?: boolean }) {
+export default function MachineResumePage({
+    enableSim = false,
+    uidSlots = 0,
+}: {
+    enableSim?: boolean;
+    uidSlots?: number;
+}) {
     const apiBase = iotApiBase();
     const today = todayIso();
     const [rows, setRows] = useState<ResumeRow[]>([]);
@@ -367,15 +490,16 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
     const [sleepPeriods, setSleepPeriods] = useState<
         { sleep_from: string; sleep_to: string | null; duration_sec: number | null }[]
     >([]);
+    const [telKpi, setTelKpi] = useState<Record<string, TelKpi>>({});
+    const [telKpiLoading, setTelKpiLoading] = useState(false);
 
     const detailLive = useMemo(() => {
         if (!detail) return null;
-        if (!enableSim) return detail;
-        const fresh = enrichRows(rows).find(
+        const fresh = enrichRows(rows, telKpi, enableSim).find(
             (m) => m.id === detail.id && workDateOnly(m.work_date) === workDateOnly(detail.work_date),
         );
         return fresh ?? detail;
-    }, [detail, enableSim, rows]);
+    }, [detail, enableSim, rows, telKpi]);
 
     const simChartPoints = useSimChart(
         enableSim,
@@ -386,6 +510,35 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
 
     useEffect(() => {
         let cancelled = false;
+        const loadChartKpi = async (from: string, to: string) => {
+            if (enableSim) return;
+            setTelKpiLoading(true);
+            try {
+                const res = await fetch(
+                    `${apiBase}/api/machines/chart-kpi?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+                );
+                if (!res.ok || cancelled) return;
+                const data = await res.json();
+                const patches: Record<string, TelKpi> = {};
+                for (const raw of Array.isArray(data.items) ? data.items : []) {
+                    const item = raw as Record<string, unknown>;
+                    const id = String(item.machine_id ?? '');
+                    const day = workDateOnly(String(item.work_date ?? ''));
+                    if (!id || !day) continue;
+                    patches[telKey(id, day)] = {
+                        running_sec: Number(item.running_sec ?? 0),
+                        idle_sec: Number(item.idle_sec ?? 0),
+                        off_sec: Number(item.off_sec ?? 0),
+                    };
+                }
+                if (!cancelled) setTelKpi(patches);
+            } catch {
+                /* ignore */
+            } finally {
+                if (!cancelled) setTelKpiLoading(false);
+            }
+        };
+
         const load = async () => {
             try {
                 let from = startDate || todayIso();
@@ -403,7 +556,6 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                 const data = await res.json();
                 if (!cancelled) {
                     const list = Array.isArray(data.machines) ? data.machines : [];
-                    // unik per mesin + tanggal (hindari dobel)
                     const seen = new Set<string>();
                     const mapped: ResumeRow[] = [];
                     for (const raw of list) {
@@ -415,6 +567,7 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                     }
                     setRows(mapped);
                 }
+                if (!enableSim) await loadChartKpi(from, to);
             } catch {
                 /* ignore */
             } finally {
@@ -494,7 +647,7 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
             setThr({ run: 0.6, off: 0.03 });
             return;
         }
-        if (!detailLive || detailLive.id.startsWith('sim-')) return;
+        if (!detailLive || isSyntheticMachineId(detailLive.id)) return;
         let cancelled = false;
         void fetch(`${apiBase}/api/machines/${detailLive.id}`)
             .then((r) => (r.ok ? r.json() : null))
@@ -512,7 +665,7 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
     }, [apiBase, detailLive?.id, enableSim]);
 
     useEffect(() => {
-        if (!detailLive || detailLive.id.startsWith('sim-')) {
+        if (!detailLive || isSyntheticMachineId(detailLive.id)) {
             setSleepPeriods([]);
             return;
         }
@@ -539,7 +692,15 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
         return Array.from(set).sort();
     }, [rows]);
 
-    const filtered = useMemo(() => filterRows(enrichRows(rows), q, area), [rows, q, area]);
+    const baseRows = useMemo(
+        () => (uidSlots > 0 ? padJukiUidSlots(rows, uidSlots) : rows),
+        [rows, uidSlots],
+    );
+
+    const filtered = useMemo(() => {
+        const list = filterRows(enrichRows(baseRows, telKpi, enableSim), q, area);
+        return uidSlots > 0 ? [...list].sort(sortByJukiUid) : list;
+    }, [baseRows, telKpi, enableSim, q, area, uidSlots]);
     const sum = useMemo(() => summarize(filtered), [filtered]);
 
     // Rank/KPI hari ini vs filter Start/End: rankDate di luar rentang fetch → list kosong
@@ -576,6 +737,18 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
     const detailFrom = detailDay ? `${detailDay}T00:00` : '';
     const detailTo = detailDay ? `${detailDay}T23:59` : '';
 
+    const detailKpi = useMemo(() => {
+        if (!detailLive) return null;
+        return {
+            running: detailLive.running,
+            idle: detailLive.loss,
+            off: detailLive.off,
+            powerOn: detailLive.powerOn,
+            loss: detailLive.loss,
+            prod: detailLive.prod,
+        };
+    }, [detailLive]);
+
     return (
         <div className="w-full max-w-[1400px] mx-auto space-y-5 pb-8">
             {/* ===== Header overview (gambar 1) ===== */}
@@ -592,9 +765,9 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                         LIVE DASHBOARD Production View
                     </span>
                     <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                        <LegendDot label="GOOD" sub="≥ 90%" tone="good" />
-                        <LegendDot label="NORMAL" sub="80–90%" tone="normal" />
-                        <LegendDot label="BAD" sub="< 80%" tone="bad" />
+                        <LegendDot label="GOOD" sub="> 80%" tone="good" />
+                        <LegendDot label="NORMAL" sub="40–80%" tone="normal" />
+                        <LegendDot label="BAD" sub="< 40%" tone="bad" />
                     </div>
                 </div>
             </div>
@@ -609,8 +782,11 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                     </p>
                     <h2 className="text-lg font-bold text-slate-800">Ringkasan performa produksi mesin</h2>
                     <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                        {sum.good} mesin GOOD, {sum.normal} NORMAL, dan {sum.bad} BAD dari total {sum.n}{' '}
-                        mesin. Rata-rata produktivitas {sum.avg.toFixed(2)}%.
+                        {sum.kpiReady
+                            ? `${sum.good} mesin GOOD, ${sum.normal} NORMAL, dan ${sum.bad} BAD dari total ${sum.n} mesin. Rata-rata produktivitas ${sum.avg.toFixed(2)}%.`
+                            : telKpiLoading
+                              ? 'Menghitung KPI dari telemetry (selaras grafik detail)…'
+                              : `${sum.n} mesin · menunggu data telemetry.`}
                     </p>
                 </div>
                 <div className="lg:col-span-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -642,12 +818,16 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                 <MetricCard label="Total Mesin" value={String(sum.n)} sub="Mesin terdaftar" />
                 <MetricCard
                     label="Avg Produktivitas"
-                    value={`${sum.avg.toFixed(2)}%`}
-                    sub="Rata-rata seluruh mesin"
+                    value={sum.kpiReady ? `${sum.avg.toFixed(2)}%` : telKpiLoading ? '…' : '—'}
+                    sub={
+                        sum.activeCount > 0
+                            ? `Rata-rata ${sum.activeCount} mesin aktif (prod > 0)`
+                            : 'Tidak ada mesin aktif'
+                    }
                 />
-                <MetricCard label="Good" value={String(sum.good)} sub="≥ 90%" />
-                <MetricCard label="Normal" value={String(sum.normal)} sub="80% sampai < 90%" />
-                <MetricCard label="Bad" value={String(sum.bad)} sub="< 80%" />
+                <MetricCard label="Good" value={String(sum.good)} sub="> 80%" />
+                <MetricCard label="Normal" value={String(sum.normal)} sub="40% sampai 80%" />
+                <MetricCard label="Bad" value={String(sum.bad)} sub="< 40%" />
                 <MetricCard
                     label="Power On"
                     value={formatDuration(filtered.reduce((a, m) => a + m.powerOn, 0))}
@@ -705,13 +885,17 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                                         </p>
                                         <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                             <div
-                                                className={`h-full rounded-full ${barColor(m.cat)}`}
-                                                style={{ width: `${Math.min(100, Math.max(2, m.prod))}%` }}
+                                                className={`h-full rounded-full ${m.kpiReady ? barColor(m.cat) : 'bg-slate-300'}`}
+                                                style={{
+                                                    width: m.kpiReady
+                                                        ? `${Math.min(100, Math.max(2, m.prod))}%`
+                                                        : '8%',
+                                                }}
                                             />
                                         </div>
                                     </div>
                                     <span className="text-sm font-bold tabular-nums text-slate-700 shrink-0">
-                                        {m.prod.toFixed(2)}%
+                                        {formatProd(m)}
                                     </span>
                                 </li>
                             ))
@@ -755,7 +939,7 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                                         </p>
                                     </div>
                                     <span className="text-sm font-bold tabular-nums text-rose-600 shrink-0">
-                                        {m.prod.toFixed(2)}%
+                                        {formatProd(m)}
                                     </span>
                                 </li>
                             ))
@@ -973,7 +1157,7 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                                             {formatDuration(m.off)}
                                         </td>
                                         <td className="px-3 py-3 tabular-nums font-bold text-slate-800">
-                                            {m.prod.toFixed(2)}%
+                                            {formatProd(m)}
                                         </td>
                                         <td className="px-3 py-3">
                                             <span
@@ -1026,7 +1210,8 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                                     Code {detailLive.code} · ID {detailLive.id.slice(0, 8)}…
                                 </p>
                                 <p className="text-[11px] text-slate-500 mt-0.5">
-                                    Produktivitas {detailLive.prod.toFixed(2)}% · status {detailLive.cat}
+                                    Produktivitas {(detailKpi?.prod ?? detailLive.prod).toFixed(2)}% · status{' '}
+                                    {prodCat(detailKpi?.prod ?? detailLive.prod)}
                                     {detailLive.operator_note ? ` · Note: ${detailLive.operator_note}` : ''}
                                 </p>
                             </div>
@@ -1040,31 +1225,39 @@ export default function MachineResumePage({ enableSim = false }: { enableSim?: b
                             </button>
                         </div>
                         <div className="p-3 sm:p-4 space-y-3">
-                            <OperationKpiStrip
-                                runningSec={detailLive.running}
-                                idleSec={detailLive.loss}
-                                offSec={detailLive.off}
-                                tone="sky"
-                            />
-                            <SensorTrendChart
-                                apiBase={apiBase}
-                                machineId={detailLive.id}
-                                sensor="pzem"
-                                hours="custom"
-                                fromLocal={detailFrom}
-                                toLocal={detailTo}
-                                hideFilters
-                                compact={false}
-                                refreshMs={30_000}
-                                colorByStatus
-                                currentThresholdA={thr.run}
-                                offCurrentA={thr.off}
-                                pointsOverride={
-                                    enableSim && simChartPoints.length > 0
-                                        ? simChartPoints
-                                        : undefined
-                                }
-                            />
+                            {detailKpi && (
+                                <OperationKpiStrip
+                                    runningSec={detailKpi.running}
+                                    idleSec={detailKpi.idle}
+                                    offSec={detailKpi.off}
+                                    tone="sky"
+                                />
+                            )}
+                            {isSyntheticMachineId(detailLive.id) ? (
+                                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Slot UID {detailLive.device_uid ?? '—'} menunggu hardware ESP.
+                                </p>
+                            ) : (
+                                <SensorTrendChart
+                                    apiBase={apiBase}
+                                    machineId={detailLive.id}
+                                    sensor="pzem"
+                                    hours="custom"
+                                    fromLocal={detailFrom}
+                                    toLocal={detailTo}
+                                    hideFilters
+                                    compact={false}
+                                    refreshMs={30_000}
+                                    colorByStatus
+                                    currentThresholdA={thr.run}
+                                    offCurrentA={thr.off}
+                                    pointsOverride={
+                                        enableSim && simChartPoints.length > 0
+                                            ? simChartPoints
+                                            : undefined
+                                    }
+                                />
+                            )}
                             {sleepPeriods.length > 0 && (
                                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
                                     <p className="font-semibold text-slate-700 mb-1">Deep sleep (mesin OFF)</p>

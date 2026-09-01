@@ -752,41 +752,37 @@ pub async fn pzem_band_totals_from_telemetry(
                      THEN m.current_threshold_a
                    ELSE COALESCE(NULLIF(m.off_current_a, 0), 0.01) + 0.001
                  END AS run_a,
-                 COALESCE(m.power_threshold_w, 0) AS power_thr,
                  ((gs::timestamp) AT TIME ZONE 'Asia/Jakarta') AS t0,
                  (((gs::timestamp) + interval '1 day') AT TIME ZONE 'Asia/Jakarta') AS t1
           FROM machines m
           CROSS JOIN generate_series($1::date, $2::date, interval '1 day') AS gs
         ),
         mins AS (
-          SELECT d.machine_id, d.work_date, d.off_a, d.run_a, d.power_thr,
+          SELECT d.machine_id, d.work_date, d.off_a, d.run_a,
                  date_trunc('minute', t.ts) AS minute_ts,
-                 AVG(t.current_a)::float8 AS current_a,
-                 AVG(t.power_w)::float8 AS power_w
+                 AVG(t.current_a)::float8 AS current_a
           FROM day_bounds d
           INNER JOIN telemetry_pzem t
             ON t.machine_id = d.machine_id AND t.ts >= d.t0 AND t.ts < d.t1
-          GROUP BY d.machine_id, d.work_date, d.off_a, d.run_a, d.power_thr, date_trunc('minute', t.ts)
+          GROUP BY d.machine_id, d.work_date, d.off_a, d.run_a, date_trunc('minute', t.ts)
         ),
         ordered AS (
-          SELECT machine_id, work_date, off_a, run_a, power_thr, minute_ts, current_a, power_w,
+          SELECT machine_id, work_date, off_a, run_a, minute_ts, current_a,
                  LAG(minute_ts) OVER (PARTITION BY machine_id, work_date ORDER BY minute_ts) AS prev_ts
           FROM mins
         ),
         segs AS (
-          SELECT machine_id, work_date, off_a, run_a, power_thr, current_a, power_w,
+          SELECT machine_id, work_date, off_a, run_a, current_a,
                  LEAST(300, GREATEST(0, EXTRACT(EPOCH FROM (minute_ts - prev_ts))::int)) AS dt
           FROM ordered
           WHERE prev_ts IS NOT NULL
         )
         SELECT machine_id, work_date,
           COALESCE(SUM(dt) FILTER (
-            WHERE current_a >= off_a
-              AND (current_a >= run_a OR (power_thr > 0 AND power_w >= power_thr))
+            WHERE current_a >= off_a AND current_a >= run_a
           ), 0)::int AS run_sec,
           COALESCE(SUM(dt) FILTER (
-            WHERE current_a >= off_a
-              AND NOT (current_a >= run_a OR (power_thr > 0 AND power_w >= power_thr))
+            WHERE current_a >= off_a AND current_a < run_a
           ), 0)::int AS idle_sec,
           COALESCE(SUM(dt) FILTER (WHERE current_a < off_a), 0)::int AS off_sec
         FROM segs
@@ -839,6 +835,193 @@ pub async fn pzem_band_totals_from_telemetry(
             }
         }
     }
+    Ok(map)
+}
+
+const CHART_MINUTE_MS: i64 = 60_000;
+
+fn chart_kpi_band(a: f64, off_a: f64, run_a: f64) -> u8 {
+    if a < off_a {
+        0
+    } else if a >= run_a {
+        2
+    } else {
+        1
+    }
+}
+
+/// KPI dari menit telemetry + forward-fill — selaras modal detail (pzemKpi.ts).
+fn compute_chart_kpi_minutes(
+    minutes: &[(i64, f64)],
+    off_a: f64,
+    run_a: f64,
+    range_end_ms: i64,
+    now_ms: i64,
+) -> (i32, i32, i32) {
+    if minutes.is_empty() {
+        return (0, 0, 0);
+    }
+    let floor_min = |ms: i64| (ms / CHART_MINUTE_MS) * CHART_MINUTE_MS;
+    let start = floor_min(minutes[0].0);
+    let last_sample = floor_min(minutes.last().unwrap().0);
+    let cap = range_end_ms.min(now_ms);
+    let end = if cap < now_ms - CHART_MINUTE_MS {
+        floor_min(last_sample)
+    } else {
+        floor_min(cap)
+    };
+    let end_safe = start.max(end);
+
+    let mut by_min = std::collections::HashMap::new();
+    for (m, a) in minutes {
+        by_min.insert(floor_min(*m), *a);
+    }
+
+    let mut filled: Vec<(i64, f64)> = Vec::new();
+    let mut last_a = minutes[0].1;
+    let mut m = start;
+    while m <= end_safe {
+        if let Some(&a) = by_min.get(&m) {
+            last_a = a;
+        }
+        filled.push((m, last_a));
+        m += CHART_MINUTE_MS;
+    }
+
+    let mut segments: Vec<(i64, f64)> = Vec::new();
+    for (i, &(t, a)) in filled.iter().enumerate() {
+        segments.push((t, a));
+        let next_t = if i + 1 < filled.len() {
+            filled[i + 1].0
+        } else {
+            (t + CHART_MINUTE_MS).min(now_ms)
+        };
+        if next_t > t {
+            segments.push((next_t, a));
+        }
+    }
+
+    let mut running = 0i32;
+    let mut idle = 0i32;
+    let mut off = 0i32;
+    for i in 1..segments.len() {
+        let t0 = segments[i - 1].0;
+        let t1 = segments[i].0;
+        if t1 <= t0 {
+            continue;
+        }
+        let dt = ((t1 - t0) / 1000).min(300) as i32;
+        let a = segments[i].1;
+        match chart_kpi_band(a, off_a, run_a) {
+            0 => off += dt,
+            2 => running += dt,
+            _ => idle += dt,
+        }
+    }
+    (running, idle, off)
+}
+
+fn chart_range_end_ms(wd: chrono::NaiveDate, now: chrono::DateTime<Utc>) -> i64 {
+    let wib = FixedOffset::east_opt(7 * 3600).unwrap();
+    let today = work_date_wib();
+    if wd == today {
+        return now.timestamp_millis();
+    }
+    let end_local = wd.and_hms_opt(23, 59, 0).unwrap();
+    wib.from_local_datetime(&end_local)
+        .single()
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or(now.timestamp_millis())
+}
+
+/// KPI grafik untuk semua mesin — satu query, algoritma sama frontend detail.
+pub async fn chart_kpi_from_telemetry(
+    state: &AppState,
+    from: chrono::NaiveDate,
+    to: chrono::NaiveDate,
+) -> anyhow::Result<std::collections::HashMap<(Uuid, chrono::NaiveDate), (i32, i32, i32)>> {
+    use chrono::{DateTime, NaiveDate};
+
+    let rows = sqlx::query_as::<_, (Uuid, NaiveDate, f64, f64, DateTime<Utc>, f64)>(
+        r#"
+        WITH day_bounds AS (
+          SELECT m.id AS machine_id,
+                 gs::date AS work_date,
+                 COALESCE(NULLIF(m.off_current_a, 0), 0.01) AS off_a,
+                 CASE
+                   WHEN m.current_threshold_a > COALESCE(NULLIF(m.off_current_a, 0), 0.01)
+                     THEN m.current_threshold_a
+                   ELSE COALESCE(NULLIF(m.off_current_a, 0), 0.01) + 0.001
+                 END AS run_a,
+                 ((gs::timestamp) AT TIME ZONE 'Asia/Jakarta') AS t0,
+                 (((gs::timestamp) + interval '1 day') AT TIME ZONE 'Asia/Jakarta') AS t1
+          FROM machines m
+          CROSS JOIN generate_series($1::date, $2::date, interval '1 day') AS gs
+          WHERE EXISTS (SELECT 1 FROM devices dvc WHERE dvc.machine_id = m.id)
+        ),
+        mins AS (
+          SELECT d.machine_id, d.work_date, d.off_a, d.run_a,
+                 date_trunc('minute', t.ts) AS minute_ts,
+                 AVG(t.current_a)::float8 AS current_a
+          FROM day_bounds d
+          INNER JOIN telemetry_pzem t
+            ON t.machine_id = d.machine_id AND t.ts >= d.t0 AND t.ts < d.t1
+          GROUP BY d.machine_id, d.work_date, d.off_a, d.run_a, date_trunc('minute', t.ts)
+        )
+        SELECT machine_id, work_date, off_a, run_a, minute_ts, current_a
+        FROM mins
+        ORDER BY machine_id, work_date, minute_ts
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let now = Utc::now();
+    let now_ms = now.timestamp_millis();
+    let mut map: std::collections::HashMap<(Uuid, NaiveDate), (i32, i32, i32)> =
+        std::collections::HashMap::new();
+
+    let mut cur_id: Option<Uuid> = None;
+    let mut cur_wd: Option<NaiveDate> = None;
+    let mut cur_off = 0.01_f64;
+    let mut cur_run = 0.6_f64;
+    let mut buf: Vec<(i64, f64)> = Vec::new();
+
+    let flush = |buf: &mut Vec<(i64, f64)>,
+                 id: Uuid,
+                 wd: NaiveDate,
+                 off_a: f64,
+                 run_a: f64,
+                 map: &mut std::collections::HashMap<(Uuid, NaiveDate), (i32, i32, i32)>| {
+        if buf.is_empty() {
+            return;
+        }
+        let end_ms = chart_range_end_ms(wd, now);
+        let kpi = compute_chart_kpi_minutes(buf, off_a, run_a, end_ms, now_ms);
+        map.insert((id, wd), kpi);
+        buf.clear();
+    };
+
+    for (mid, wd, off_a, run_a, ts, a) in rows {
+        if cur_id == Some(mid) && cur_wd == Some(wd) {
+            buf.push((ts.timestamp_millis(), a));
+        } else {
+            if let (Some(id), Some(d)) = (cur_id, cur_wd) {
+                flush(&mut buf, id, d, cur_off, cur_run, &mut map);
+            }
+            cur_id = Some(mid);
+            cur_wd = Some(wd);
+            cur_off = off_a;
+            cur_run = run_a;
+            buf.push((ts.timestamp_millis(), a));
+        }
+    }
+    if let (Some(id), Some(d)) = (cur_id, cur_wd) {
+        flush(&mut buf, id, d, cur_off, cur_run, &mut map);
+    }
+
     Ok(map)
 }
 

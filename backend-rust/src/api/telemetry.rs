@@ -132,22 +132,25 @@ pub async fn pzem_daily_stats(
     .map_err(internal)?
     .ok_or((StatusCode::NOT_FOUND, "machine not found".into()))?;
 
-    let (running_sec, idle_sec, off_sec) = if machine.kpi_source == "esp" {
-        crate::services::detection::pzem_daily_totals(&state, id)
-            .await
-            .map_err(|e| {
-                tracing::error!("{e:#}");
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            })?
-    } else {
-        let map = crate::services::detection::pzem_band_totals_from_telemetry(&state, today, today)
-            .await
-            .map_err(|e| {
-                tracing::error!("{e:#}");
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            })?;
-        map.get(&(id, today)).copied().unwrap_or((0, 0, 0))
-    };
+    let map = crate::services::detection::pzem_band_totals_from_telemetry(&state, today, today)
+        .await
+        .map_err(|e| {
+            tracing::error!("{e:#}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let (running_sec, idle_sec, off_sec) =
+        if let Some(t) = map.get(&(id, today)).copied().filter(|(r, i, o)| r + i + o > 0) {
+            t
+        } else {
+            crate::services::detection::pzem_daily_totals(&state, id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("{e:#}");
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                })?
+        };
+
     let (running_pct, idle_pct, off_pct) =
         crate::services::detection::pzem_pcts(running_sec, idle_sec, off_sec);
 
@@ -438,13 +441,8 @@ pub async fn telemetry_series(
     let max_span = chrono::Duration::days(7);
     let from = if to - from > max_span { to - max_span } else { from };
 
-    let span_hours = (to - from).num_hours().max(1);
-    // >12 jam: bucket 5 menit; selain itu per menit
-    let bucket_expr = if span_hours > 12 {
-        "to_timestamp(floor(extract(epoch from ts) / 300) * 300)"
-    } else {
-        "date_trunc('minute', ts)"
-    };
+    // ponytail: PZEM selalu bucket 1 menit — KPI grafik/detail konsisten (jangan 5 mnt untuk >12 jam)
+    let bucket_expr = "date_trunc('minute', ts)";
 
     if sensor == "pzem" {
         let sql = format!(
@@ -507,6 +505,41 @@ pub async fn telemetry_series(
             "value": mag,
         })).collect::<Vec<_>>(),
     })))
+}
+
+#[derive(Deserialize)]
+pub struct ChartKpiQuery {
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+}
+
+/// KPI grafik semua mesin (forward-fill per menit) — selaras modal detail.
+pub async fn chart_kpi_batch(
+    State(state): State<AppState>,
+    Query(q): Query<ChartKpiQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let today = crate::services::detection::work_date_wib();
+    let to = q.to.unwrap_or(today);
+    let from = q.from.unwrap_or(to);
+    let map = crate::services::detection::chart_kpi_from_telemetry(&state, from, to)
+        .await
+        .map_err(|e| {
+            tracing::error!("chart_kpi: {e:#}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+    let items: Vec<Value> = map
+        .into_iter()
+        .map(|((mid, wd), (run, idle, off))| {
+            json!({
+                "machine_id": mid,
+                "work_date": wd,
+                "running_sec": run,
+                "idle_sec": idle,
+                "off_sec": off,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "from": from, "to": to, "items": items })))
 }
 
 #[derive(Deserialize)]

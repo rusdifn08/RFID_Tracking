@@ -855,7 +855,8 @@ async function loadHistory(mid) {
     }
     tbody.innerHTML = arr.map(h => {
       const prod = Number(h.productivity_pct || 0).toFixed(2);
-      const prodColor = prod >= 90 ? '#4ade80' : (prod >= 80 ? '#38bdf8' : '#fb7185');
+      const prodN = Number(h.productivity_pct || 0);
+      const prodColor = prodN > 80 ? '#4ade80' : (prodN >= 40 ? '#38bdf8' : '#fb7185');
       return '<tr>' +
         '<td class="mono font-bold" style="color:#60a5fa">' + esc(h.work_date) + '</td>' +
         '<td class="mono" style="color:#4ade80">' + fmtSec(h.run_sec) + '</td>' +

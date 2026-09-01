@@ -393,6 +393,117 @@ struct ResumeDbRow {
     logged_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+fn prod_pct_pzem(pzem: &Value) -> f64 {
+    let run = pzem
+        .get("running_sec")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let idle = pzem
+        .get("idle_sec")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let on = run + idle;
+    if on == 0 {
+        0.0
+    } else {
+        (run as f64 / on as f64) * 100.0
+    }
+}
+
+fn prod_cat(pct: f64) -> &'static str {
+    if pct > 80.0 {
+        "GOOD"
+    } else if pct >= 40.0 {
+        "NORMAL"
+    } else {
+        "BAD"
+    }
+}
+
+fn summary_machine_pick(m: &Value, prod: f64) -> Value {
+    json!({
+        "id": m.get("id"),
+        "code": m.get("code"),
+        "display_name": m.get("display_name"),
+        "device_uid": m.get("device_uid"),
+        "prod_pct": prod,
+    })
+}
+
+/// Ringkasan resume: AVG & terendah hanya dari mesin dengan produktivitas > 0 (mesin tidak dipakai diabaikan).
+fn compute_resume_summary(list: &[Value]) -> Value {
+    let mut good = 0i32;
+    let mut normal = 0i32;
+    let mut bad = 0i32;
+    let mut active_sum = 0.0f64;
+    let mut active_n = 0usize;
+    let mut best: Option<(f64, &Value)> = None;
+    let mut worst: Option<(f64, &Value)> = None;
+
+    for m in list {
+        let prod = prod_pct_pzem(m.get("pzem").unwrap_or(&Value::Null));
+        match prod_cat(prod) {
+            "GOOD" => good += 1,
+            "NORMAL" => normal += 1,
+            _ => bad += 1,
+        }
+        if best.map_or(true, |(bp, _)| prod > bp) {
+            best = Some((prod, m));
+        }
+        if prod > 0.0 {
+            active_sum += prod;
+            active_n += 1;
+            if worst.map_or(true, |(wp, _)| prod < wp) {
+                worst = Some((prod, m));
+            }
+        }
+    }
+
+    let avg = if active_n == 0 {
+        0.0
+    } else {
+        active_sum / active_n as f64
+    };
+
+    json!({
+        "total": list.len(),
+        "good": good,
+        "normal": normal,
+        "bad": bad,
+        "avg_prod_pct": avg,
+        "active_count": active_n,
+        "best": best.map(|(p, m)| summary_machine_pick(m, p)),
+        "worst": worst.map(|(p, m)| summary_machine_pick(m, p)),
+    })
+}
+
+#[cfg(test)]
+mod resume_summary_tests {
+    use super::*;
+
+    #[test]
+    fn prod_cat_bands() {
+        assert_eq!(prod_cat(81.0), "GOOD");
+        assert_eq!(prod_cat(80.0), "NORMAL");
+        assert_eq!(prod_cat(40.0), "NORMAL");
+        assert_eq!(prod_cat(39.9), "BAD");
+    }
+
+    #[test]
+    fn avg_and_worst_skip_zero_prod() {
+        let list = vec![
+            json!({"id":"1","display_name":"Off","pzem":{"running_sec":0,"idle_sec":0}}),
+            json!({"id":"2","display_name":"Low","pzem":{"running_sec":10,"idle_sec":90}}),
+            json!({"id":"3","display_name":"Mid","pzem":{"running_sec":50,"idle_sec":50}}),
+        ];
+        let s = compute_resume_summary(&list);
+        assert_eq!(s["active_count"], 2);
+        assert!((s["avg_prod_pct"].as_f64().unwrap() - 30.0).abs() < 0.01);
+        assert_eq!(s["worst"]["display_name"], "Low");
+        assert_eq!(s["best"]["display_name"], "Mid");
+    }
+}
+
 pub async fn machines_resume(
     State(state): State<AppState>,
     Query(q): Query<ShiftQuery>,
@@ -546,9 +657,9 @@ pub async fn machines_resume(
             let mut p_run = r.p_run;
             let mut p_idle = r.p_idle;
             let mut p_off = r.p_off;
-            let use_tel = kpi_map.get(&r.id).map(|s| s.as_str() != "esp").unwrap_or(true);
-            if use_tel {
-                if let Some((run, idle, off)) = from_tel.get(&(r.id, r.work_date)) {
+            // ponytail: dashboard = grafik = agregat telemetry; counter ESP hanya fallback jika belum ada sampel
+            if let Some((run, idle, off)) = from_tel.get(&(r.id, r.work_date)) {
+                if run + idle + off > 0 {
                     p_run = *run;
                     p_idle = *idle;
                     p_off = *off;
@@ -634,11 +745,14 @@ pub async fn machines_resume(
         })
         .collect();
 
+    let summary = compute_resume_summary(&list);
+
     Ok(Json(json!({
         "work_date": today,
         "from": from,
         "to": to,
         "sim": use_sim,
+        "summary": summary,
         "machines": list
     })))
 }

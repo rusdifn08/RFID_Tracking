@@ -192,6 +192,9 @@ export const HIDE_MACHINE_PRODUCTIVITY_CARD_ZIGBEE = false;
  */
 export const SIMULASI_MACHINE = true;
 
+/** Slot UID 001–N di /monitoring-machine/juki; hardware belum ada tetap tampil (019/020 menyusul). */
+export const JUKI_MONITOR_UID_SLOTS = 21;
+
 export type MachineProductivityCardId =
     | 'detail'
     | 'resume'
