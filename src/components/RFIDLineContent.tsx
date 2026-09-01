@@ -13,7 +13,7 @@ import {
 import EditSupervisorShiftModal from './EditSupervisorShiftModal';
 import { preloadLineDetail } from '../utils/preload';
 import { resolveLineDisplayTitle } from '../utils/lineDisplayTitle';
-import { HIDE_SHIFT_ICON, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines, DISABLED_SEWING_LINE_IDS } from '../config/hide';
+import { HIDE_SHIFT_ICON, HIDE_PRODUCTION_LINE_BRAND, SHOW_PRODUCTION_LINE_CARD, filterVisibleProductionLines, DISABLED_SEWING_LINE_IDS } from '../config/hide';
 import brandIconMontbell from '../assets/montbell.svg';
 
 // Helper function untuk convert 24-hour format ke 12-hour format dengan AM/PM
@@ -867,7 +867,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                             </div>
 
                             {/* --- FLOATING BOX kiri atas: brand (nama/style) ukuran sama seperti box shift, atau shift (matahari/bulan) --- */}
-                            {showBrandOnCard ? (
+                            {showBrandOnCard && !HIDE_PRODUCTION_LINE_BRAND ? (
                                 <div
                                     className="absolute -top-2.5 xs:-top-3 sm:-top-3.5 left-3.5 xs:left-4 sm:left-5 w-9 xs:w-11 sm:w-13 h-7 xs:h-9 sm:h-11 rounded-xl shadow-xl flex items-center justify-center z-40 transition-all duration-300 group-hover:scale-110 border-2 border-white overflow-hidden bg-white/95"
                                     style={{ pointerEvents: 'auto' }}
@@ -880,7 +880,7 @@ export default function RFIDLineContent({ linePathPrefix = '', allPath = '/all-p
                                         draggable={false}
                                     />
                                 </div>
-                            ) : !HIDE_SHIFT_ICON && (
+                            ) : !showBrandOnCard && !HIDE_SHIFT_ICON && (
                                 <div
                                     onClick={(e) => {
                                         e.preventDefault();

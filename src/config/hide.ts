@@ -72,7 +72,10 @@ export function isHomeCardHidden(cardId: HomeCardId): boolean {
 }
 
 /** Ikon shift (matahari/bulan) di kartu Production Line dan Sewing Line. true = disembunyikan, false = ditampilkan */
-export const HIDE_SHIFT_ICON = false;
+export const HIDE_SHIFT_ICON = true;
+
+/** Kotak brand (mont-bell) kiri atas kartu Production Line (/monitoring-rfid). true = disembunyikan */
+export const HIDE_PRODUCTION_LINE_BRAND = true;
 
 /** Tombol Scan QC Repair di header Tabel Quality Control (Dashboard QC Cutting). true = disembunyikan */
 export const HIDE_SCAN_QC_REPAIR = true;
