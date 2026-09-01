@@ -74,7 +74,7 @@ export function isHomeCardHidden(cardId: HomeCardId): boolean {
 /** Ikon shift (matahari/bulan) di kartu Production Line dan Sewing Line. true = disembunyikan, false = ditampilkan */
 export const HIDE_SHIFT_ICON = true;
 
-/** Kotak brand (mont-bell) kiri atas kartu Production Line (/monitoring-rfid). true = disembunyikan */
+/** Kotak brand (mont-bell) kiri atas kartuFsi Production Line (/monitoring-rfid). true = disembunyikan */
 export const HIDE_PRODUCTION_LINE_BRAND = true;
 
 /** Tombol Scan QC Repair di header Tabel Quality Control (Dashboard QC Cutting). true = disembunyikan */
@@ -190,7 +190,7 @@ export const HIDE_MACHINE_PRODUCTIVITY_CARD_ZIGBEE = false;
  * Simulasi data dummy — HANYA aktif di `/monitoring-machine/juki` (enableSim prop).
  * Resume di `/machine-productivity/resume` selalu data real (tanpa &sim=1).
  */
-export const SIMULASI_MACHINE = true;
+export const SIMULASI_MACHINE = false;
 
 /** Slot UID 001–N di /monitoring-machine/juki; hardware belum ada tetap tampil (019/020 menyusul). */
 export const JUKI_MONITOR_UID_SLOTS = 21;
