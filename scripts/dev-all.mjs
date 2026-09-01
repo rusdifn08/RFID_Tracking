@@ -17,11 +17,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 
 const ENV_PRESETS = {
-  cln: { serverArg: 'cln', defaultFrontend: 5173, backendIp: '10.8.0.104' },
+  cln: { serverArg: 'cln', defaultFrontend: 5173, backendIp: '10.5.0.107' },
   mjl: { serverArg: 'mjl', defaultFrontend: 5173, backendIp: '10.5.0.107' },
   mjl2: { serverArg: 'mjl2', defaultFrontend: 5174, backendIp: '10.6.0.2' },
   gcc: { serverArg: 'gcc', defaultFrontend: 5175, backendIp: '10.5.0.106' },
-  default: { serverArg: '', defaultFrontend: 5173, backendIp: '10.8.0.104' },
+  default: { serverArg: '', defaultFrontend: 5173, backendIp: '10.5.0.107' },
 };
 
 const DEFAULT_BACKEND_PORT = 7000;
