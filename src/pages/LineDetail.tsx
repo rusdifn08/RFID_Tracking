@@ -17,7 +17,6 @@ import identityHub from '../data/sewing/sewing-rfid-identity.json';
 import batchHub from '../data/sewing/sewing-batch-dashboard.json';
 import reportHub from '../data/sewing/sewing-report-data.json';
 import layoutHub from '../data/sewing/sewing-layout-data.json';
-import targetIcon from '../assets/target.webp';
 
 function getSupervisorByLine(
     supervisors: Record<string, string> | undefined,
@@ -45,6 +44,8 @@ const LineDetail = memo(() => {
     const [environment, setEnvironment] = useState<BackendEnvironment>(getInitialEnvironment);
     const [supervisorFromAPI, setSupervisorFromAPI] = useState<string | null>(null);
 
+    const pageType = location.pathname.startsWith('/sewing') ? 'sewing' : 'production';
+
     // Fetch environment (1x shared request via getEnvironmentFromAPI)
     useEffect(() => {
         getEnvironmentFromAPI().then(env => setEnvironment(env));
@@ -54,7 +55,7 @@ const LineDetail = memo(() => {
     useEffect(() => {
         if (!environment || !id) return;
         const applySupervisor = async () => {
-            const data = await getSupervisorDataFromAPI(environment);
+            const data = await getSupervisorDataFromAPI(environment, pageType);
             if (data?.supervisors) {
                 const lineKey = id.trim();
                 const name = getSupervisorByLine(data.supervisors, lineKey, null);
@@ -67,7 +68,7 @@ const LineDetail = memo(() => {
         const onSupervisorUpdated = () => applySupervisor();
         window.addEventListener('supervisorUpdated', onSupervisorUpdated);
         return () => window.removeEventListener('supervisorUpdated', onSupervisorUpdated);
-    }, [environment, id]);
+    }, [environment, id, pageType]);
 
     // Data Production Lines diambil dari constant file
     // Filter untuk menghilangkan "All Production Line" (id 0, 111, atau 112)
@@ -183,7 +184,14 @@ const LineDetail = memo(() => {
                     subtitle: 'Atur posisi batch mesin',
                     icon: null,
                     path: `/sewing/positioning/${id}`,
-                    sewingHub: { title: 'Batch Position', subtitle: 'Assign pengaturan batch mesin, dan operator.', path: `/sewing/positioning/${id}`, icon: MapPin, tone: 'blue' as const },
+                    sewingHub: {
+                        title: 'Batch Position',
+                        subtitle: 'Assign pengaturan batch mesin, dan operator.',
+                        highlights: ['Batch mesin', 'Operator line', 'Posisi line'],
+                        path: `/sewing/positioning/${id}`,
+                        icon: MapPin,
+                        tone: 'blue' as const,
+                    },
                 },
             ];
         }

@@ -53,12 +53,12 @@ export default function Breadcrumb() {
         };
         loadDisplayTitles();
         const onSupervisorUpdated = () => {
-            invalidateSupervisorDataCache(environment);
+            invalidateSupervisorDataCache(environment, pageType);
             loadDisplayTitles();
         };
         window.addEventListener('supervisorUpdated', onSupervisorUpdated);
         return () => window.removeEventListener('supervisorUpdated', onSupervisorUpdated);
-    }, [environment]);
+    }, [environment, pageType]);
 
     // Mapping route ke breadcrumb
     const getBreadcrumbs = (): BreadcrumbItem[] => {
