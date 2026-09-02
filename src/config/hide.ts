@@ -158,7 +158,7 @@ export const HIDE_CUTTING_CARD_FILTERS = true;
  * Card tetap tampil (bukan filter render).
  */
 export const DISABLED_SEWING_LINE_IDS: readonly number[] = [
-    111, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13,
+    111,
 ];
 
 // --- Machine Productivity Dashboard Cards ---
