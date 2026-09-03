@@ -106,7 +106,7 @@ const Finishing = memo(() => {
                     }}
                 >
                     <div className="text-center text-gray-600 text-sm pointer-events-auto" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 400 }}>
-                        Gistex Garmen Indonesia Monitoring System (GMS) © 2025 Served by Supernova
+                        Gistex Monitoring System (GMS) © 2025 Served by Supernova Labs Studio
                     </div>
                 </footer>
             </div>

@@ -6,7 +6,7 @@ interface FooterProps {
 }
 
 const Footer = memo(({ variant = 'transparent', className = '' }: FooterProps) => {
-    const footerText = 'Gistex Garmen Indonesia Monitoring System (GMS) © 2025 Served by Supernova';
+    const footerText = 'Gistex Monitoring System (GMS) © 2025 Served by Supernova Labs Studio';
 
     if (variant === 'solid') {
         return (
